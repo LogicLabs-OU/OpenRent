@@ -1,0 +1,17 @@
+{
+  "name": "Closing call to action",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "default": "Your weekend is waiting. Someone has the gear for it."
+    },
+    {
+      "id": "button",
+      "type": "text",
+      "label": "Button label",
+      "default": "See what’s free"
+    }
+  ]
+}

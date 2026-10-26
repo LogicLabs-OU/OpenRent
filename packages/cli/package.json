@@ -1,0 +1,34 @@
+{
+  "name": "@openrent/cli",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "bin": {
+    "openrent": "./bin/openrent.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "dev": "tsx src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@openrent/api": "workspace:*",
+    "@openrent/core": "workspace:*",
+    "@openrent/db": "workspace:*",
+    "@openrent/plugin-sdk": "workspace:*",
+    "@openrent/theme-sdk": "workspace:*",
+    "fflate": "^0.8.3",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "tsup": "^9.0.0",
+    "vitest": "^5.0.5"
+  }
+}

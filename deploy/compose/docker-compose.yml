@@ -1,0 +1,125 @@
+# OpenRent default install (PRD §10.1): one `docker compose up`.
+#   cp .env.example .env && ./scripts/gen-secrets.sh
+#   docker compose -f deploy/compose/docker-compose.yml --env-file .env up -d
+# Then open https://$OPENRENT_DOMAIN/admin/setup (or http://localhost/admin/setup).
+name: openrent
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://openrent:${POSTGRES_PASSWORD:-openrent}@postgres:5432/openrent
+  OPENRENT_PUBLIC_URL: ${OPENRENT_PUBLIC_URL:-http://localhost}
+  ADMIN_URL: ${OPENRENT_PUBLIC_URL:-http://localhost}/admin
+  STOREFRONT_URL: ${STOREFRONT_URL:-http://localhost}
+  OPENRENT_ENCRYPTION_KEY: ${OPENRENT_ENCRYPTION_KEY:?run scripts/gen-secrets.sh}
+  OPENRENT_SESSION_SECRET: ${OPENRENT_SESSION_SECRET:?run scripts/gen-secrets.sh}
+  OPENRENT_MODE: ${OPENRENT_MODE:-single_tenant}
+  OPENRENT_STOREFRONT_DOMAIN: ${OPENRENT_STOREFRONT_DOMAIN:-}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  SMTP_URL: ${SMTP_URL:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  # Uploads, photos, document PDFs and exports go to MinIO (or any S3 store when you change these).
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-openrent}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-openrent}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD:?run scripts/gen-secrets.sh}}
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      OPENRENT_DOMAIN: ${OPENRENT_DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api, storefront]
+
+  api:
+    build: { context: ../.., target: api }
+    image: ghcr.io/openrent/api:dev
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ../.., target: worker }
+    image: ghcr.io/openrent/worker:dev
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      AUTO_MIGRATE: "false"
+    # `openrent backup --out /backups/…` writes here.
+    volumes:
+      - backups:/backups
+    depends_on:
+      api: { condition: service_healthy }
+
+  storefront:
+    build: { context: ../.., target: storefront }
+    image: ghcr.io/openrent/storefront:dev
+    restart: unless-stopped
+    environment:
+      OPENRENT_API_URL: http://api:7070
+      OPENRENT_STOREFRONT_DOMAIN: ${OPENRENT_STOREFRONT_DOMAIN:-}
+      TENANT_SLUG: ${TENANT_SLUG:-}
+      # The request's own host and scheme (from Caddy), so {slug} subdomains and custom domains work.
+      PROTOCOL_HEADER: x-forwarded-proto
+      HOST_HEADER: x-forwarded-host
+    depends_on: [api]
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: openrent
+      POSTGRES_USER: openrent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-openrent}
+    volumes: ["pg_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openrent -d openrent"]
+      interval: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-openrent}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run scripts/gen-secrets.sh}
+    volumes: ["minio_data:/data"]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  # Creates the bucket once; safe to run again.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      sh -c "mc alias set local http://minio:9000 $${S3_ACCESS_KEY:-openrent} $${MINIO_ROOT_PASSWORD} &&
+             mc mb --ignore-existing local/$${S3_BUCKET:-openrent}"
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-openrent}
+      S3_BUCKET: ${S3_BUCKET:-openrent}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?run scripts/gen-secrets.sh}
+
+  # Development mail catcher: `docker compose --profile dev up mailpit`, UI on :8025, SMTP_URL=smtp://localhost:1025
+  mailpit:
+    image: axllent/mailpit
+    profiles: [dev]
+    ports: ["8025:8025", "1025:1025"]
+
+volumes:
+  pg_data: {}
+  caddy_data: {}
+  minio_data: {}
+  backups: {}

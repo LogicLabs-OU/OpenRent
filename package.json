@@ -1,0 +1,48 @@
+{
+  "name": "openrent",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter \"./apps/*\" dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:integration": "pnpm --filter @openrent/api test:integration",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:migrate": "pnpm --filter @openrent/db migrate",
+    "db:rollback": "pnpm --filter @openrent/db rollback",
+    "db:seed": "pnpm --filter @openrent/db seed",
+    "openapi": "pnpm --filter @openrent/api spec && pnpm --filter @openrent/sdk generate",
+    "openrent": "pnpm --silent --filter @openrent/cli dev",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "db:pglite": "pnpm --filter @openrent/db pglite --max-connections 8",
+    "db:generate": "pnpm --filter @openrent/db generate",
+    "check:i18n": "node scripts/check-i18n.ts",
+    "check:hardcoded": "node scripts/check-hardcoded.ts",
+    "check:themes": "pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/default && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/retro && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/concept && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/ink-green",
+    "test:scripts": "vitest run scripts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "eslint": "^10.13.0",
+    "fflate": "^0.8.3",
+    "prettier": "^3.9.10",
+    "prettier-plugin-svelte": "^4.1.1",
+    "svelte": "^5.57.2",
+    "tsx": "^4.23.15",
+    "turbo": "^2.11.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  },
+  "packageManager": "pnpm@10.20.0"
+}

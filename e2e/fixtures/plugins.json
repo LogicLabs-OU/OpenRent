@@ -1,0 +1,10 @@
+{
+  "plugins": [
+    "@openrent/plugin-payment-stripe",
+    "@openrent/plugin-notify-smtp",
+    "@openrent/plugin-notify-postmark",
+    "@openrent/plugin-notify-resend",
+    "@openrent/plugin-storage-s3",
+    "e2e-extras"
+  ]
+}

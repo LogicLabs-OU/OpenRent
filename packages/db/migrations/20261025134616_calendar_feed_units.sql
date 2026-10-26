@@ -1,0 +1,2 @@
+ALTER TABLE "calendar_feeds" ADD COLUMN "stock_item_id" text;--> statement-breakpoint
+ALTER TABLE "calendar_feeds" ADD CONSTRAINT "calendar_feeds_stock_item_id_fkey" FOREIGN KEY ("stock_item_id") REFERENCES "public"."stock_items"("id") ON DELETE cascade ON UPDATE no action;

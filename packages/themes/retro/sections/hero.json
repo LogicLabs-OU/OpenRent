@@ -1,0 +1,23 @@
+{
+  "name": "Hero",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "default": "Go from idea to out there"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Pick your dates and see what is free right now. Book in a minute, pick it up, bring it back."
+    },
+    {
+      "id": "show_coins",
+      "type": "checkbox",
+      "label": "Show the floating coins",
+      "default": true
+    }
+  ]
+}

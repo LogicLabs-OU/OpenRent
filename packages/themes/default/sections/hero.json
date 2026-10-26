@@ -1,0 +1,12 @@
+{
+  "name": "Hero",
+  "settings": [
+    { "id": "heading", "type": "text", "label": "Heading", "default": "Rent the gear, skip the hassle" },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Pick your dates first and we only show what is free. Prices update as you go."
+    }
+  ]
+}

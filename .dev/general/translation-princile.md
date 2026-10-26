@@ -1,0 +1,5 @@
+- note that the traget translation already has some content, you are not allowed to modify existing translation, unless there is substantial error and you need to ask for my permission before changing exisitng content
+- strictly follow the path and schema of the english translation and add the missing translation in traget translation file based on english
+- you need to translate based on the context of the project, and you need to traslate like a native speaker of the translating language, and use the tone of a typical business application that sounds professional
+- do not hallucinate, you must strictly follow the english translation and don't add anything nor omit anything
+- if you are not sure, you are allowed to read the original file where the translation is used to understand the context.

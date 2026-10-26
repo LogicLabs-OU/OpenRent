@@ -1,0 +1,230 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792861478691,
+      "tag": "20261024170438_daily_thundra",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792861511927,
+      "tag": "20261024170511_serious_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792861587660,
+      "tag": "20261024170627_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792862069382,
+      "tag": "20261024171429_notification_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792880342905,
+      "tag": "20261024221902_notification_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792883171647,
+      "tag": "20261024230611_pilot_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792884480885,
+      "tag": "20261024232800_counter_and_warehouse",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792918509050,
+      "tag": "20261025085509_storefront_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792922852706,
+      "tag": "20261025100732_variant_translations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792931598784,
+      "tag": "20261025123318_variant_booking_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792932377832,
+      "tag": "20261025124617_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792932857123,
+      "tag": "20261025125417_custom_field_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792933974478,
+      "tag": "20261025131254_payment_links_and_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792934886584,
+      "tag": "20261025132806_staff_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792935976210,
+      "tag": "20261025134616_calendar_feed_units",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792936386788,
+      "tag": "20261025135306_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792937398101,
+      "tag": "20261025140958_storefront_domains",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792939167052,
+      "tag": "20261025143927_plugin_migrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792939614561,
+      "tag": "20261025144654_order_line_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792940366233,
+      "tag": "20261025145926_custom_themes",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1792941061783,
+      "tag": "20261025151101_string_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792956961474,
+      "tag": "20261025193601_price_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792957861123,
+      "tag": "20261025195101_fee_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792958655436,
+      "tag": "20261025200415_extension_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792959330484,
+      "tag": "20261025201530_unit_swap",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1792959603003,
+      "tag": "20261025202003_deliveries",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792960111074,
+      "tag": "20261025202831_overbookings",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1792964397582,
+      "tag": "20261025213957_location_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793000198569,
+      "tag": "20261026073638_transfers",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793001318302,
+      "tag": "20261026075518_maintenance_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793001815875,
+      "tag": "20261026080335_inspections",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1793002557772,
+      "tag": "20261026081557_meters_service",
+      "breakpoints": true
+    }
+  ]
+}

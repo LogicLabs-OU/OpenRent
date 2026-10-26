@@ -1,0 +1,9 @@
+pnpm-lock.yaml
+dist
+build
+.svelte-kit
+.svelte-kit-*
+packages/api-spec/openapi.json
+packages/sdk/src/types.ts
+.dev
+e2e/.auth

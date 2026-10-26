@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "fr"
+  },
+  "error.title": "Une erreur est survenue",
+  "error.generic": "Une erreur est survenue. Veuillez réessayer.",
+  "error.unavailable": "La boutique est temporairement indisponible",
+  "error.cart_empty": "Votre panier est vide",
+  "error.dates_invalid": "Choisissez un retrait et un retour valides",
+  "error.page_not_found": "Page introuvable",
+  "error.category_not_found": "Catégorie introuvable",
+  "error.back_home": "Retour à la boutique",
+  "meta.description": "Louez chez {shop}",
+  "page.terms": "Conditions de location",
+  "page.terms_version": "Version {version}",
+  "payment.pay_now": "Payer maintenant",
+  "payment.processing": "Traitement en cours…",
+  "payment.load_failed": "Le formulaire de paiement n’a pas pu être chargé",
+  "payment.failed": "Échec du paiement",
+  "payment.secure": "Les données de carte sont traitées par Stripe et ne transitent jamais par les serveurs de cette boutique.",
+  "preview.banner": "Aperçu du thème {theme}. Les clients voient toujours le thème en ligne.",
+  "preview.exit": "Quitter l’aperçu",
+  "error.invalid_token": "Ce lien n’est pas valide",
+  "error.document": "Ce document n’est pas disponible",
+  "consent.title": "Cookies et scripts",
+  "consent.text": "Cette boutique souhaite charger des services supplémentaires de statistiques et de marketing. Êtes-vous d’accord ?",
+  "consent.necessary": "Seulement le nécessaire",
+  "consent.all": "Tout accepter"
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@openrent/widget",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 7073 --strictPort",
+    "build": "vite build && vite build --mode checkout",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --threshold error"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.7",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.61.0",
+    "@openrent/i18n": "workspace:*",
+    "@openrent/ui": "workspace:*",
+    "bits-ui": "^2.20.2"
+  }
+}

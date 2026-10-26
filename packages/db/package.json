@@ -1,0 +1,34 @@
+{
+  "name": "@openrent/db",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./demo": "./src/demo.ts",
+    "./dev/pglite": "./src/dev/pglite-server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "migrate": "tsx src/cli.ts migrate",
+    "rollback": "tsx src/cli.ts rollback",
+    "seed": "tsx src/seed.ts",
+    "pglite": "tsx src/dev/pglite-server.ts",
+    "generate": "drizzle-kit generate"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
+    "@electric-sql/pglite-socket": "^0.2.14",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@openrent/core": "workspace:*",
+    "@openrent/plugin-sdk": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@openrent/plugin-notify-smtp",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "^8.0.2",
+    "@types/smtp-server": "^3.5.13",
+    "smtp-server": "^3.21.1",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@openrent/plugin-sdk": "workspace:*",
+    "nodemailer": "^10.2.1"
+  }
+}

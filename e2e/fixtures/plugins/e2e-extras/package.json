@@ -1,0 +1,1 @@
+{ "name": "openrent-plugin-e2e-extras", "version": "1.0.0", "private": true, "type": "module", "main": "index.js" }

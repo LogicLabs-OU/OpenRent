@@ -1,0 +1,374 @@
+import { DeliveryError, type Attachment, type DomainEvent } from '@openrent/plugin-sdk';
+import { webhooks, notifications, orders, servicing, payments, documents, plugins, files, jobs, reports, domains, exportZip, hookContext, serverT, type Ctx } from '@openrent/core';
+import { rowsSheet, writeCsv, writeXlsx } from '@openrent/api/spreadsheets';
+import { withSystem, withTenant, type PoolClient } from '@openrent/db';
+import type { AppDeps } from '@openrent/api/deps';
+
+export interface WorkerLogger {
+  info(o: unknown, m?: string): void;
+  warn(o: unknown, m?: string): void;
+  error(o: unknown, m?: string): void;
+  debug(o: unknown, m?: string): void;
+}
+
+function ctxFor(deps: AppDeps, db: PoolClient, tenantId: string, logger: WorkerLogger): Ctx {
+  return {
+    db,
+    tenantId,
+    actor: { type: 'system', id: null },
+    now: new Date(),
+    plugins: deps.plugins,
+    secrets: deps.secrets,
+    config: { publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, livemode: deps.config.livemode },
+    logger,
+  };
+}
+
+async function asTenant(c: PoolClient, tenantId: string) {
+  await c.query(`SELECT set_config('app.tenant_id', $1, true), set_config('app.system', 'off', true)`, [tenantId]);
+}
+
+async function asSystem(c: PoolClient) {
+  await c.query(`SELECT set_config('app.system', 'on', true)`);
+}
+
+/** Work that must wait for a commit (`internal.*` events other than job wake-ups). */
+const INTERNAL: Record<string, (ctx: Ctx, object: any) => Promise<void>> = {
+  'internal.file.purge': (ctx, o) => files.purgeStored(ctx, o),
+};
+
+/**
+ * Moves committed outbox rows to the webhook event log and per-endpoint deliveries (PRD §6, §7.3).
+ * One transaction per batch; each row is processed in its tenant's RLS context.
+ * Returns the published events so plugins can be notified after commit.
+ */
+
+export async function publishOutbox(deps: AppDeps, logger: WorkerLogger, batch = 100): Promise<number> {
+  const published: DomainEvent[] = [];
+  await withSystem(deps.db, async (c) => {
+    const rows = (await c.query(`SELECT * FROM outbox WHERE published_at IS NULL ORDER BY created_at, id LIMIT $1 FOR UPDATE SKIP LOCKED`, [batch])).rows;
+    for (const row of rows) {
+      await asTenant(c, row.tenant_id);
+      await c.query('SAVEPOINT evt');
+      try {
+        if (!row.event_type.startsWith('internal.')) {
+          const ctx = ctxFor(deps, c, row.tenant_id, logger);
+          await webhooks.fanOut(ctx, { id: row.id, type: row.event_type, payload: row.payload });
+          published.push(row.payload);
+        } else if (INTERNAL[row.event_type]) {
+          await INTERNAL[row.event_type]!(ctxFor(deps, c, row.tenant_id, logger), row.payload?.data?.object);
+        }
+        await c.query(`UPDATE outbox SET published_at = now() WHERE id = $1`, [row.id]);
+        await c.query('RELEASE SAVEPOINT evt');
+      } catch (err) {
+        await c.query('ROLLBACK TO SAVEPOINT evt');
+        logger.error({ err, event: row.id }, 'outbox publish failed; will retry');
+      }
+      await asSystem(c);
+    }
+  });
+  // Each event reaches plugins in its shop's transaction, so their scope (database, services) works.
+  for (const ev of published) {
+    await withTenant(deps.db, ev.tenant_id, (c) => deps.plugins.dispatch(ev, { ...hookContext(ctxFor(deps, c, ev.tenant_id, logger)), actor: ev.actor })).catch((err) =>
+      logger.error({ err, event: ev.id }, 'plugin event dispatch failed'),
+    );
+  }
+  return published.length;
+}
+
+/** Sends due webhook deliveries (first attempts and retries). */
+/** Requests to one endpoint in flight at once, across all workers (PRD §6.5). */
+export const ENDPOINT_CONCURRENCY = 4;
+/** Deliveries one worker runs at the same time. */
+const WORKER_CONCURRENCY = 4;
+
+/**
+ * Sends due webhook deliveries (first attempts and retries). Each delivery takes one of
+ * ENDPOINT_CONCURRENCY advisory-lock slots for its endpoint; when all are taken it waits for the next run.
+ */
+export async function deliverWebhooks(deps: AppDeps, logger: WorkerLogger, fetchImpl: webhooks.FetchLike = fetch as any, batch = 20): Promise<number> {
+  const due = await withSystem(deps.db, (c) =>
+    c.query<{ id: string; tenant_id: string; endpoint_id: string }>(
+      `SELECT id, tenant_id, endpoint_id FROM webhook_deliveries WHERE status = 'pending' AND next_attempt_at <= now() ORDER BY next_attempt_at LIMIT $1`,
+      [batch],
+    ),
+  );
+  let n = 0;
+  const deliver = async (d: { id: string; tenant_id: string; endpoint_id: string }) => {
+    try {
+      await withTenant(deps.db, d.tenant_id, async (c) => {
+        let slot = false;
+        for (let i = 0; i < ENDPOINT_CONCURRENCY && !slot; i++)
+          slot = (await c.query(`SELECT pg_try_advisory_xact_lock(hashtext($1), $2) AS ok`, [`webhook:${d.endpoint_id}`, i])).rows[0].ok;
+        if (!slot) return;
+        // Lock the row; skip if another worker took it.
+        const locked = await c.query(`SELECT 1 FROM webhook_deliveries WHERE id = $1 AND status = 'pending' AND next_attempt_at <= now() FOR UPDATE SKIP LOCKED`, [d.id]);
+        if (!locked.rows.length) return;
+        const r = await webhooks.attemptDelivery(ctxFor(deps, c, d.tenant_id, logger), d.id, fetchImpl);
+        n++;
+        if (r.status !== 'succeeded') logger.warn({ delivery: d.id, status: r.status, retry_at: r.retryAt }, 'webhook delivery failed');
+      });
+    } catch (err) {
+      logger.error({ err, delivery: d.id }, 'webhook delivery crashed');
+    }
+  };
+  const queue = [...due.rows];
+  await Promise.all(Array.from({ length: Math.min(WORKER_CONCURRENCY, queue.length) }, async () => {
+    for (let d = queue.shift(); d; d = queue.shift()) await deliver(d);
+  }));
+  return n;
+}
+
+/** What each job kind produces; runs in one repeatable-read tenant transaction, so exports are consistent. */
+const JOB_RUNNERS: Record<jobs.JobKind, (ctx: Ctx, job: jobs.JobRow, progress: (pct: number) => void) => Promise<{ filename: string; contentType: string; body: Buffer }>> = {
+  async tenant_export(ctx, _job, progress) {
+    const { zip } = await exportZip(ctx, progress);
+    return { filename: `openrent-export-${ctx.now.toISOString().slice(0, 10)}.zip`, contentType: 'application/zip', body: zip };
+  },
+  async report_export(ctx, job) {
+    const { name, format, query } = job.params as { name: string; format: 'csv' | 'xlsx'; query: Record<string, string> };
+    const sheet = rowsSheet((await reports.runReport(ctx, name, query ?? {})).data as Record<string, unknown>[]);
+    const stamp = ctx.now.toISOString().slice(0, 10);
+    return format === 'xlsx'
+      ? { filename: `${name}-${stamp}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body: await writeXlsx(sheet, name) }
+      : { filename: `${name}-${stamp}.csv`, contentType: 'text/csv; charset=utf-8', body: Buffer.from(writeCsv(sheet)) };
+  },
+};
+
+/** Runs queued jobs (exports); progress is written outside the job's transaction so the admin can show it. */
+export async function runJobs(deps: AppDeps, logger: WorkerLogger, batch = 2): Promise<number> {
+  const claimed = await withSystem(deps.db, (c) => jobs.claimJobs(c, batch));
+  for (const job of claimed) {
+    let last = 0;
+    const progress = (pct: number) => {
+      if (pct - last < 5) return;
+      last = pct;
+      void withTenant(deps.db, job.tenant_id, (c) => jobs.setProgress(ctxFor(deps, c, job.tenant_id, logger), job.id, pct)).catch(() => undefined);
+    };
+    try {
+      await withTenant(
+        deps.db,
+        job.tenant_id,
+        async (c) => {
+          const ctx = ctxFor(deps, c, job.tenant_id, logger);
+          const out = await JOB_RUNNERS[job.kind](ctx, job, progress);
+          const file = await files.putFile(ctx, { kind: 'export', filename: out.filename, contentType: out.contentType, body: out.body, ownerType: 'job', ownerId: job.id });
+          await jobs.finishJob(ctx, job, file);
+        },
+        { isolation: 'repeatable read', retries: 0 },
+      );
+      logger.info({ job: job.id, kind: job.kind }, 'job finished');
+    } catch (err: any) {
+      logger.error({ err, job: job.id }, 'job failed');
+      await withTenant(deps.db, job.tenant_id, (c) => jobs.failJob(ctxFor(deps, c, job.tenant_id, logger), job, String(err?.message ?? err))).catch(() => undefined);
+    }
+  }
+  return claimed.length;
+}
+
+/** Sends queued emails through the configured channel; without SMTP they stay queued (FR-NOT-5). */
+/** "Name <address>" keeps its name; a bare address gets the shop name as display name. */
+export function formatFrom(from: string | null | undefined, shopName: string): string | undefined {
+  const f = from?.trim();
+  if (!f) return undefined;
+  if (f.includes('<')) return f;
+  return `"${shopName.replace(/["\\]/g, '')}" <${f}>`;
+}
+
+/** PDFs of the message's documents. A missing renderer never blocks the email; links still work. */
+async function attachmentsFor(deps: AppDeps, ctx: Ctx, ids: string[], logger: WorkerLogger): Promise<Attachment[]> {
+  if (!ids.length || deps.config.pdfRenderer !== 'playwright') return [];
+  const { documentPdf } = await import('@openrent/api/pdf');
+  const out: Attachment[] = [];
+  for (const id of ids) {
+    try {
+      const doc = await documents.getDocument(ctx, id);
+      const pdf = await documentPdf(ctx, doc);
+      out.push({ filename: pdf.filename, contentType: 'application/pdf', content: pdf.body });
+    } catch (err) {
+      logger.warn({ err, document: id }, 'could not attach document PDF; sending without it');
+    }
+  }
+  return out;
+}
+
+/**
+ * Sends queued email through the email channel plugin with each tenant's own settings
+ * (Settings → Email), falling back to the installation's SMTP_URL. Failed attempts are retried
+ * with backoff (notifications.RETRY_MINUTES); refused recipients and old messages fail for good.
+ */
+export async function sendNotifications(deps: AppDeps, logger: WorkerLogger, batch = 20): Promise<number> {
+  const due = await withSystem(deps.db, async (c) => {
+    await c.query(
+      `UPDATE notifications SET status = 'failed', next_attempt_at = NULL, error = coalesce(error, $1)
+        WHERE status = 'queued' AND created_at < now() - make_interval(days => $2)`,
+      [serverT('email.gave_up', { days: notifications.MAX_QUEUE_DAYS }), notifications.MAX_QUEUE_DAYS],
+    );
+    return c.query<{ id: string; tenant_id: string }>(
+      `SELECT id, tenant_id FROM notifications WHERE status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+        ORDER BY created_at LIMIT $1`,
+      [batch],
+    );
+  });
+  let sent = 0;
+  for (const row of due.rows) {
+    await withTenant(deps.db, row.tenant_id, async (c) => {
+      const n = (await c.query(`SELECT * FROM notifications WHERE id = $1 AND status = 'queued' FOR UPDATE SKIP LOCKED`, [row.id])).rows[0];
+      if (!n) return;
+      const ctx = ctxFor(deps, c, row.tenant_id, logger);
+      const tenant = (await c.query(`SELECT name, settings FROM tenants WHERE id = $1`, [row.tenant_id])).rows[0];
+      // Each shop sends with its chosen email plugin (settings.email_channel).
+      const picked = await plugins.emailChannel(ctx);
+      const channel = picked?.channel;
+      const config = picked?.config ?? {};
+      const pctx = { tenantId: row.tenant_id, config, logger };
+      if (!channel || !picked.enabled || !channel.isConfigured(pctx)) {
+        await notifications.recordDeliveryFailure(ctx, n.id, new DeliveryError('not_configured', 'no email channel configured'));
+        return;
+      }
+      try {
+        // Without a configured sender, mail goes out as "<shop name>" <no-reply@public host>.
+        const from = formatFrom(config.from ? String(config.from) : (tenant.settings?.email_from ?? `no-reply@${new URL(deps.config.publicUrl).hostname}`), tenant.name);
+        const attachments = await attachmentsFor(deps, ctx, Array.isArray(n.attachments) ? n.attachments : [], logger);
+        const res = await channel.send(pctx, {
+          to: n.recipient,
+          subject: n.subject,
+          html: n.body_html,
+          from,
+          attachments,
+          headers: { 'X-OpenRent-Notification': n.id },
+        });
+        await c.query(`UPDATE notifications SET attempts = attempts + 1, error = NULL, next_attempt_at = NULL, provider = $2 WHERE id = $1`, [n.id, picked.pluginId]);
+        await notifications.markNotification(ctx, n.id, 'sent', { ref: res.ref });
+        sent++;
+      } catch (err: any) {
+        await notifications.recordDeliveryFailure(ctx, n.id, err);
+        logger.warn({ err: { message: err?.message, code: err?.code }, notification: n.id }, 'email send failed');
+      }
+    });
+  }
+  return sent;
+}
+
+async function forEachTenant(deps: AppDeps, fn: (ctx: Ctx) => Promise<unknown>, logger: WorkerLogger) {
+  const tenants = await withSystem(deps.db, (c) => c.query<{ id: string }>(`SELECT id FROM tenants`));
+  for (const t of tenants.rows) {
+    try {
+      await withTenant(deps.db, t.id, (c) => fn(ctxFor(deps, c, t.id, logger)));
+    } catch (err) {
+      logger.error({ err, tenant: t.id }, 'scheduled job failed for tenant');
+    }
+  }
+}
+
+/** A plugin's scheduled job (api.schedule) for every shop that has the plugin on (FR-PLG-8). */
+export async function runPluginSchedule(deps: AppDeps, logger: WorkerLogger, job: AppDeps['plugins']['schedules'][number]) {
+  await forEachTenant(
+    deps,
+    async (ctx) => {
+      if (!(await plugins.pluginConfig(ctx, job.pluginId)).enabled) return;
+      await deps.plugins.runSchedule(job, hookContext(ctx));
+    },
+    logger,
+  );
+}
+
+export const SCHEDULED = {
+  'orders.expire_quotes': { cron: '* * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.expireQuotes(ctx), l) },
+  'orders.reminders': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.sendReminders(ctx), l) },
+  'payments.balance_requests': { cron: '7 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => payments.requestDueBalances(ctx), l) },
+  'deposits.maintenance': { cron: '*/30 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => payments.depositMaintenance(ctx), l) },
+  'maintenance.cleanup': {
+    cron: '17 3 * * *',
+    run: async (deps: AppDeps, l: WorkerLogger) =>
+      forEachTenant(
+        deps,
+        async (ctx) => {
+          await ctx.db.query(`DELETE FROM idempotency_keys WHERE created_at < now() - interval '24 hours'`);
+          await ctx.db.query(`UPDATE checkout_sessions SET status = 'expired' WHERE status = 'open' AND expires_at < now()`);
+          await ctx.db.query(`DELETE FROM outbox WHERE published_at < now() - interval '30 days'`);
+        },
+        l,
+      ),
+  },
+  'availability.low_stock': {
+    cron: '13 * * * *',
+    run: (deps: AppDeps, l: WorkerLogger) =>
+      forEachTenant(
+        deps,
+        async (ctx) => {
+          const { availability, resolveSettings } = await import('@openrent/core');
+          const t = (await ctx.db.query(`SELECT settings FROM tenants WHERE id = $1`, [ctx.tenantId])).rows[0];
+          await availability.lowAvailabilityCheck(ctx, resolveSettings(t.settings).low_availability_days_ahead);
+        },
+        l,
+      ),
+  },
+  // Every 10 minutes: look for the DNS records of custom domains still waiting (FR-SF-1).
+  // Daily (FR-MNT-4): overdue services are announced and get a ticket.
+  'service.due': { cron: '31 5 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => servicing.runServiceDue(ctx), l) },
+  'domains.verify': { cron: '*/10 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => domains.verifyPending(ctx), l) },
+  'files.verify': {
+    cron: '23 4 * * 0',
+    // Weekly: a sample of stored files must still exist in the object store.
+    run: (deps: AppDeps, l: WorkerLogger) =>
+      forEachTenant(
+        deps,
+        async (ctx) => {
+          const missing = await files.verifyStorage(ctx);
+          if (missing.length) l.error({ tenant: ctx.tenantId, files: missing }, 'stored files are missing from object storage');
+        },
+        l,
+      ),
+  },
+  'documents.render_pdfs': {
+    cron: '*/5 * * * *',
+    // Pre-renders PDFs of recently issued documents so downloads and attachments are instant (FR-DOC-3).
+    run: async (deps: AppDeps, l: WorkerLogger) => {
+      if (deps.config.pdfRenderer !== 'playwright') return;
+      const { documentPdf } = await import('@openrent/api/pdf');
+      await forEachTenant(
+        deps,
+        async (ctx) => {
+          const r = await ctx.db.query(
+            `SELECT d.id, d.type, d.number, d.html FROM documents d
+              WHERE d.issued_at > now() - interval '7 days'
+                AND NOT EXISTS (SELECT 1 FROM files f WHERE f.owner_type = 'document' AND f.owner_id = d.id AND f.kind = 'pdf')
+              ORDER BY d.issued_at LIMIT 20`,
+          );
+          for (const doc of r.rows) await documentPdf(ctx, doc);
+        },
+        l,
+      );
+    },
+  },
+  'consistency.check': {
+    cron: '41 2 * * *',
+    // Nightly availability consistency check (PRD §8.3): pools whose peak allocation exceeds capacity.
+    run: async (deps: AppDeps, l: WorkerLogger) =>
+      forEachTenant(
+        deps,
+        async (ctx) => {
+          const r = await ctx.db.query(
+            `SELECT a.variant_id, a.location_id, count(*)::int AS n FROM allocations a
+              WHERE a.kind = 'reservation' AND (upper(a.period) IS NULL OR upper(a.period) > now()) GROUP BY 1, 2`,
+          );
+          const { availability } = await import('@openrent/core');
+          for (const g of r.rows) {
+            const res = await availability.check(ctx, { variantId: g.variant_id, locationId: g.location_id, from: new Date(), to: new Date(Date.now() + 365 * 86400_000) });
+            if (!res.shortage) continue;
+            // Booked past stock on purpose (FR-AV-8) is reported apart from shortages nobody explained.
+            const ovb = await ctx.db.query(`SELECT coalesce(sum(quantity), 0)::int AS n FROM overbookings WHERE variant_id = $1 AND location_id = $2 AND resolved_at IS NULL`, [g.variant_id, g.location_id]);
+            if (ovb.rows[0].n) l.info({ tenant: ctx.tenantId, variant: g.variant_id, location: g.location_id, overbooked: ovb.rows[0].n }, 'availability: pool overbooked on purpose');
+            else l.warn({ tenant: ctx.tenantId, variant: g.variant_id, location: g.location_id }, 'availability shortage: allocations exceed capacity');
+          }
+          const stale = await ctx.db.query(`SELECT count(*)::int AS n FROM payment_intents WHERE status IN ('requires_payment','processing') AND created_at < now() - interval '1 day'`);
+          if (stale.rows[0].n) l.warn({ tenant: ctx.tenantId, count: stale.rows[0].n }, 'payment intents pending for more than a day');
+          // Our ledger against the payment provider (FR-PAY-7).
+          const rec = await payments.reconcilePayments(ctx);
+          if (rec.issues) l.warn({ tenant: ctx.tenantId, ...rec }, 'payment reconciliation found differences');
+        },
+        l,
+      ),
+  },
+} as const;

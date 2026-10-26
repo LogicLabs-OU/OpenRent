@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "ja"
+  },
+  "error.title": "問題が発生しました",
+  "error.generic": "問題が発生しました。もう一度お試しください。",
+  "error.unavailable": "ショップは一時的にご利用いただけません",
+  "error.cart_empty": "カートは空です",
+  "error.dates_invalid": "有効な受け取りと返却の日時を選択してください",
+  "error.page_not_found": "ページが見つかりません",
+  "error.category_not_found": "カテゴリが見つかりません",
+  "error.back_home": "ショップに戻る",
+  "meta.description": "{shop}でレンタル",
+  "page.terms": "レンタル規約",
+  "page.terms_version": "バージョン {version}",
+  "payment.pay_now": "今すぐ支払う",
+  "payment.processing": "処理中…",
+  "payment.load_failed": "支払いフォームを読み込めませんでした",
+  "payment.failed": "お支払いに失敗しました",
+  "payment.secure": "カード情報は Stripe によって処理され、このショップのサーバーを経由することはありません。",
+  "preview.banner": "{theme}テーマをプレビュー中です。お客様には引き続き公開中のテーマが表示されます。",
+  "preview.exit": "プレビューを終了",
+  "error.invalid_token": "このリンクは無効です",
+  "error.document": "この書類はご利用いただけません",
+  "consent.title": "Cookie とスクリプト",
+  "consent.text": "このショップは統計とマーケティングのための追加サービスを読み込みます。同意しますか？",
+  "consent.necessary": "必要なもののみ",
+  "consent.all": "すべて許可"
+}

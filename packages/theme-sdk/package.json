@@ -1,0 +1,27 @@
+{
+  "name": "@openrent/theme-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "svelte": "./src/index.ts",
+  "exports": {
+    ".": {
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./*.svelte": "./src/*.svelte",
+    "./manifest": "./src/manifest.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "svelte": "^5.57.2",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@openrent/i18n": "workspace:*"
+  }
+}

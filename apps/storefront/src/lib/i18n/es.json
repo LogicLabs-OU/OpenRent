@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "es"
+  },
+  "error.title": "Algo ha salido mal",
+  "error.generic": "Algo ha salido mal. Vuelva a intentarlo.",
+  "error.unavailable": "La tienda no está disponible temporalmente",
+  "error.cart_empty": "Su carrito está vacío",
+  "error.dates_invalid": "Elija una recogida y una devolución válidas",
+  "error.page_not_found": "Página no encontrada",
+  "error.category_not_found": "Categoría no encontrada",
+  "error.back_home": "Volver a la tienda",
+  "meta.description": "Alquile en {shop}",
+  "page.terms": "Condiciones de alquiler",
+  "page.terms_version": "Versión {version}",
+  "payment.pay_now": "Pagar ahora",
+  "payment.processing": "Procesando…",
+  "payment.load_failed": "No se ha podido cargar el formulario de pago",
+  "payment.failed": "El pago ha fallado",
+  "payment.secure": "Stripe gestiona los datos de la tarjeta, que nunca pasan por los servidores de esta tienda.",
+  "preview.banner": "Vista previa del tema {theme}. Los clientes siguen viendo el tema publicado.",
+  "preview.exit": "Salir de la vista previa",
+  "error.invalid_token": "Este enlace no es válido",
+  "error.document": "Este documento no está disponible",
+  "consent.title": "Cookies y scripts",
+  "consent.text": "Esta tienda quiere cargar servicios adicionales de estadísticas y marketing. ¿Está de acuerdo?",
+  "consent.necessary": "Solo las necesarias",
+  "consent.all": "Aceptar todo"
+}

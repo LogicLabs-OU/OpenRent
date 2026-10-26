@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "et"
+  },
+  "book": "Broneeri kohe",
+  "pickup": "Väljastus",
+  "return": "Tagastus",
+  "quantity": "Kogus",
+  "total": "Kokku",
+  "deposit": "+ {amount} tagastatav tagatisraha",
+  "loading": "Laadimine…",
+  "request_failed": "Päring ebaõnnestus",
+  "category_empty": "Siin pole veel tooteid",
+  "checkout_title": "Broneeri",
+  "close": "Sulge",
+  "booked_title": "Broneering vastu võetud",
+  "booked_number": "Broneering nr {number}",
+  "booked_paid": "Aitäh, makse õnnestus. Kinnitus saabub e-postiga.",
+  "booked_email": "Aitäh. Kinnitus saabub e-postiga.",
+  "view_booking": "Vaata broneeringut",
+  "name": "Nimi",
+  "email": "E-post",
+  "phone": "Telefon (valikuline)",
+  "terms": "Renditingimused",
+  "accept_terms": "Nõustun rentimistingimustega",
+  "book_and_pay": "Broneeri ja maksa"
+}

@@ -1,0 +1,35 @@
+{
+  "name": "How it works track",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "default": "How renting works"
+    },
+    {
+      "id": "step_1",
+      "type": "text",
+      "label": "Step 1",
+      "default": "Pick your dates"
+    },
+    {
+      "id": "step_2",
+      "type": "text",
+      "label": "Step 2",
+      "default": "Choose your gear"
+    },
+    {
+      "id": "step_3",
+      "type": "text",
+      "label": "Step 3",
+      "default": "Book online"
+    },
+    {
+      "id": "step_4",
+      "type": "text",
+      "label": "Step 4",
+      "default": "Pick it up"
+    }
+  ]
+}

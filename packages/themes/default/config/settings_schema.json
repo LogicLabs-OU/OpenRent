@@ -1,0 +1,49 @@
+[
+  {
+    "name": "Style",
+    "settings": [
+      {
+        "id": "accent",
+        "type": "color",
+        "label": "Accent colour",
+        "info": "Defaults to the shop brand colour"
+      },
+      {
+        "id": "radius",
+        "type": "range",
+        "label": "Corner radius",
+        "min": 0,
+        "max": 20,
+        "step": 2,
+        "default": 10
+      },
+      {
+        "id": "show_powered_by",
+        "type": "checkbox",
+        "label": "Show “Powered by OpenRent”",
+        "default": true
+      }
+    ]
+  },
+  {
+    "name": "Checkout",
+    "settings": [
+      {
+        "id": "checkout_fields",
+        "type": "select",
+        "label": "Customer details at checkout",
+        "default": "minimal",
+        "options": [
+          {
+            "value": "minimal",
+            "label": "Name, email and phone"
+          },
+          {
+            "value": "address",
+            "label": "Also company and billing address"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Style",
+    "settings": [
+      {
+        "id": "ink",
+        "type": "color",
+        "label": "Page colour",
+        "info": "The deep background; keep it dark",
+        "default": "#043f2e"
+      },
+      {
+        "id": "highlight",
+        "type": "color",
+        "label": "Highlight colour",
+        "info": "Heading blocks, tiles and buttons; keep it light",
+        "default": "#c8f169"
+      },
+      {
+        "id": "announcement",
+        "type": "text",
+        "label": "Notice above the menu",
+        "info": "Leave empty to hide the strip",
+        "default": ""
+      },
+      { "id": "show_powered_by", "type": "checkbox", "label": "Show “Powered by OpenRent”", "default": true }
+    ]
+  },
+  {
+    "name": "Checkout",
+    "settings": [
+      {
+        "id": "checkout_fields",
+        "type": "select",
+        "label": "Customer details at checkout",
+        "default": "minimal",
+        "options": [
+          { "value": "minimal", "label": "Name, email and phone" },
+          { "value": "address", "label": "Also company and billing address" }
+        ]
+      }
+    ]
+  }
+]

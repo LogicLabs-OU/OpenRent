@@ -1,0 +1,54 @@
+[
+  {
+    "name": "Style",
+    "settings": [
+      {
+        "id": "accent",
+        "type": "color",
+        "label": "Accent colour",
+        "info": "Buttons, links and the selected dates",
+        "default": "#1f6fc5"
+      },
+      {
+        "id": "full_width",
+        "type": "checkbox",
+        "label": "Full-width pages",
+        "default": false
+      },
+      {
+        "id": "category_icons",
+        "type": "textarea",
+        "label": "Category icons",
+        "info": "One per line: category-slug = emoji, for example bikes = 🚲",
+        "default": ""
+      },
+      {
+        "id": "show_powered_by",
+        "type": "checkbox",
+        "label": "Show “Powered by OpenRent”",
+        "default": true
+      }
+    ]
+  },
+  {
+    "name": "Checkout",
+    "settings": [
+      {
+        "id": "checkout_fields",
+        "type": "select",
+        "label": "Customer details at checkout",
+        "default": "minimal",
+        "options": [
+          {
+            "value": "minimal",
+            "label": "Name, email and phone"
+          },
+          {
+            "value": "address",
+            "label": "Also company and billing address"
+          }
+        ]
+      }
+    ]
+  }
+]

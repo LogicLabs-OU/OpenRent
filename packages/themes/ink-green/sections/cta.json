@@ -1,0 +1,22 @@
+{
+  "name": "Closing band",
+  "settings": [
+    { "id": "heading", "type": "text", "label": "Heading", "default": "Out the door in minutes" },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Book online, pick up at the counter and bring it back when you are done."
+    },
+    { "id": "button_label", "type": "text", "label": "Button label", "default": "Browse everything" },
+    {
+      "id": "button_link",
+      "type": "link",
+      "label": "Button link",
+      "info": "Empty opens the search page",
+      "default": ""
+    },
+    { "id": "second_label", "type": "text", "label": "Second button label", "default": "" },
+    { "id": "second_link", "type": "link", "label": "Second button link", "default": "" }
+  ]
+}

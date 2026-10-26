@@ -1,0 +1,19 @@
+{
+  "name": "create-openrent-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "create-openrent-plugin": "./bin/create.mjs"
+  },
+  "exports": {
+    ".": "./bin/create.mjs"
+  },
+  "scripts": {
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}

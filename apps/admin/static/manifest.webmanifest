@@ -1,0 +1,10 @@
+{
+  "name": "OpenRent back office",
+  "short_name": "OpenRent",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0891b2",
+  "icons": [{ "src": "/admin/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

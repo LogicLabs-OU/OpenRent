@@ -1,0 +1,17 @@
+{
+  "name": "Category pills",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "default": "Something for every plan"
+    },
+    {
+      "id": "text",
+      "type": "text",
+      "label": "Text",
+      "default": "Browse the shelves by what you are planning."
+    }
+  ]
+}

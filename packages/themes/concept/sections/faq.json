@@ -1,0 +1,20 @@
+{
+  "name": "Toggles (questions and answers)",
+  "settings": [{ "id": "heading", "type": "text", "label": "Heading", "default": "Questions" }],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "Question",
+      "settings": [
+        { "id": "question", "type": "text", "label": "Question", "default": "Do I need to pay a deposit?" },
+        {
+          "id": "answer",
+          "type": "textarea",
+          "label": "Answer",
+          "default": "Some items have a refundable deposit. It is shown on the product page and returned after the rental."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 20
+}

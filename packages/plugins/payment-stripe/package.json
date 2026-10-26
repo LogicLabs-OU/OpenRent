@@ -1,0 +1,21 @@
+{
+  "name": "@openrent/plugin-payment-stripe",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "@openrent/plugin-sdk": "workspace:*",
+    "stripe": "^23.0.1"
+  }
+}

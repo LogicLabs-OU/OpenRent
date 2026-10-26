@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "types": ["svelte"], "paths": { "#ui/*": ["./src/*"] } },
+  "include": ["src"]
+}

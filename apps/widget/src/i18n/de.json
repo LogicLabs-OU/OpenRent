@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "de"
+  },
+  "book": "Jetzt buchen",
+  "pickup": "Abholung",
+  "return": "Rückgabe",
+  "quantity": "Menge",
+  "total": "Gesamt",
+  "deposit": "+ {amount} erstattbare Kaution",
+  "loading": "Wird geladen …",
+  "request_failed": "Anfrage fehlgeschlagen",
+  "category_empty": "Hier gibt es noch keine Produkte",
+  "checkout_title": "Buchen",
+  "close": "Schließen",
+  "booked_title": "Buchung erhalten",
+  "booked_number": "Buchung #{number}",
+  "booked_paid": "Danke, Ihre Zahlung ist eingegangen. Eine Bestätigung kommt per E-Mail.",
+  "booked_email": "Danke. Eine Bestätigung kommt per E-Mail.",
+  "view_booking": "Buchung ansehen",
+  "name": "Name",
+  "email": "E-Mail",
+  "phone": "Telefon (optional)",
+  "terms": "Mietbedingungen",
+  "accept_terms": "Ich akzeptiere die Mietbedingungen",
+  "book_and_pay": "Buchen und bezahlen"
+}

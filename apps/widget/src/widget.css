@@ -1,0 +1,17 @@
+/* Widget styles are compiled once and injected into each element's shadow root. */
+@import 'tailwindcss' source(none);
+@import '@openrent/ui/theme.css';
+
+@source './';
+@source '../../../packages/ui/src/components/ui/button';
+@source '../../../packages/ui/src/components/ui/input';
+@source '../../../packages/ui/src/components/ui/label';
+@source '../../../packages/ui/src/components/ui/field';
+@source '../../../packages/ui/src/components/ui/spinner';
+@source '../../../packages/ui/src/components/ui/checkbox';
+
+/* Host pages can restyle the widget: openrent-product { --primary: #e11d48; --openrent-font: Georgia, serif; } */
+:host {
+  display: block;
+  font-family: var(--openrent-font, var(--font-sans));
+}

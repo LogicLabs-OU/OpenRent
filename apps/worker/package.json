@@ -1,0 +1,42 @@
+{
+  "name": "@openrent/worker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests",
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "start": "node dist/main.js",
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@node-rs/argon2": "^2.2.2",
+    "@openrent/api": "workspace:*",
+    "@openrent/core": "workspace:*",
+    "@openrent/db": "workspace:*",
+    "@openrent/plugin-sdk": "workspace:*",
+    "exceljs": "^4.4.0",
+    "fflate": "^0.8.3",
+    "handlebars": "^4.7.10",
+    "nodemailer": "^10.2.1",
+    "otpauth": "^9.5.2",
+    "pg": "^8.23.1",
+    "pg-boss": "^12.38.0",
+    "playwright": "^1.64.1",
+    "qrcode": "^1.5.4",
+    "sanitize-html": "^2.18.1",
+    "semver": "^7.8.5",
+    "stripe": "^23.0.1",
+    "ulid": "^3.0.2"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "tsup": "^9.0.0"
+  }
+}

@@ -1,0 +1,63 @@
+[
+  {
+    "id": "hero",
+    "type": "hero",
+    "settings": {},
+    "blocks": []
+  },
+  {
+    "id": "categories",
+    "type": "categories",
+    "settings": {},
+    "blocks": []
+  },
+  {
+    "id": "products",
+    "type": "products",
+    "settings": {},
+    "blocks": []
+  },
+  {
+    "id": "features",
+    "type": "features",
+    "settings": {},
+    "blocks": [
+      {
+        "id": "f1",
+        "type": "feature",
+        "settings": {
+          "title": "Dates first",
+          "text": "Tell us when you need it and the shop shows only what is free on those days."
+        }
+      },
+      {
+        "id": "f2",
+        "type": "feature",
+        "settings": {
+          "title": "No surprises",
+          "text": "The price, the tax and the deposit add up as you go, before you book."
+        }
+      },
+      {
+        "id": "f3",
+        "type": "feature",
+        "settings": {
+          "title": "Quick pickup",
+          "text": "Show the code from your confirmation at the counter and you are on your way."
+        }
+      }
+    ]
+  },
+  {
+    "id": "steps",
+    "type": "steps",
+    "settings": {},
+    "blocks": []
+  },
+  {
+    "id": "closing",
+    "type": "closing",
+    "settings": {},
+    "blocks": []
+  }
+]

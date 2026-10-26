@@ -1,0 +1,1 @@
+ALTER TABLE "variants" ADD COLUMN "translations" jsonb DEFAULT '{}'::jsonb NOT NULL;

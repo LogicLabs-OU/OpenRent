@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "de"
+  },
+  "error.title": "Etwas ist schiefgelaufen",
+  "error.generic": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+  "error.unavailable": "Der Shop ist vorübergehend nicht verfügbar",
+  "error.cart_empty": "Ihr Warenkorb ist leer",
+  "error.dates_invalid": "Wählen Sie eine gültige Abholung und Rückgabe",
+  "error.page_not_found": "Seite nicht gefunden",
+  "error.category_not_found": "Kategorie nicht gefunden",
+  "error.back_home": "Zurück zum Shop",
+  "meta.description": "Mieten bei {shop}",
+  "page.terms": "Mietbedingungen",
+  "page.terms_version": "Version {version}",
+  "payment.pay_now": "Jetzt bezahlen",
+  "payment.processing": "Wird verarbeitet …",
+  "payment.load_failed": "Das Zahlungsformular konnte nicht geladen werden",
+  "payment.failed": "Zahlung fehlgeschlagen",
+  "payment.secure": "Kartendaten werden von Stripe verarbeitet und erreichen nie die Server dieses Shops.",
+  "preview.banner": "Vorschau des Themes {theme}. Kunden sehen weiterhin das aktive Theme.",
+  "preview.exit": "Vorschau beenden",
+  "error.invalid_token": "Dieser Link ist ungültig",
+  "error.document": "Dieses Dokument ist nicht verfügbar",
+  "consent.title": "Cookies und Skripte",
+  "consent.text": "Dieser Shop möchte zusätzliche Dienste für Statistik und Marketing laden. Sind Sie einverstanden?",
+  "consent.necessary": "Nur notwendige",
+  "consent.all": "Alle akzeptieren"
+}

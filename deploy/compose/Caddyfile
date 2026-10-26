@@ -1,0 +1,28 @@
+# TLS and routing (PRD §7.3): API, back office, docs, webhooks and widget go to `api`;
+# everything else is the storefront.
+{
+	# Certificates for shops' own domains (FR-SF-1) are issued on first visit, only for hosts the API knows.
+	on_demand_tls {
+		ask http://api:7070/api/v1/system/domain_check
+	}
+}
+
+{$OPENRENT_DOMAIN:localhost} {
+	encode zstd gzip
+	@api path /api/* /admin* /docs* /webhooks/* /widget/*
+	handle @api {
+		reverse_proxy api:7070
+	}
+	handle {
+		reverse_proxy storefront:7072
+	}
+}
+
+# Any other host: a shop's custom domain, storefront only.
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy storefront:7072
+}

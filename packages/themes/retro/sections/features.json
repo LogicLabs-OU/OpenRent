@@ -1,0 +1,25 @@
+{
+  "name": "Feature cards",
+  "settings": [],
+  "blocks": [
+    {
+      "type": "feature",
+      "name": "Card",
+      "settings": [
+        {
+          "id": "title",
+          "type": "text",
+          "label": "Title",
+          "default": "Dates first"
+        },
+        {
+          "id": "text",
+          "type": "textarea",
+          "label": "Text",
+          "default": "Tell us when you need it and the shop shows only what is free on those days."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 6
+}

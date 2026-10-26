@@ -1,0 +1,20 @@
+{
+  "name": "Hero",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "textarea",
+      "label": "Heading",
+      "info": "Each line gets its own highlight block",
+      "default": "Rent the gear,\nskip the\nhassle"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Pick your dates first and we only show what is free. Prices update as you go."
+    },
+    { "id": "image", "type": "image", "label": "Photo URL", "default": "" },
+    { "id": "alt", "type": "text", "label": "Photo description", "default": "" }
+  ]
+}

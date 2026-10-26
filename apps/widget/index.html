@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>OpenRent widget demo</title></head>
+  <body style="font-family:system-ui;padding:24px;max-width:720px;margin:auto">
+    <h1>Merchant site</h1>
+    <p>This page stands in for a WordPress or Squarespace site embedding OpenRent.</p>
+    <script type="module" src="/src/main.ts" data-openrent-api="%OPENRENT_API_URL%"></script>
+    <openrent-product product="sea-kayak" shop="demo" storefront="%STOREFRONT_URL%" checkout="storefront"></openrent-product>
+    <h2>Bikes</h2>
+    <openrent-category category="bikes" shop="demo" storefront="%STOREFRONT_URL%" limit="6"></openrent-category>
+    <p><openrent-book-button storefront="%STOREFRONT_URL%" product="city-bike" label="Rent a city bike"></openrent-book-button></p>
+  </body>
+</html>

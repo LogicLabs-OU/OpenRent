@@ -1,0 +1,31 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "et"
+  },
+  "error.title": "Midagi läks valesti",
+  "error.generic": "Midagi läks valesti. Palun proovige uuesti.",
+  "error.unavailable": "Pood on ajutiselt kättesaamatu",
+  "error.cart_empty": "Teie ostukorv on tühi",
+  "error.dates_invalid": "Valige kehtiv väljastus- ja tagastusaeg",
+  "error.page_not_found": "Lehte ei leitud",
+  "error.category_not_found": "Kategooriat ei leitud",
+  "error.back_home": "Tagasi poodi",
+  "meta.description": "Rent – {shop}",
+  "page.terms": "Renditingimused",
+  "page.terms_version": "Versioon {version}",
+  "payment.pay_now": "Maksa kohe",
+  "payment.processing": "Töötlemine…",
+  "payment.load_failed": "Maksevormi ei õnnestunud laadida",
+  "payment.failed": "Makse ebaõnnestus",
+  "payment.secure": "Kaardiandmeid töötleb Stripe ja need ei jõua kunagi selle poe serveritesse.",
+  "preview.banner": "Teema {theme} eelvaade. Kliendid näevad endiselt avaldatud teemat.",
+  "preview.exit": "Välju eelvaatest",
+  "error.invalid_token": "See link ei ole kehtiv",
+  "error.document": "See dokument pole saadaval",
+  "consent.title": "Küpsised ja skriptid",
+  "consent.text": "See pood soovib laadida lisateenuseid statistika ja turunduse jaoks. Kas olete nõus?",
+  "consent.necessary": "Ainult vajalikud",
+  "consent.all": "Nõustu kõigiga"
+}

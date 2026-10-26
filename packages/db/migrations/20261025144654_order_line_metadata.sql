@@ -1,0 +1,1 @@
+ALTER TABLE "order_lines" ADD COLUMN "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL;

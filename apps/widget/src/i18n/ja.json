@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "ja"
+  },
+  "book": "今すぐ予約",
+  "pickup": "受け取り",
+  "return": "返却",
+  "quantity": "数量",
+  "total": "合計",
+  "deposit": "＋ 返金可能な保証金 {amount}",
+  "loading": "読み込み中…",
+  "request_failed": "リクエストに失敗しました",
+  "category_empty": "まだ商品がありません",
+  "checkout_title": "予約",
+  "close": "閉じる",
+  "booked_title": "予約を受け付けました",
+  "booked_number": "予約 #{number}",
+  "booked_paid": "お支払いありがとうございます。確認メールをお送りします。",
+  "booked_email": "ありがとうございます。確認メールをお送りします。",
+  "view_booking": "予約を見る",
+  "name": "お名前",
+  "email": "メール",
+  "phone": "電話（任意）",
+  "terms": "レンタル規約",
+  "accept_terms": "レンタル規約に同意します",
+  "book_and_pay": "予約して支払う"
+}

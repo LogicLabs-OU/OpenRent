@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "es"
+  },
+  "book": "Reservar ahora",
+  "pickup": "Recogida",
+  "return": "Devolución",
+  "quantity": "Cant.",
+  "total": "Total",
+  "deposit": "+ {amount} de fianza reembolsable",
+  "loading": "Cargando…",
+  "request_failed": "La solicitud ha fallado",
+  "category_empty": "Aún no hay productos aquí",
+  "checkout_title": "Reservar",
+  "close": "Cerrar",
+  "booked_title": "Reserva recibida",
+  "booked_number": "Reserva n.º {number}",
+  "booked_paid": "Gracias, su pago se ha realizado. Le llegará una confirmación por correo.",
+  "booked_email": "Gracias. Le llegará una confirmación por correo.",
+  "view_booking": "Ver la reserva",
+  "name": "Nombre",
+  "email": "Correo electrónico",
+  "phone": "Teléfono (opcional)",
+  "terms": "Condiciones de alquiler",
+  "accept_terms": "Acepto las condiciones de alquiler",
+  "book_and_pay": "Reservar y pagar"
+}

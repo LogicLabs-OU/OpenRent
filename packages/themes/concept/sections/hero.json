@@ -1,0 +1,21 @@
+{
+  "name": "Page header",
+  "settings": [
+    { "id": "icon", "type": "text", "label": "Page icon (emoji)", "default": "🏕️" },
+    { "id": "heading", "type": "text", "label": "Heading", "default": "Rent the gear, skip the hassle" },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Pick your dates first and we only show what is free. Prices update as you go."
+    },
+    {
+      "id": "cover",
+      "type": "image",
+      "label": "Cover image URL",
+      "info": "Leave empty for a soft gradient",
+      "default": ""
+    },
+    { "id": "show_cover", "type": "checkbox", "label": "Show a cover", "default": true }
+  ]
+}

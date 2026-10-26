@@ -1,0 +1,8 @@
+{
+  "themes": [
+    "@openrent/theme-default",
+    "@openrent/theme-retro",
+    "@openrent/theme-concept",
+    "@openrent/theme-ink-green"
+  ]
+}
