@@ -10,7 +10,7 @@ import { id, json, round, startFake, type FakeReply, type FakeRequest, type Fake
  */
 export interface XeroAccount { AccountID: string; Code: string; Name: string; Type: string; Status: 'ACTIVE' | 'ARCHIVED' }
 export interface XeroTaxRate { TaxType: string; Name: string; EffectiveRate: number; Status: 'ACTIVE' | 'DELETED' }
-interface Doc { id: string; number: string; type: 'ACCREC' | 'ACCRECCREDIT'; contactId: string; status: string; currency: string; total: number; due: number; lines: any[]; date: string; reference?: string; attachments: string[] }
+interface Doc { id: string; number: string; type: 'ACCREC' | 'ACCRECCREDIT'; contactId: string; status: string; currency: string; total: number; due: number; lines: any[]; date: string; reference?: string; attachments: { name: string; type: string; size: number }[] }
 interface Payment { PaymentID: string; docId: string; amount: number; date: string; account: string; reference?: string; status: 'AUTHORISED' | 'DELETED'; updated: number; fromOpenRent: boolean }
 
 export interface XeroOrg {
@@ -316,9 +316,13 @@ export async function startXeroFake(opts: { clientId?: string; clientSecret?: st
     if ((res === 'Invoices' || res === 'CreditNotes') && rid && sub === 'Attachments' && (req.method === 'PUT' || req.method === 'POST')) {
       const d = org.docs.find((x) => x.id === rid);
       if (!d) return notFound();
+      // The file is the raw body, named in the URL; a document takes at most 10 attachments.
       const name = decodeURIComponent(req.path.split('/').pop()!);
-      d.attachments.push(name);
-      return json(200, { Attachments: [{ AttachmentID: id(), FileName: name }] });
+      const type = String(req.headers['content-type'] ?? '');
+      if (!req.bytes.length || !type) return invalid('The attachment needs a body and a Content-Type');
+      if (d.attachments.length >= 10) return invalid('A document can have at most 10 attachments');
+      d.attachments.push({ name, type, size: req.bytes.length });
+      return json(200, { Attachments: [{ AttachmentID: id(), FileName: name, MimeType: type, ContentLength: req.bytes.length, IncludeOnline: req.query.get('IncludeOnline') === 'true' }] });
     }
     return notFound();
   };

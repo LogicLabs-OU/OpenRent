@@ -17,7 +17,7 @@ export const PERMISSIONS = [
   'documents:read', 'documents:write',
   'payments:read', 'payments:write', 'payments:refund',
   'webhooks:manage',
-  'reports:read',
+  'reports:read', 'reports:write',
   'audit:read',
   'plugins:manage',
   'themes:manage',
@@ -35,7 +35,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   staff: [
     ...READ,
     'catalog:write', 'inventory:write', 'pricing:write',
-    'customers:write', 'orders:write', 'orders:fulfil', 'documents:write', 'payments:write', 'deliveries:write',
+    'customers:write', 'orders:write', 'orders:fulfil', 'documents:write', 'payments:write', 'deliveries:write', 'reports:write',
   ],
   warehouse: [
     'catalog:read', 'inventory:read', 'inventory:write', 'orders:read', 'orders:fulfil',

@@ -27,20 +27,27 @@ export async function registerInbound(app: FastifyInstance, deps: AppDeps) {
       });
       return reply.send({ received: true, duplicate: result.duplicate });
     });
-    // Delivery reports from email plugins (FR-NOT-5): delivered, bounced, complained.
-    scope.post('/webhooks/notify/:plugin/:tenant', { schema: { hide: true } as any }, async (req, reply) => {
+    // Delivery reports from email and text message plugins (FR-NOT-5): delivered, bounced, complained,
+    // failed. Some text providers report with a GET and a query string.
+    const notify = async (req: any, reply: any) => {
       const { plugin, tenant } = req.params as { plugin: string; tenant: string };
       const exists = await withSystem(deps.db, (c) => c.query(`SELECT 1 FROM tenants WHERE id = $1`, [tenant]));
       if (!exists.rows.length) throw new AppError('unknown_tenant', 404, serverT('error.unknown_tenant'));
-      const channel = deps.plugins.notificationChannels('email').find((ch) => (deps.plugins.pluginIdOf(ch.id) ?? ch.id) === plugin);
+      const channel = (['email', 'sms', 'whatsapp'] as const)
+        .flatMap((k) => deps.plugins.notificationChannels(k))
+        .find((ch) => (deps.plugins.pluginIdOf(ch.id) ?? ch.id) === plugin && ch.handleWebhook);
       if (!channel?.handleWebhook) throw new AppError('not_found', 404, serverT('plugins.not_installed', { id: plugin }));
+      const query = String(req.url).includes('?') ? String(req.url).slice(String(req.url).indexOf('?') + 1) : '';
       const updated = await withTenant(deps.db, tenant, async (c) => {
         const ctx = systemCtx(deps, c, tenant, req.log);
         const { config } = await plugins.pluginConfig(ctx, plugin);
-        const reports = await channel.handleWebhook!({ tenantId: tenant, config, logger: req.log }, { rawBody: req.rawBody ?? Buffer.alloc(0), headers: req.headers });
+        const pctx = { tenantId: tenant, config, logger: req.log, webhookUrl: notifications.textWebhookUrl(ctx, plugin) };
+        const reports = await channel.handleWebhook!(pctx, { rawBody: req.rawBody ?? Buffer.alloc(0), headers: req.headers, method: req.method, query });
         return notifications.applyDeliveryReports(ctx, plugin, reports);
       });
       return reply.send({ received: true, updated });
-    });
+    };
+    scope.post('/webhooks/notify/:plugin/:tenant', { schema: { hide: true } as any }, notify);
+    scope.get('/webhooks/notify/:plugin/:tenant', { schema: { hide: true } as any }, notify);
   });
 }

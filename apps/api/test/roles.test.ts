@@ -106,4 +106,11 @@ suite('roles and members', () => {
     expect((await new Client(t.app).post('/api/v1/auth/login', { email: 'newbie@test.dev', password: 'second-password' })).status).toBe(401);
     expect((await owner.get(`/api/v1/users/${r.body.id}`)).body.has_password).toBe(false);
   });
+
+  it('reads one role by id', async () => {
+    expect((await owner.get('/api/v1/roles/staff')).body).toMatchObject({ id: 'staff', system: true, permissions: [...ROLE_PERMISSIONS.staff] });
+    const own = await owner.post('/api/v1/roles', { name: 'Reader', permissions: ['orders:read'] });
+    expect((await owner.get(`/api/v1/roles/${own.body.id}`)).body).toMatchObject({ id: own.body.id, system: false, permissions: ['orders:read'], members: 0 });
+    expect((await owner.get('/api/v1/roles/rol_missing')).status).toBe(404);
+  });
 });

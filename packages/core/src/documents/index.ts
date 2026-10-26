@@ -6,7 +6,7 @@ import { hookContext } from '../plugins/scope.ts';
 import { overridesFor } from '../strings/index.ts';
 import { withStrings } from '../i18n/index.ts';
 import { storefrontBase } from '../domains/index.ts';
-import { AppError, invalid } from '../errors.ts';
+import { AppError, invalid, notFound } from '../errors.ts';
 import { audit, emit } from '../events.ts';
 import { newId, sha256 } from '../ids.ts';
 import { exec, json, many, must, one } from '../sql.ts';
@@ -14,6 +14,7 @@ import { formatDate, formatDateTime, formatMoney } from '../format.ts';
 import { resolveSettings } from '../tenancy/settings.ts';
 import { BASE_CSS, DEFAULT_TEMPLATES, LEGAL_NUMBERED } from './templates.ts';
 import { tAny } from '../i18n/index.ts';
+import { invoiceDueAt } from '../customers/b2b.ts';
 import { periodsText } from '../pricing/engine.ts';
 import * as files from '../files/index.ts';
 
@@ -36,7 +37,8 @@ export function documentToApi(d: any) {
   return {
     id: d.id, object: 'document', type: d.type, number: d.number, status: d.status, order_id: d.order_id, customer_id: d.customer_id,
     issued_at: d.issued_at, total: d.total == null ? null : { amount: Number(d.total), currency: d.currency?.trim() },
-    voided_by_id: d.voided_by_id, template_id: d.template_id, created_at: d.created_at,
+    voided_by_id: d.voided_by_id, template_id: d.template_id, due_at: d.data?.due_at ?? null,
+    orders: d.data?.orders?.map((o: any) => ({ id: o.id, number: o.number })) ?? null, created_at: d.created_at,
   };
 }
 
@@ -73,7 +75,7 @@ export async function buildOrderData(ctx: Ctx, orderId: string) {
     },
     order: {
       id: order.id, number: order.number, status: order.status, starts_at: order.starts_at, ends_at: order.ends_at,
-      quote_expires_at: order.quote_expires_at, timezone: order.timezone, public_token: order.public_token,
+      quote_expires_at: order.quote_expires_at, timezone: order.timezone, public_token: order.public_token, po_number: order.po_number ?? null,
     },
     customer: customer ? { name: customer.name, email: customer.email, phone: customer.phone, company_name: customer.company_name, tax_id: customer.tax_id, locale: customer.locale, addresses: customer.addresses, billing: customer.addresses?.billing ?? null } : { name: tAny('doc.walk_in', {}, tenant.locale) },
     location: location
@@ -181,26 +183,77 @@ export async function issueDocument(ctx: Ctx, orderId: string, type: DocumentTyp
   await ctx.plugins.runHook('before', 'documents.render', { type, order_id: orderId, data }, hookContext(ctx));
   const order = await must<any>(ctx, `SELECT number, customer_id, currency, timezone FROM orders WHERE id = $1`, [orderId], 'order');
   if (type === 'invoice' && !order.customer_id) throw new AppError('customer_required', 422, msg('error.add_a_customer_before_issuing_an_invoice'));
+  return saveIssued(ctx, type, data, { orderId, orderNumber: order.number, customerId: order.customer_id, currency: order.currency.trim(), timezone: order.timezone });
+}
+
+/** Numbers, renders and stores an issued document; invoices to customers on account get their due date. */
+async function saveIssued(ctx: Ctx, type: DocumentType, data: Record<string, any>, at: { orderId: string | null; orderNumber: number | null; customerId: string | null; currency: string; timezone: string }) {
   const tenant = await must<any>(ctx, `SELECT settings, locale FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
   const settings = resolveSettings(tenant.settings);
   const locale = (data.customer?.locale as string) || tenant.locale || 'en';
   const tpl = await templateFor(ctx, type, locale);
-  const number = await nextNumber(ctx, type, order.number, settings.document_prefixes[type] ?? type.toUpperCase().slice(0, 3));
-  data.document = { type, title: tpl.title, number, number_label: tAny(LEGAL_NUMBERED.has(type) ? 'doc.number_label' : 'doc.ref_label', {}, locale), issued_at: ctx.now.toISOString() };
-  const html = withStrings(locale, await overridesFor(ctx, 'documents', locale), () => renderHtml(tpl, data, { currency: order.currency.trim(), tz: order.timezone, locale }));
+  const number = await nextNumber(ctx, type, at.orderNumber, settings.document_prefixes[type] ?? type.toUpperCase().slice(0, 3));
+  const due = type === 'invoice' ? await invoiceDueAt(ctx, at.customerId, ctx.now) : null;
+  if (due) data.due_at = due;
+  data.document = { type, title: tpl.title, number, number_label: tAny(LEGAL_NUMBERED.has(type) ? 'doc.number_label' : 'doc.ref_label', {}, locale), issued_at: ctx.now.toISOString(), due_at: due };
+  const html = withStrings(locale, await overridesFor(ctx, 'documents', locale), () => renderHtml(tpl, data, { currency: at.currency, tz: at.timezone, locale }));
   const row = (
     await many(
       ctx,
       `INSERT INTO documents (id, tenant_id, order_id, customer_id, type, number, issued_at, status, html, data, total, currency, template_id, template_version)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'issued',$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [newId('doc'), ctx.tenantId, orderId, order.customer_id, type, number, ctx.now, html, json({ ...data, html_sha256: sha256(html) }),
-        data.totals?.total ?? null, order.currency, tpl.id, tpl.version],
+      [newId('doc'), ctx.tenantId, at.orderId, at.customerId, type, number, ctx.now, html, json({ ...data, html_sha256: sha256(html) }),
+        data.totals?.total ?? null, at.currency, tpl.id, tpl.version],
     )
   )[0];
   await audit(ctx, { entity_type: 'document', entity_id: row.id, action: 'issue', extra: { type, number } });
   const api = documentToApi(row);
   await emit(ctx, 'document.issued', { type: 'document', id: row.id }, api);
   return api;
+}
+
+const TOTAL_KEYS = ['subtotal', 'discount', 'fees', 'tax', 'total', 'paid', 'refunded', 'balance'] as const;
+
+/**
+ * One invoice for several finished bookings of a customer invoiced monthly (FR-CUS-7). Each line names
+ * its booking; totals and tax add up; every booking points at the invoice, so none is invoiced twice.
+ */
+export async function issueConsolidatedInvoice(ctx: Ctx, customerId: string, orderIds: string[], period: { from: string; to: string }) {
+  const orders = await many<any>(
+    ctx,
+    `SELECT id, number, po_number, currency, timezone, totals FROM orders WHERE id = ANY($1) AND customer_id = $2 AND invoice_id IS NULL ORDER BY starts_at, number FOR UPDATE`,
+    [orderIds, customerId],
+  );
+  if (!orders.length || orders.length !== new Set(orderIds).size) throw new AppError('already_invoiced', 409, msg('error.bookings_already_invoiced'));
+  const currency = orders[0].currency.trim();
+  if (orders.some((o) => o.currency.trim() !== currency)) throw invalid(msg('error.one_currency_per_invoice'));
+  const base = await buildOrderData(ctx, orders[0].id);
+  const lines: any[] = [];
+  const payments: any[] = [];
+  for (const o of orders) {
+    const d = o.id === orders[0].id ? base : await buildOrderData(ctx, o.id);
+    lines.push(...d.lines.map((l: any) => ({ ...l, name: `#${o.number} · ${l.name}` })));
+    payments.push(...d.payments);
+  }
+  const totals: Record<string, number> = { deposit: 0 };
+  for (const k of TOTAL_KEYS) totals[k] = orders.reduce((s, o) => s + Number(o.totals?.[k] ?? 0), 0);
+  const rates = new Map<number, { rate_bp: number; net: number; tax: number }>();
+  for (const o of orders) {
+    for (const x of o.totals?.tax_breakdown ?? []) {
+      const r = rates.get(x.rate_bp) ?? { rate_bp: x.rate_bp, net: 0, tax: 0 };
+      rates.set(x.rate_bp, { ...r, net: r.net + Number(x.net), tax: r.tax + Number(x.tax) });
+    }
+  }
+  const data: Record<string, any> = {
+    ...base, lines, payments, deposit: null, qr_svg: null, order_url: null,
+    totals: { ...totals, tax_breakdown: [...rates.values()] }, tax_breakdown: [...rates.values()],
+    orders: orders.map((o) => ({ id: o.id, number: o.number, po_number: o.po_number ?? null })),
+    order: { ...base.order, id: null, number: null, status: null, public_token: null, po_number: null, starts_at: period.from, ends_at: period.to },
+  };
+  await ctx.plugins.runHook('before', 'documents.render', { type: 'invoice', order_id: null, data }, hookContext(ctx));
+  const doc = await saveIssued(ctx, 'invoice', data, { orderId: null, orderNumber: null, customerId, currency, timezone: orders[0].timezone });
+  await exec(ctx, `UPDATE orders SET invoice_id = $2 WHERE id = ANY($1)`, [orders.map((o) => o.id), doc.id]);
+  return doc;
 }
 
 export async function getDocument(ctx: Ctx, id: string) {
@@ -258,6 +311,33 @@ export async function listTemplates(ctx: Ctx, locale?: string) {
   });
   if (locale) return DOCUMENT_TYPES.map((type) => custom.find((c) => c.type === type && c.locale === locale) ?? builtin(type, locale));
   return [...custom, ...DOCUMENT_TYPES.map((type) => builtin(type, 'en'))];
+}
+
+/**
+ * The PDF of an issued document. Issued documents never change, so it is rendered once and stored;
+ * null when it was never rendered and this process has no renderer.
+ */
+export async function documentPdf(ctx: Ctx, doc: { id: string; type: string; number: string | null; html: string }, render = ctx.config.renderPdf): Promise<{ filename: string; body: Buffer } | null> {
+  const existing = await files.findFile(ctx, 'document', doc.id, 'pdf');
+  if (existing) return { filename: existing.filename, body: await files.readFile(ctx, existing) };
+  if (!render) return null;
+  const body = await render(doc.html);
+  const filename = `${doc.type}-${(doc.number ?? doc.id).replace(/[^\w.-]+/g, '-')}.pdf`;
+  await files.putFile(ctx, { kind: 'pdf', ownerType: 'document', ownerId: doc.id, filename, contentType: 'application/pdf', body });
+  return { filename, body };
+}
+
+/** One template by id: the shop's own, or `builtin:<type>` for the built-in one in English. */
+export async function getTemplate(ctx: Ctx, id: string) {
+  const tpl = (await listTemplates(ctx)).find((t) => t.id === id);
+  if (!tpl) throw notFound('document_template', id);
+  return tpl;
+}
+
+/** Changes a template by id. Changing a built-in one creates the shop's own for that type and language. */
+export async function updateTemplate(ctx: Ctx, id: string, input: { name?: string; locale?: string; body?: string; css?: string }) {
+  const tpl = await getTemplate(ctx, id);
+  return upsertTemplate(ctx, { type: tpl.type, name: input.name, locale: id.startsWith('builtin:') ? (input.locale ?? tpl.locale) : tpl.locale, body: input.body ?? tpl.body, css: input.css ?? tpl.css });
 }
 
 /** Goes back to the built-in template for this type and language (FR-DOC-2). Issued documents keep their HTML. */

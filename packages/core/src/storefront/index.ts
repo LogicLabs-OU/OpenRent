@@ -12,13 +12,16 @@ import { addMinutes } from '../time.ts';
 import * as availability from '../availability/index.ts';
 import { describeStructure, type QuoteOptions } from '../pricing/engine.ts';
 import { formatMoney } from '../format.ts';
-import { activeFeeRules, listProducts, getProduct, categories, toEngineStructure } from '../catalog/index.ts';
+import { activeFeeRules, listProducts, getProduct, categories, toEngineStructure, relationsOf } from '../catalog/index.ts';
 import { findOrCreateByEmail } from '../customers/index.ts';
+import { accountTermsFor } from '../customers/b2b.ts';
+
+export { sendCartReminders, restoreCart, stopCartReminders } from './reminders.ts';
 import { activeProvider, amountDue, createPaymentIntent, createPaymentRequest, upfrontAmount } from '../payments/index.ts';
 import { notifyStaff } from '../notifications/index.ts';
 import { tenantLocale } from '../i18n/context.ts';
 import { storefrontBase } from '../domains/index.ts';
-import { enabledProvider } from '../plugins/index.ts';
+import { enabledProvider, textChannel } from '../plugins/index.ts';
 import { checkCheckoutExtra, productBadges, storefrontExtensions } from '../plugins/storefront.ts';
 import { hookContext } from '../plugins/scope.ts';
 import { overridesByLocale, overridesFor } from '../strings/index.ts';
@@ -88,6 +91,8 @@ export async function storefrontSettings(ctx: Ctx, opts: { previewThemeId?: stri
     strings: await overridesFor(ctx, 'storefront', opts.locale ?? t.locale),
     // Plugins' checkout fields and consent-gated scripts (FR-PLG-5).
     extensions: await storefrontExtensions(ctx, opts.locale),
+    // Booking updates the customer may ask for at checkout and in the account (FR-NOT-4).
+    messaging: { sms: !!(await textChannel(ctx, 'sms')), whatsapp: !!(await textChannel(ctx, 'whatsapp')) },
     // Origins the storefront adds to its Content-Security-Policy for this shop (FR-THM-7).
     csp: await cspFor(ctx, pc),
     theme: await withChildTheme(ctx, storefrontTheme(s, opts.previewThemeId, opts.locale)),
@@ -125,7 +130,8 @@ function translate(p: any, locale?: string) {
   return { name: tr?.name?.trim() || p.name, description: tr?.description?.trim() ? tr.description : p.description };
 }
 
-async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: Date; to?: Date; locationId?: string }) {
+/** A product for the storefront; `detail` (its own page) adds what goes with it and each bundle option's availability. */
+async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: Date; to?: Date; locationId?: string; detail?: boolean }) {
   const t = await must<any>(ctx, `SELECT currency, locale FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
   const currency = t.currency.trim();
   const locale = opts.locale ?? t.locale;
@@ -143,8 +149,44 @@ async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: D
     fields: await visibleFields(ctx, 'product', p.custom_fields, 'storefront', locale),
     badges: await productBadges(ctx, p.tags, locale),
     deposit_amount: money(p.deposit_amount, currency), min_duration_min: p.min_duration_min, max_duration_min: p.max_duration_min, min_notice_min: p.min_notice_min,
-    increment_min: p.increment_min, images: publicImages(p, tr.name, opts.locale ?? locale), seo: p.seo, variants, bundle: p.bundle ? { components: p.bundle.components.map((c: any) => ({ name: c.name, quantity: c.quantity })) } : null,
+    increment_min: p.increment_min, images: publicImages(p, tr.name, opts.locale ?? locale), seo: p.seo, variants, bundle: p.bundle ? await publicBundle(ctx, p.bundle, opts) : null,
+    ...(opts.detail ? await publicRelations(ctx, p.id, currency, opts.locale ?? locale) : {}),
   };
+}
+
+/**
+ * Accessories offered with the product, and products that go with it (FR-CAT-7): staff's related ones
+ * first, then those often rented with it. Public products only.
+ */
+async function publicRelations(ctx: Ctx, productId: string, currency: string, locale: string) {
+  const r = (await relationsOf(ctx, [productId], { publicOnly: true })).get(productId)!;
+  const ids = [...new Set([...r.accessory, ...r.related, ...r.often_rented_with].map((x) => x.id))];
+  if (!ids.length) return { accessories: [], related: [] };
+  const full = (await listProducts(ctx, { filters: { id: { eq: ids } }, limit: 50 })).data;
+  const card = (id: string) => {
+    const p = full.find((x: any) => x.id === id);
+    if (!p) return null;
+    const tr = translate(p, locale);
+    return { id: p.id, name: tr.name, slug: p.slug, type: p.type, variant_id: p.variants[0]?.id ?? null, price: p.variants[0] ? publicVariant(p.variants[0], currency, locale).price : null, image: publicImages(p, tr.name, locale)[0] ?? null };
+  };
+  const accessories = r.accessory.map((x) => card(x.id)).filter(Boolean);
+  const seen = new Set(r.accessory.map((x) => x.id));
+  const related = [...r.related, ...r.often_rented_with].filter((x) => !seen.has(x.id) && (seen.add(x.id), true)).map((x) => card(x.id)).filter(Boolean).slice(0, 6);
+  return { accessories, related };
+}
+
+/** A bundle for the storefront: what always comes with it, and each slot with its options (FR-CAT-6). */
+async function publicBundle(ctx: Ctx, b: any, opts: { from?: Date; to?: Date; locationId?: string; detail?: boolean }) {
+  const comps = b.components as { variant_id: string; quantity: number; name: string; slot_name: string | null }[];
+  const loc = opts.detail && opts.from && opts.to ? (opts.locationId ?? (await one(ctx, `SELECT id FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC LIMIT 1`))?.id) : null;
+  const slots: { name: string; options: { variant_id: string; name: string; quantity: number; available: number | null }[] }[] = [];
+  for (const c of comps.filter((x) => x.slot_name)) {
+    let slot = slots.find((s) => s.name === c.slot_name);
+    if (!slot) slots.push((slot = { name: c.slot_name!, options: [] }));
+    const available = loc ? (await availability.check(ctx, { variantId: c.variant_id, locationId: loc, from: opts.from!, to: opts.to! })).available : null;
+    slot.options.push({ variant_id: c.variant_id, name: c.name, quantity: c.quantity, available: available === null ? null : Math.floor(available / c.quantity) });
+  }
+  return { components: comps.filter((c) => !c.slot_name).map((c) => ({ name: c.name, quantity: c.quantity })), slots };
 }
 
 const SORTS: Record<string, string | undefined> = { relevance: undefined, name: 'name', newest: '-created_at' };
@@ -200,7 +242,7 @@ export async function catalogProducts(ctx: Ctx, q: { category?: string; q?: stri
 export async function catalogProduct(ctx: Ctx, slug: string, q: { from?: string; to?: string; location_id?: string; locale?: string }) {
   const p = await getProduct(ctx, slug);
   if (p.visibility !== 'public') throw new AppError('not_found', 404, msg('error.product_not_found'));
-  return publicProduct(ctx, p, { locale: q.locale, from: q.from ? new Date(q.from) : undefined, to: q.to ? new Date(q.to) : undefined, locationId: q.location_id });
+  return publicProduct(ctx, p, { locale: q.locale, from: q.from ? new Date(q.from) : undefined, to: q.to ? new Date(q.to) : undefined, locationId: q.location_id, detail: true });
 }
 
 /** Only public products may be booked through the storefront. */
@@ -218,6 +260,14 @@ async function assertPublicVariants(ctx: Ctx, lines: { variant_id: string }[]) {
 export interface CheckoutLine {
   variant_id: string;
   quantity: number;
+  /** Choice bundles (FR-CAT-6): the option picked per slot. */
+  picks?: Record<string, string> | null;
+}
+
+/** A cart line as stored: picks only as a small map of slot name to variant id. */
+function cartLine(l: CheckoutLine): CheckoutLine {
+  const picks = l.picks && typeof l.picks === 'object' ? Object.fromEntries(Object.entries(l.picks).filter(([k, v]) => typeof k === 'string' && typeof v === 'string').slice(0, 10)) : null;
+  return { variant_id: l.variant_id, quantity: l.quantity, ...(picks && Object.keys(picks).length ? { picks } : {}) };
 }
 
 async function sessionRow(ctx: Ctx, id: string) {
@@ -253,7 +303,7 @@ export async function sessionToApi(ctx: Ctx, s: any, locale?: string | null) {
   let quoteError: unknown = null;
   if (s.starts_at && s.ends_at && s.lines.length) {
     try {
-      const q = await priceQuote(ctx, { location_id: s.location_id, starts_at: s.starts_at, ends_at: s.ends_at, lines: s.lines.map((l: any) => ({ variant_id: l.variant_id, quantity: l.quantity })), coupon_codes: s.coupon_codes, locale, options: s.options ?? {} });
+      const q = await priceQuote(ctx, { location_id: s.location_id, starts_at: s.starts_at, ends_at: s.ends_at, lines: s.lines.map((l: any) => ({ variant_id: l.variant_id, quantity: l.quantity, picks: l.picks ?? null })), coupon_codes: s.coupon_codes, locale, options: s.options ?? {} });
       quote = breakdownToApi(q.breakdown);
       for (const l of s.lines) {
         const r = await availability.check(ctx, { variantId: l.variant_id, locationId: s.location_id, from: new Date(s.starts_at), to: new Date(s.ends_at) });
@@ -273,7 +323,7 @@ export async function sessionToApi(ctx: Ctx, s: any, locale?: string | null) {
 
 export async function createCheckoutSession(ctx: Ctx, input: { location_id?: string; starts_at?: string; ends_at?: string; lines?: CheckoutLine[]; coupon_codes?: string[] }) {
   const loc = input.location_id ? await must(ctx, `SELECT id FROM locations WHERE id = $1 AND deleted_at IS NULL`, [input.location_id], 'location') : await must(ctx, `SELECT id FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC LIMIT 1`, [], 'location');
-  const lines = (input.lines ?? []).filter((l) => l.quantity > 0).map((l) => ({ variant_id: l.variant_id, quantity: l.quantity }));
+  const lines = (input.lines ?? []).filter((l) => l.quantity > 0).map(cartLine);
   await assertPublicVariants(ctx, lines);
   const row = (
     await many(ctx, `INSERT INTO checkout_sessions (id, tenant_id, location_id, starts_at, ends_at, lines, coupon_codes, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [
@@ -294,7 +344,7 @@ export async function updateCheckoutSession(
 ) {
   const s = await sessionRow(ctx, id);
   if (s.status !== 'open') throw new AppError('checkout_closed', 409, msg('error.this_checkout_is', { status: s.status }));
-  const lines = patch.lines ? patch.lines.filter((l) => l.quantity > 0).map((l) => ({ variant_id: l.variant_id, quantity: l.quantity })) : s.lines;
+  const lines = patch.lines ? patch.lines.filter((l) => l.quantity > 0).map(cartLine) : s.lines;
   if (patch.lines) await assertPublicVariants(ctx, lines);
   const row = (
     await many(
@@ -362,11 +412,21 @@ async function checkedReturnUrl(ctx: Ctx, settings: TenantSettings, url: string)
   return url;
 }
 
+/** Account checks of a booking on account appear next to the checkout's account fields. */
+const B2B_FIELDS: Record<string, string> = { po_number: 'extra.b2b.po_number', customer_id: 'extra.b2b.pay_on_account' };
+function asCheckoutErrors(err: unknown): never {
+  if (err instanceof AppError && err.code === 'validation_error' && err.errors) {
+    throw invalid(err.message, err.errors.map((e) => ({ ...e, field: B2B_FIELDS[e.field] ?? e.field })));
+  }
+  throw err;
+}
+
 /**
  * Turns a checkout into an order. With online payment the order holds stock as a short quote
  * until the provider confirms payment; without it the order is reserved immediately (pay at pickup).
+ * A signed-in customer on account (`accountEmail`) may book on account: reserved at once, paid on the invoice.
  */
-export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInput) {
+export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInput, accountEmail: string | null = null) {
   const s = await sessionRow(ctx, id);
   if (s.status !== 'open') throw new AppError('checkout_closed', 409, msg('error.this_checkout_is', { status: s.status }));
   if (!s.starts_at || !s.ends_at) throw invalid(msg('error.choose_rental_dates'), [{ field: 'starts_at', code: 'required', message: msg('error.field.choose_dates') }]);
@@ -381,24 +441,39 @@ export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInpu
   if (!input.terms_accepted || !accepted.has(input.terms_hash)) {
     throw invalid(tr('checkout.terms_required'), [{ field: 'terms_accepted', code: 'terms_required', message: tr('checkout.accept_terms') }]);
   }
-  const extra = await checkCheckoutExtra(ctx, input.extra);
+  // The account fields (FR-CUS-7) are the runtime's own; the rest belong to plugins.
+  const onAccount = input.extra?.['b2b.pay_on_account'] === true;
+  const poRaw = input.extra?.['b2b.po_number'];
+  const po = typeof poRaw === 'string' && poRaw.trim() ? poRaw.trim().slice(0, 100) : null;
+  // Text message updates asked for at checkout (FR-NOT-4), also the runtime's own fields.
+  const wants = {
+    sms_opt_in: input.customer.sms_opt_in === true || input.extra?.['messages.sms'] === true,
+    whatsapp_opt_in: input.customer.whatsapp_opt_in === true || input.extra?.['messages.whatsapp'] === true,
+  };
+  const extra = await checkCheckoutExtra(ctx, Object.fromEntries(Object.entries(input.extra ?? {}).filter(([k]) => !k.startsWith('b2b.') && !k.startsWith('messages.'))));
+  const account = onAccount && accountEmail && accountEmail.toLowerCase() === input.customer.email.trim().toLowerCase() ? await accountTermsFor(ctx, accountEmail) : null;
+  if (onAccount && !account) throw invalid(tr('checkout.account_sign_in'), [{ field: 'extra.b2b.pay_on_account', code: 'not_on_account', message: tr('checkout.account_sign_in') }]);
   // A plugin may still refuse the booking (HookVeto), e.g. a delivery postcode it does not serve.
   await ctx.plugins.runHook('before', 'checkout.complete', { session_id: id, customer: input.customer, extra: input.extra ?? {} }, hookContext(ctx));
   for (const l of s.lines) {
     const errs = await availability.assertBookable(ctx, { variantId: l.variant_id, locationId: s.location_id, startsAt: new Date(s.starts_at), endsAt: new Date(s.ends_at), strict: true });
     if (errs.length) throw invalid(msg('error.these_dates_cannot_be_booked'), errs);
   }
-  const customer = await findOrCreateByEmail(ctx, input.customer);
+  const customer = account ? { id: account.customer_id, flags: (await one<any>(ctx, `SELECT flags FROM customers WHERE id = $1`, [account.customer_id]))?.flags } : await findOrCreateByEmail(ctx, { ...input.customer, ...wants });
+  if (account && (wants.sms_opt_in || wants.whatsapp_opt_in)) {
+    await exec(ctx, `UPDATE customers SET sms_opt_in = sms_opt_in OR $2, whatsapp_opt_in = whatsapp_opt_in OR $3, phone = coalesce($4, phone) WHERE id = $1`, [account.customer_id, wants.sms_opt_in, wants.whatsapp_opt_in, input.customer.phone?.trim() || null]);
+  }
   if (customer.flags?.blocked) throw new AppError('customer_blocked', 403, msg('error.online_booking_is_not_available_for_this'));
   const order = await createOrder(ctx, {
     customer_id: customer.id,
     location_id: s.location_id,
     starts_at: s.starts_at,
     ends_at: s.ends_at,
-    lines: s.lines.map((l: CheckoutLine) => ({ variant_id: l.variant_id, quantity: l.quantity })),
+    lines: s.lines.map((l: CheckoutLine) => ({ variant_id: l.variant_id, quantity: l.quantity, picks: l.picks ?? null })),
     coupon_codes: s.coupon_codes,
     options: s.options ?? {},
     notes: input.notes ? { customer: input.notes } : undefined,
+    po_number: po,
     source: 'storefront',
   });
   const acceptance = { version: settings.terms.version, text_sha256: input.terms_hash, accepted_at: ctx.now.toISOString(), ip: ctx.ip ?? null, user_agent: ctx.userAgent ?? null, name: input.customer.name };
@@ -407,7 +482,9 @@ export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInpu
   const total = order.totals.total.amount;
   let payment = null;
   let final;
-  if (pc && total > 0) {
+  if (account) {
+    final = await runAction(ctx, order.id, 'reserve', {}).catch(asCheckoutErrors);
+  } else if (pc && total > 0) {
     // Hold stock while the customer pays; the quote expires if payment never arrives.
     final = await runAction(ctx, order.id, 'send_quote', { ttl_hours: settings.storefront_hold_minutes / 60, notify: false, hold_stock: true });
     // A down payment is a payment request for part of the total; the balance is requested before pickup.
@@ -477,7 +554,8 @@ export async function publicOrder(ctx: Ctx, id: string, token: string) {
   const lines = await many(ctx, `SELECT description, quantity, total FROM order_lines WHERE order_id = $1 AND parent_line_id IS NULL ORDER BY position`, [o.id]);
   const loc = await one(ctx, `SELECT name, address, timezone FROM locations WHERE id = $1`, [o.location_id]);
   const c = o.currency.trim();
-  const due = ['cancelled', 'expired', 'closed'].includes(o.status) ? { amount: 0, request_id: null } : await amountDue(ctx, o.id);
+  // A closed booking can still be owed when the customer books on account (FR-CUS-7).
+  const due = ['cancelled', 'expired'].includes(o.status) ? { amount: 0, request_id: null } : await amountDue(ctx, o.id);
   const pc = due.amount > 0 ? await activeProvider(ctx) : null;
   const request = (await latestRequests(ctx, [o.id])).get(o.id);
   const extension = (await latestExtensions(ctx, [o.id])).get(o.id);

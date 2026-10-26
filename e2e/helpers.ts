@@ -80,3 +80,11 @@ export async function pickDay(scope: import('@playwright/test').Locator, date: s
     await scope.getByRole('button', { name: 'Next' }).click();
   await day.click();
 }
+
+/** Adds a product in an order editor: searches by `search` and picks the result named `option` (default the same). */
+export async function addProduct(page: Page, search: string, option = search) {
+  const picker = page.getByTestId('product-picker');
+  await picker.getByLabel('Add a product').fill(search);
+  await picker.getByRole('option', { name: option, exact: true }).click();
+  await expect(picker.getByLabel('Add a product')).toHaveValue('');
+}

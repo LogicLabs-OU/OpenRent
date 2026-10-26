@@ -8,7 +8,7 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   // Plugins: the first-party plugins are listed with their state.
   await page.getByRole('link', { name: 'Plugins' }).first().click();
   // The built-in plugins plus the e2e fixture plugin (e2e/fixtures/plugins.json).
-  await expect(page.getByTestId('plugin-card')).toHaveCount(13);
+  await expect(page.getByTestId('plugin-card')).toHaveCount(19);
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'SMTP email' })).toBeVisible();
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'S3 file storage' })).toBeVisible();
   await shot(page, 'admin-plugins');
@@ -118,6 +118,10 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   await expect(retro.getByRole('heading', { level: 2, name: 'How renting works' })).toBeVisible();
   await expect(retro.getByTestId('product-card').first()).toBeVisible();
   await shot(retro, 'sf-retro-preview');
+  // The banner scrolls away, so it never covers the theme's sticky header.
+  await retro.mouse.wheel(0, 1200);
+  await expect.poll(async () => (await retro.locator('header').first().boundingBox())?.y).toBe(0);
+  await expect(retro.getByRole('status').filter({ hasText: /Previewing/ })).not.toBeInViewport();
 
   // Concept: the sidebar lists the shop's pages and products switch between gallery and table views.
   const conceptTab = context.waitForEvent('page');

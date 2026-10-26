@@ -18,6 +18,8 @@ export interface QuoteRequestLine {
   /** Discount lines: share of the order in basis points, instead of `amount`. */
   percent_bp?: number | null;
   description?: string;
+  /** Choice bundles (FR-CAT-6): the variant picked per slot; a slot not named takes its first option. */
+  picks?: Record<string, string> | null;
 }
 
 export interface QuoteRequest {
@@ -39,7 +41,9 @@ export interface ResolvedLine {
   engine: QuoteLineInput;
   variant: any | null;
   product: any | null;
-  bundleComponents: { variant_id: string; quantity: number; name: string; tracking: string }[];
+  bundleComponents: { variant_id: string; quantity: number; name: string; tracking: string; slot_name: string | null }[];
+  /** The variant used in each slot of a choice bundle. */
+  picks: Record<string, string> | null;
 }
 
 async function taxRateFor(ctx: Ctx, profileId: string | null, cache: Map<string, number>): Promise<number> {
@@ -68,6 +72,7 @@ export async function resolveLines(ctx: Ctx, lines: QuoteRequestLine[], locale?:
         variant: null,
         product: null,
         bundleComponents: [],
+        picks: null,
         engine: { key, type: 'discount', name: l.description || msg('order.line.discount'), quantity: 1, amount: l.amount ?? null, percentBp: l.percent_bp ?? null, taxRateBp: 0 },
       });
       continue;
@@ -79,6 +84,7 @@ export async function resolveLines(ctx: Ctx, lines: QuoteRequestLine[], locale?:
         variant: null,
         product: null,
         bundleComponents: [],
+        picks: null,
         engine: { key, type: 'fee', name: l.description || msg('order.line.fee'), quantity: l.quantity ?? 1, amount: l.amount, taxRateBp: await taxRateFor(ctx, null, taxCache) },
       });
       continue;
@@ -96,18 +102,27 @@ export async function resolveLines(ctx: Ctx, lines: QuoteRequestLine[], locale?:
     const depositPerUnit = Number(variant.deposit_amount ?? product.deposit_amount ?? 0);
     let bundle: QuoteLineInput['bundle'] = null;
     let bundleComponents: ResolvedLine['bundleComponents'] = [];
+    let picks: Record<string, string> | null = null;
     if (product.type === 'bundle') {
       const b = await must<any>(ctx, `SELECT * FROM bundles WHERE product_id = $1`, [product.id], 'bundle');
-      const comps = await many(
+      const all = await many(
         ctx,
-        `SELECT bc.variant_id, bc.quantity, v.tracking, v.deposit_amount, p.deposit_amount AS product_deposit, to_jsonb(ps.*) AS ps,
+        `SELECT bc.variant_id, bc.quantity, bc.slot_name, v.tracking, v.deposit_amount, p.deposit_amount AS product_deposit, to_jsonb(ps.*) AS ps,
                 p.name || CASE WHEN v.name <> p.name THEN ' – ' || v.name ELSE '' END AS name
            FROM bundle_components bc JOIN variants v ON v.id = bc.variant_id JOIN products p ON p.id = v.product_id
            LEFT JOIN price_structures ps ON ps.id = v.price_structure_id
           WHERE bc.bundle_id = $1 ORDER BY bc.position`,
         [b.id],
       );
-      bundleComponents = comps.map((c) => ({ variant_id: c.variant_id, quantity: c.quantity, name: c.name, tracking: c.tracking }));
+      // Fixed components always come along; each slot brings the picked option, or its first one.
+      const slots = [...new Set(all.filter((c) => c.slot_name).map((c) => c.slot_name as string))];
+      for (const [slot, pick] of Object.entries(l.picks ?? {})) {
+        if (!slots.includes(slot) || !all.some((c) => c.slot_name === slot && c.variant_id === pick))
+          throw invalid(msg('error.not_a_bundle_option', { slot }), [{ field: `lines[${key}].picks.${slot}`, code: 'invalid', message: msg('error.not_a_bundle_option', { slot }) }]);
+      }
+      picks = slots.length ? Object.fromEntries(slots.map((s) => [s, l.picks?.[s] ?? all.find((c) => c.slot_name === s)!.variant_id])) : null;
+      const comps = all.filter((c) => !c.slot_name || picks![c.slot_name] === c.variant_id);
+      bundleComponents = comps.map((c) => ({ variant_id: c.variant_id, quantity: c.quantity, name: c.name, tracking: c.tracking, slot_name: c.slot_name ?? null }));
       bundle = {
         mode: b.pricing_mode,
         discountBp: b.discount_bp,
@@ -119,6 +134,7 @@ export async function resolveLines(ctx: Ctx, lines: QuoteRequestLine[], locale?:
       variant,
       product,
       bundleComponents,
+      picks,
       engine: {
         key, type, productId: product.id, variantId: variant.id, categoryIds: cats, name, quantity: l.quantity ?? 1,
         structure: toEngineStructure(variant.ps), amount: l.amount ?? null, taxRateBp, depositPerUnit: product.type === 'bundle' && depositPerUnit === 0 ? 0 : depositPerUnit, bundle,

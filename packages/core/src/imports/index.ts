@@ -1,15 +1,19 @@
 import type { Ctx } from '../context.ts';
 import { AppError, invalid } from '../errors.ts';
-import { audit } from '../events.ts';
+import { audit, emit } from '../events.ts';
 import { newId } from '../ids.ts';
 import { t, type MessageKey } from '../i18n/index.ts';
-import { json, many, must, one } from '../sql.ts';
+import { exec, json, many, must, one } from '../sql.ts';
 import { slugify } from '../tenancy/index.ts';
 import { categories, createProduct, createVariant, updateProduct, updateVariant } from '../catalog/index.ts';
 import { createStockItem, setStockLevel, updateStockItem } from '../inventory/index.ts';
-import { SPECS, exportHeaders, mapHeaders, type ImportEntity } from './spec.ts';
+import { SPECS, exportHeaders, headerSignature, mapHeaders, type ImportEntity } from './spec.ts';
+import { analyseCustomers, analyseOrders, applyCustomers, applyOrders, noPending, type Pending } from './bookings.ts';
 
-export { SPECS, exportHeaders, normaliseHeader, parseMoney, parseDate, type ImportEntity } from './spec.ts';
+export { SPECS, ENTITY_ORDER, exportHeaders, headerSignature, normaliseHeader, parseMoney, parseDate, parseDateTime, type ImportEntity } from './spec.ts';
+export type { Pending } from './bookings.ts';
+export { createShelfBatch, createRemoteBatch, fetchBatch, applyBatchLater, applyBatch, batchFailed, getBatch, listBatches, batchToApi } from './batches.ts';
+export { SOURCES, shelfSheets, booqableSheets, snipeitSheets } from './sources.ts';
 
 /** A spreadsheet as plain text cells (the API parses CSV and XLSX into this). */
 export interface Sheet {
@@ -33,6 +37,8 @@ export interface RowResult {
 
 export interface Analysis {
   entity: ImportEntity;
+  /** Every header of the file, for the column mapping (FR-MIG-2). */
+  headers: string[];
   columns: Record<string, string>;
   unknown_columns: string[];
   file_errors: string[];
@@ -45,8 +51,8 @@ const err = (field: string, key: MessageKey, params?: Record<string, string | nu
 const major = (minor: number | null | undefined) => (minor == null ? '' : (Number(minor) / 100).toFixed(2));
 
 /** Parses every row against the entity's columns; no database access. */
-function parseRows(entity: ImportEntity, sheet: Sheet) {
-  const { mapping, unknown, missing } = mapHeaders(entity, sheet.headers);
+function parseRows(entity: ImportEntity, sheet: Sheet, override: Record<string, string> = {}) {
+  const { mapping, unknown, missing } = mapHeaders(entity, sheet.headers, override);
   const fileErrors = missing.map((k) => t('imports.missing_column', { column: k }));
   if (sheet.rows.length > MAX_ROWS) fileErrors.push(t('imports.too_many_rows', { max: MAX_ROWS }));
   const columns = Object.fromEntries(Object.entries(mapping).map(([i, k]) => [sheet.headers[Number(i)]!.trim(), k]));
@@ -130,14 +136,14 @@ async function analyseProducts(ctx: Ctx, rows: RowResult[]) {
   }
 }
 
-async function analyseStockItems(ctx: Ctx, rows: RowResult[]) {
+async function analyseStockItems(ctx: Ctx, rows: RowResult[], pending: Pending) {
   const vs = await variantsBySku(ctx, rows.map((r) => r.data.sku).filter(Boolean));
   const locs = await locationsByName(ctx);
   const seenBarcode = new Set<string>();
   for (const r of rows) {
     r.key = String(r.data.barcode ?? r.data.sku ?? '');
     if (r.errors.length) continue;
-    const v = vs.get(r.data.sku);
+    const v = vs.get(r.data.sku) ?? (pending.skus.has(r.data.sku) ? { id: null, tracking: pending.skus.get(r.data.sku) } : null);
     if (!v) {
       r.errors.push(err('sku', 'imports.unknown_sku'));
       continue;
@@ -155,6 +161,7 @@ async function analyseStockItems(ctx: Ctx, rows: RowResult[]) {
         r.errors.push(err('quantity', 'imports.required'));
         continue;
       }
+      if (!v.id) continue;
       const lvl = await one<{ quantity: number }>(ctx, `SELECT quantity FROM stock_levels WHERE variant_id = $1 AND location_id = $2`, [v.id, loc]);
       r.action = lvl ? (Number(lvl.quantity) === r.data.quantity ? 'unchanged' : 'update') : 'create';
       continue;
@@ -195,12 +202,16 @@ async function analyseStockItems(ctx: Ctx, rows: RowResult[]) {
   }
 }
 
-async function analysePrices(ctx: Ctx, rows: RowResult[]) {
+async function analysePrices(ctx: Ctx, rows: RowResult[], pending: Pending) {
   const vs = await variantsBySku(ctx, rows.map((r) => r.data.sku).filter(Boolean));
   for (const r of rows) {
     r.key = String(r.data.sku ?? '');
     if (r.errors.length) continue;
     const v = vs.get(r.data.sku);
+    if (!v && pending.skus.has(r.data.sku)) {
+      r.action = 'update';
+      continue;
+    }
     if (!v) {
       r.errors.push(err('sku', 'imports.unknown_sku'));
       continue;
@@ -211,19 +222,45 @@ async function analysePrices(ctx: Ctx, rows: RowResult[]) {
   }
 }
 
-/** Dry run: what an import would do, row by row, without changing anything (FR-CAT-8). */
-export async function analyse(ctx: Ctx, entity: ImportEntity, sheet: Sheet): Promise<Analysis> {
-  const { columns, unknown, fileErrors, rows } = parseRows(entity, sheet);
+export interface AnalyseOptions {
+  /** The shop's column mapping (file header → column key, '' to skip). */
+  mapping?: Record<string, string>;
+  /** `file`, or the system a batch read the rows from. */
+  source?: string;
+  /** What earlier imports of the same batch create. */
+  pending?: Pending;
+}
+
+/** Dry run: what an import would do, row by row, without changing anything (FR-CAT-8, FR-MIG-2). */
+export async function analyse(ctx: Ctx, entity: ImportEntity, sheet: Sheet, opts: AnalyseOptions = {}): Promise<Analysis> {
+  const { columns, unknown, fileErrors, rows } = parseRows(entity, sheet, opts.mapping);
+  const pending = opts.pending ?? noPending();
+  const source = opts.source ?? 'file';
   if (!fileErrors.length) {
     if (entity === 'products') await analyseProducts(ctx, rows);
-    else if (entity === 'stock_items') await analyseStockItems(ctx, rows);
-    else await analysePrices(ctx, rows);
+    else if (entity === 'stock_items') await analyseStockItems(ctx, rows, pending);
+    else if (entity === 'customers') await analyseCustomers(ctx, rows, source);
+    else if (entity === 'orders') await analyseOrders(ctx, rows, source, pending);
+    else await analysePrices(ctx, rows, pending);
   }
   for (const r of rows) if (r.errors.length) r.action = 'error';
   const counts = { create: 0, update: 0, unchanged: 0, error: 0 };
   for (const r of rows) counts[r.action]++;
   if (!rows.length && !fileErrors.length) fileErrors.push(t('imports.empty'));
-  return { entity, columns, unknown_columns: unknown, file_errors: fileErrors, counts, rows };
+  return { entity, headers: sheet.headers.map((h) => h.trim()), columns, unknown_columns: unknown, file_errors: fileErrors, counts, rows };
+}
+
+/** Adds what an analysed import will create to `pending`, for the imports after it in a batch. */
+export function addPending(pending: Pending, a: Analysis) {
+  for (const r of a.rows) {
+    if (r.action === 'error') continue;
+    if (a.entity === 'products' && r.data.sku) pending.skus.set(r.data.sku, r.data.tracking ?? 'serialized');
+    if (a.entity === 'customers') {
+      if (r.data.reference) pending.customerRefs.add(String(r.data.reference));
+      if (r.data.email) pending.emails.add(String(r.data.email));
+    }
+  }
+  return pending;
 }
 
 // --- Apply ------------------------------------------------------------------------
@@ -309,6 +346,7 @@ async function applyPrices(ctx: Ctx, rows: RowResult[]) {
 function reportOf(a: Analysis) {
   const interesting = a.rows.filter((r) => r.action !== 'unchanged');
   return {
+    headers: a.headers,
     columns: a.columns,
     unknown_columns: a.unknown_columns,
     file_errors: a.file_errors,
@@ -319,19 +357,51 @@ function reportOf(a: Analysis) {
 }
 
 export function importToApi(r: any) {
-  return { id: r.id, object: 'import', entity: r.entity, status: r.status, filename: r.filename, file_id: r.file_id, row_count: r.row_count, error_count: r.error_count, report: r.report, applied_at: r.applied_at, created_at: r.created_at };
+  return {
+    id: r.id, object: 'import', entity: r.entity, status: r.status, source: r.source ?? 'file', batch_id: r.batch_id ?? null, filename: r.filename, file_id: r.file_id,
+    mapping: r.mapping ?? {}, row_count: r.row_count, error_count: r.error_count, report: r.report, applied_at: r.applied_at, created_at: r.created_at,
+  };
 }
 
-export async function createImport(ctx: Ctx, input: { entity: ImportEntity; filename: string; fileId: string | null; sheet: Sheet }) {
-  const a = await analyse(ctx, input.entity, input.sheet);
+/** The columns an import can fill, for the mapping screen. */
+export function columnsOf(entity: ImportEntity) {
+  return SPECS[entity].map((c) => ({ key: c.key, required: !!c.required }));
+}
+
+/** The mapping the shop saved for files with these headers, if any. */
+async function savedMapping(ctx: Ctx, entity: ImportEntity, headers: string[]) {
+  return (await one<{ mapping: Record<string, string> }>(ctx, `SELECT mapping FROM import_mappings WHERE entity = $1 AND signature = $2`, [entity, headerSignature(headers)]))?.mapping ?? {};
+}
+
+export async function createImport(ctx: Ctx, input: { entity: ImportEntity; filename: string; fileId: string | null; sheet: Sheet; mapping?: Record<string, string>; source?: string; batchId?: string | null; pending?: Pending }) {
+  const mapping = input.mapping ?? (input.batchId ? {} : await savedMapping(ctx, input.entity, input.sheet.headers));
+  const a = await analyse(ctx, input.entity, input.sheet, { mapping, source: input.source, pending: input.pending });
   const errors = a.counts.error + a.file_errors.length;
   const row = (
     await many(
       ctx,
-      `INSERT INTO imports (id, tenant_id, entity, status, filename, file_id, report, row_count, error_count, created_by) VALUES ($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [newId('imp'), ctx.tenantId, input.entity, input.filename, input.fileId, json(reportOf(a)), a.rows.length, errors, ctx.actor.id],
+      `INSERT INTO imports (id, tenant_id, entity, status, filename, file_id, report, row_count, error_count, created_by, source, batch_id, mapping) VALUES ($1,$2,$3,'validated',$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [newId('imp'), ctx.tenantId, input.entity, input.filename, input.fileId, json(reportOf(a)), a.rows.length, errors, ctx.actor.id, input.source ?? 'file', input.batchId ?? null, json(mapping)],
     )
   )[0];
+  return { api: importToApi(row), analysis: a };
+}
+
+/**
+ * The shop maps the file's columns itself (FR-MIG-2): the import is checked again with the new mapping,
+ * which is kept for the next file with the same headers.
+ */
+export async function remapImport(ctx: Ctx, id: string, sheet: Sheet, mapping: Record<string, string>, pending?: Pending) {
+  const rec = await must<any>(ctx, `SELECT * FROM imports WHERE id = $1 FOR UPDATE`, [id], 'import', id);
+  if (rec.status === 'applied') throw new AppError('import_applied', 409, t('imports.already_applied'));
+  const keys = new Set(SPECS[rec.entity as ImportEntity].map((c) => c.key));
+  const clean = Object.fromEntries(Object.entries(mapping).filter(([h, k]) => typeof h === 'string' && (k === '' || keys.has(k))).map(([h, k]) => [h.trim(), k]));
+  const a = await analyse(ctx, rec.entity, sheet, { mapping: clean, source: rec.source, pending });
+  await exec(ctx, `INSERT INTO import_mappings (tenant_id, entity, signature, mapping) VALUES ($1,$2,$3,$4) ON CONFLICT (tenant_id, entity, signature) DO UPDATE SET mapping = EXCLUDED.mapping, updated_at = now()`, [
+    ctx.tenantId, rec.entity, headerSignature(sheet.headers), json(clean),
+  ]);
+  const row = (await many(ctx, `UPDATE imports SET mapping = $2, report = $3, row_count = $4, error_count = $5 WHERE id = $1 RETURNING *`, [id, json(clean), json(reportOf(a)), a.rows.length, a.counts.error + a.file_errors.length]))[0];
+  await audit(ctx, { entity_type: 'import', entity_id: id, action: 'map_columns', extra: { mapping: clean } });
   return importToApi(row);
 }
 
@@ -347,20 +417,25 @@ export async function listImports(ctx: Ctx, limit = 20) {
  * Applies a validated import in the caller's transaction. The file is analysed again first, so rows
  * that changed since the dry run are caught; any error leaves everything untouched.
  */
-export async function applyImport(ctx: Ctx, id: string, sheet: Sheet) {
+export async function applyImport(ctx: Ctx, id: string, sheet: Sheet, opts: { quiet?: boolean } = {}) {
   const rec = await must<any>(ctx, `SELECT * FROM imports WHERE id = $1 FOR UPDATE`, [id], 'import', id);
   if (rec.status === 'applied') throw new AppError('import_applied', 409, t('imports.already_applied'));
-  const a = await analyse(ctx, rec.entity, sheet);
+  const a = await analyse(ctx, rec.entity, sheet, { mapping: rec.mapping ?? {}, source: rec.source });
   if (a.counts.error || a.file_errors.length) {
     await many(ctx, `UPDATE imports SET report = $2, error_count = $3 WHERE id = $1 RETURNING id`, [id, json(reportOf(a)), a.counts.error + a.file_errors.length]);
     throw invalid(t('imports.has_errors'), a.rows.flatMap((r) => r.errors.map((e) => ({ field: `row_${r.row}.${e.field}`, code: 'invalid', message: e.message }))).slice(0, 50));
   }
   if (rec.entity === 'products') await applyProducts(ctx, a.rows);
   else if (rec.entity === 'stock_items') await applyStockItems(ctx, a.rows);
+  else if (rec.entity === 'customers') await applyCustomers(ctx, a.rows, rec.source);
+  else if (rec.entity === 'orders') await applyOrders(ctx, a.rows, rec.source);
   else await applyPrices(ctx, a.rows);
   const row = (await many(ctx, `UPDATE imports SET status = 'applied', applied_at = now(), report = $2, row_count = $3, error_count = 0 WHERE id = $1 RETURNING *`, [id, json(reportOf(a)), a.rows.length]))[0];
   await audit(ctx, { entity_type: 'import', entity_id: id, action: 'apply', extra: { entity: rec.entity, counts: a.counts } });
-  return importToApi(row);
+  const api = importToApi(row);
+  // A batch announces itself once, when all of it is in.
+  if (!opts.quiet) await emit(ctx, 'import.completed', { type: 'import', id }, { ...api, report: undefined, counts: a.counts });
+  return api;
 }
 
 // --- Export ---------------------------------------------------------------------------
@@ -395,6 +470,29 @@ export async function exportRows(ctx: Ctx, entity: ImportEntity): Promise<Sheet>
         ...units.map((u) => [u.sku ?? '', u.barcode, u.serial ?? '', u.location, '', u.condition ?? '', u.purchase_date ? new Date(u.purchase_date).toISOString().slice(0, 10) : '', major(u.purchase_price), u.notes ?? '', u.bin ?? '']),
         ...levels.map((l) => [l.sku ?? '', '', '', l.location, String(l.quantity), '', '', '', '', '']),
       ],
+    };
+  }
+  if (entity === 'customers') {
+    const rows = await many(ctx, `SELECT * FROM customers WHERE deleted_at IS NULL AND merged_into_id IS NULL AND anonymized_at IS NULL ORDER BY name`);
+    return {
+      headers,
+      rows: rows.map((c) => {
+        const b = c.addresses?.billing ?? {};
+        return [c.name, c.email ?? '', c.phone ?? '', c.type, c.company_name ?? '', c.tax_id ?? '', b.line1 ?? '', b.postal_code ?? '', b.city ?? '', b.country ?? '', c.locale ?? '', (c.tags ?? []).join(', '), c.notes ?? '', c.marketing_consent ? 'yes' : 'no', c.provider_refs?.import ?? c.id];
+      }),
+    };
+  }
+  if (entity === 'orders') {
+    const rows = await many(
+      ctx,
+      `SELECT o.number, o.external_ref, o.starts_at, o.ends_at, o.status, c.email, c.name AS customer, c.id AS customer_id, l.name AS location, v.sku, ol.quantity, o.notes
+         FROM orders o JOIN order_lines ol ON ol.order_id = o.id AND ol.parent_line_id IS NULL JOIN variants v ON v.id = ol.variant_id
+         JOIN locations l ON l.id = o.location_id LEFT JOIN customers c ON c.id = o.customer_id
+        WHERE o.status <> 'draft' AND v.sku IS NOT NULL ORDER BY o.number, ol.position`,
+    );
+    return {
+      headers,
+      rows: rows.map((r) => [r.external_ref?.replace(/^[a-z]+:/, '') ?? String(r.number), r.email ?? '', r.customer ?? '', r.customer_id ?? '', r.sku, String(r.quantity), new Date(r.starts_at).toISOString(), new Date(r.ends_at).toISOString(), r.status, r.location, r.notes?.internal ?? '']),
     };
   }
   const rows = await many(

@@ -109,18 +109,6 @@ export async function openHtml(path: string, body?: unknown) {
   }
 }
 
-/** Every page of a cursor-paginated list (e.g. all products for a picker), oldest page first. */
-export async function allPages<T = any>(path: string): Promise<T[]> {
-  const out: T[] = [];
-  let cursor: string | null = null;
-  do {
-    const page: { data: T[]; has_more: boolean; next_cursor: string | null } = await api.get(`${path}${path.includes('?') ? '&' : '?'}${cursor ? `cursor=${encodeURIComponent(cursor)}` : ''}`);
-    out.push(...page.data);
-    cursor = page.has_more ? page.next_cursor : null;
-  } while (cursor);
-  return out;
-}
-
 export const qs = (o: Record<string, unknown>) =>
   Object.entries(o)
     .filter(([, v]) => v !== undefined && v !== null && v !== '')

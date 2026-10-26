@@ -83,7 +83,28 @@ export interface Product {
   min_notice_min: number;
   increment_min: number | null;
   variants: Variant[];
-  bundle: { components: { name: string; quantity: number }[] } | null;
+  /**
+   * What always comes with a bundle, and its slots of alternatives (theme API 1.7, FR-CAT-6). The
+   * `product.before_add` slot shows the picker; themes may list `components` as "includes".
+   */
+  bundle: {
+    components: { name: string; quantity: number }[];
+    slots?: { name: string; options: { variant_id: string; name: string; quantity: number; available: number | null }[] }[];
+  } | null;
+  /** Offered with the product, ticked in the `product.before_add` slot (theme API 1.7, FR-CAT-7). */
+  accessories?: RelatedProduct[];
+  /** Products that go with it: staff's choice, then those often rented with it (theme API 1.7). */
+  related?: RelatedProduct[];
+}
+
+export interface RelatedProduct {
+  id: string;
+  name: string;
+  slug: string;
+  type: string;
+  variant_id: string | null;
+  price: { description: string } | null;
+  image: { url: string; url_sm?: string; alt: string } | null;
 }
 
 export interface QuoteLine {

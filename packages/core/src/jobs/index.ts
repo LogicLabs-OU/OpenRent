@@ -11,7 +11,7 @@ import { REPORTS } from '../reports/index.ts';
  * Background work started from the admin or the API (FR-MIG-1, FR-REP-2). The worker runs queued jobs
  * (see apps/worker) and stores the result as a file; members download it from GET /jobs/{id}/download.
  */
-export const JOB_KINDS = ['tenant_export', 'report_export'] as const;
+export const JOB_KINDS = ['tenant_export', 'report_export', 'import_fetch', 'import_apply'] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 /** A running job that has not finished in this long is tried again (the worker probably stopped). */
@@ -41,7 +41,8 @@ export function jobToApi(j: JobRow, file?: FileRow | null) {
     kind: j.kind,
     status: j.status,
     progress: j.progress,
-    params: j.params,
+    // Credentials a job carries (encrypted) never leave the server.
+    params: Object.fromEntries(Object.entries(j.params ?? {}).filter(([k]) => k !== 'token')),
     error: j.error,
     result: file ? { file_id: file.id, filename: file.filename, size: file.size, content_type: file.content_type } : null,
     created_at: j.created_at,
@@ -107,9 +108,10 @@ export async function claimJobs(db: Ctx['db'], limit: number): Promise<JobRow[]>
   return r.rows;
 }
 
-/** Records the result in the job's tenant transaction, so the file and the status commit together. */
-export async function finishJob(ctx: Ctx, job: JobRow, file: FileRow) {
-  await exec(ctx, `UPDATE jobs SET status = 'succeeded', progress = 100, result_file_id = $2, finished_at = now() WHERE id = $1`, [job.id, file.id]);
+/** Records the result in the job's tenant transaction, so the file and the status commit together. Imports make no file. */
+export async function finishJob(ctx: Ctx, job: JobRow, file: FileRow | null) {
+  await exec(ctx, `UPDATE jobs SET status = 'succeeded', progress = 100, result_file_id = $2, finished_at = now() WHERE id = $1`, [job.id, file?.id ?? null]);
+  if (!file) return;
   const done = (await one<JobRow>(ctx, `SELECT * FROM jobs WHERE id = $1`, [job.id]))!;
   await emit(ctx, job.kind === 'tenant_export' ? 'export.completed' : 'report_export.completed', { type: 'job', id: job.id }, jobToApi(done, file));
   if (job.created_by) {

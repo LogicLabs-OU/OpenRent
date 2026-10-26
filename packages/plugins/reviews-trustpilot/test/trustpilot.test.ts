@@ -17,7 +17,7 @@ function fakeCtx(apiKey: string) {
     credentials: { api_key: apiKey, api_secret: 'secret', business_unit_id: 'bu-1' },
     connection: { id: 'icn_1', settings: { delay_days: 3, locale: 'de-DE' }, account: {} },
     fetch: async (url, init = {}) => {
-      sent.push({ method: init.method ?? 'GET', url, body: init.body && url.includes('invitations') ? JSON.parse(init.body) : init.body, auth: init.headers?.authorization });
+      sent.push({ method: init.method ?? 'GET', url, body: init.body && url.includes('invitations') ? JSON.parse(String(init.body)) : init.body, auth: init.headers?.authorization });
       const reply = url.includes('accesstoken') ? { access_token: 'tp-token', expires_in: 3600 } : url.includes('/business-units/bu-1?') ? { displayName: 'Kayak Hire' } : {};
       return { status: url.includes('invitations') ? 202 : 200, ok: true, json: async () => reply, text: async () => '' };
     },
@@ -26,7 +26,7 @@ function fakeCtx(apiKey: string) {
       set: async (t, id, remote) => void links.set(`${t}:${id}`, remote),
     },
     data: {
-      accounting: { contact: async () => contact, invoice: async () => null, payment: async () => null, entry: async () => null },
+      accounting: { contact: async () => contact, invoice: async () => null, payment: async () => null, entry: async () => null, documentPdf: async () => null },
       contact: async () => contact,
       order: async () => order,
     },

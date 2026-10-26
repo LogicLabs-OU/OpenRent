@@ -10,6 +10,7 @@
   import { Button } from '@openrent/ui/button';
   import { Spinner } from '@openrent/ui/spinner';
   import { StatusBadge } from '@openrent/ui/openrent';
+  import { Badge } from '@openrent/ui/badge';
   import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
   import SendIcon from '@lucide/svelte/icons/send';
   import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
@@ -143,7 +144,7 @@
                 {#each rows as n (n.id)}
                   <Table.Row data-testid="email-row">
                     <Table.Cell class="max-w-0 min-w-56 whitespace-normal">
-                      <button type="button" class="block w-full truncate text-left font-medium hover:underline" onclick={() => view(n)}>{n.subject}</button>
+                      <button type="button" class="block w-full truncate text-left font-medium hover:underline" onclick={() => view(n)}>{#if n.channel !== 'email'}<Badge variant="outline" class="mr-1.5">{t(`email.channel.${n.channel}` as any)}</Badge>{/if}{n.subject || n.text}</button>
                       <div class="text-muted-foreground truncate text-xs">{n.recipient} · {t(`email.event.${n.template}` as any)}</div>
                       {#if n.error && canRetry(n)}<div class="text-destructive line-clamp-2 text-xs [overflow-wrap:anywhere]" title={n.error}>{n.error}</div>{/if}
                     </Table.Cell>
@@ -207,7 +208,7 @@
   <Dialog.Content class="sm:max-w-2xl">
     {#if viewing}
       <Dialog.Header>
-        <Dialog.Title class="pr-6">{viewing.subject}</Dialog.Title>
+        <Dialog.Title class="pr-6">{viewing.subject || t(`email.channel.${viewing.channel}` as any)}</Dialog.Title>
         <Dialog.Description>{t('email.log.to', { to: viewing.recipient })} · {dt(viewing.sent_at ?? viewing.created_at)}</Dialog.Description>
       </Dialog.Header>
       <div class="flex flex-wrap items-center gap-2 text-sm">
@@ -218,7 +219,11 @@
       {#if viewing.error && canRetry(viewing)}
         <Alert.Root variant="destructive"><CircleAlertIcon /><Alert.Description class="[overflow-wrap:anywhere]">{viewing.error}</Alert.Description></Alert.Root>
       {/if}
-      <iframe title={t('email.preview')} sandbox="" class="h-96 w-full rounded-md border bg-white" srcdoc={viewing.body_html}></iframe>
+      {#if viewing.channel === 'email'}
+        <iframe title={t('email.preview')} sandbox="" class="h-96 w-full rounded-md border bg-white" srcdoc={viewing.body_html}></iframe>
+      {:else}
+        <p class="rounded-md border p-3 text-sm whitespace-pre-wrap" data-testid="text-message-body">{viewing.text}</p>
+      {/if}
       <Dialog.Footer>
         {#if canRetry(viewing)}
           <Button onclick={() => { const id = viewing.id; viewing = null; act(id, () => api.post(`/notifications/${id}/actions/retry`), t('email.log.retrying')); }}><SendIcon />{t('email.log.retry')}</Button>

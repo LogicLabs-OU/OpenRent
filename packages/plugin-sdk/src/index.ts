@@ -3,7 +3,7 @@
  * Licensed Apache-2.0 so plugin authors take on no AGPL obligations.
  */
 
-export const PLUGIN_API_VERSION = '1.4.0';
+export const PLUGIN_API_VERSION = '1.6.0';
 
 export interface Logger {
   info(obj: unknown, msg?: string): void;
@@ -19,6 +19,11 @@ export interface ProviderContext {
   logger: Logger;
   /** Idempotency key derived from the originating request, when there is one. */
   idempotencyKey?: string;
+  /**
+   * The shop's URL for this provider's webhooks, for providers that are told it per request: payment
+   * providers (plugin API 1.5) and text message channels, for delivery reports (1.6).
+   */
+  webhookUrl?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,13 +50,18 @@ export interface CreatePaymentIntentInput {
   savePaymentMethod: boolean;
   description?: string;
   metadata?: Record<string, string>;
+  /** The booking's page, where a provider that pays on its own page sends the customer back (plugin API 1.5). */
+  returnUrl?: string;
 }
 
 export interface PaymentIntentResult {
   ref: string;
+  /** For a payment form embedded in the storefront (Stripe Payment Element). */
   clientSecret: string | null;
   status: 'requires_payment' | 'processing' | 'succeeded' | 'requires_capture' | 'failed' | 'cancelled';
   customerRef?: string | null;
+  /** For a provider that pays on its own page: where to send the customer (plugin API 1.5). */
+  redirectUrl?: string | null;
 }
 
 /** A provider-hosted page the customer pays on (FR-PAY-1). */
@@ -143,6 +153,9 @@ export type ProviderEvent =
 export interface WebhookRequest {
   rawBody: Buffer;
   headers: Record<string, string | string[] | undefined>;
+  /** `POST`, or `GET` for providers that report by query string; then `query` holds it (plugin API 1.6). */
+  method?: string;
+  query?: string;
 }
 
 export interface PaymentProvider {
@@ -180,11 +193,17 @@ export interface Attachment {
   content: Buffer;
 }
 
+/**
+ * A message to send. Email has a subject and HTML. Text messages (`sms`, `whatsapp`, plugin API 1.6)
+ * go to an E.164 number (`+3725551234`) with the message in `text`; subject and html are empty, and
+ * `template` names the notification so a channel can pick a pre-approved WhatsApp template.
+ */
 export interface OutgoingMessage {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  template?: string;
   from?: string;
   replyTo?: string;
   attachments?: Attachment[];
@@ -218,9 +237,12 @@ export class DeliveryError extends Error {
   }
 }
 
+export type MessageChannelKind = 'email' | 'sms' | 'whatsapp';
+
 export interface NotificationChannel {
   id: string;
-  channel: 'email' | 'sms';
+  /** `whatsapp` from plugin API 1.6. */
+  channel: MessageChannelKind;
   isConfigured(ctx: ProviderContext): boolean;
   send(ctx: ProviderContext, msg: OutgoingMessage): Promise<{ ref: string | null }>;
   /**
@@ -232,7 +254,8 @@ export interface NotificationChannel {
 
 export interface DeliveryReport {
   ref: string;
-  status: 'delivered' | 'bounced' | 'complained';
+  /** `failed`: a text message the network could not deliver (plugin API 1.6). */
+  status: 'delivered' | 'bounced' | 'complained' | 'failed';
   error?: string | null;
 }
 
@@ -517,6 +540,13 @@ export function mapped(ctx: { connection: { settings: Record<string, unknown> } 
 }
 
 /** Core data an integration may read, by category. */
+/** An issued document as a PDF file (plugin API 1.5). */
+export interface DocumentPdf {
+  filename: string;
+  contentType: 'application/pdf';
+  body: Uint8Array;
+}
+
 export interface IntegrationData {
   accounting: {
     contact(customerId: string): Promise<AccountingContact | null>;
@@ -524,6 +554,11 @@ export interface IntegrationData {
     payment(paymentId: string): Promise<AccountingPayment | null>;
     /** A booked entry (plugin API 1.4). */
     entry(entryId: string): Promise<AccountingEntry | null>;
+    /**
+     * The issued PDF of an invoice or credit note, to attach to the remote copy (plugin API 1.5). Null
+     * when this install renders no PDFs.
+     */
+    documentPdf(documentId: string): Promise<DocumentPdf | null>;
   };
   /** A customer as a contact (plugin API 1.3). */
   contact(customerId: string): Promise<AccountingContact | null>;
@@ -544,8 +579,8 @@ export interface IntegrationContext extends ProviderContext {
   connection: { id: string; settings: Record<string, unknown>; account: Record<string, unknown> };
   /** What the shop typed for `fields` auth (an API key…); empty for OAuth 2, whose token `fetch` adds. */
   credentials: Record<string, string>;
-  /** `fetch` with the connection's credentials; an expired OAuth token is refreshed first. */
-  fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; ok: boolean; json(): Promise<any>; text(): Promise<string>; headers?: { get(name: string): string | null } }>;
+  /** `fetch` with the connection's credentials; an expired OAuth token is refreshed first. Bodies may be bytes (plugin API 1.5). */
+  fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array }): Promise<{ status: number; ok: boolean; json(): Promise<any>; text(): Promise<string>; headers?: { get(name: string): string | null } }>;
   /** Which record in the other system an OpenRent record became. */
   links: {
     get(localType: string, localId: string): Promise<{ remoteId: string; extra: Record<string, unknown> } | null>;
@@ -817,9 +852,9 @@ export function definePlugin(def: PluginDefinition): PluginDefinition {
 export interface PluginRuntime {
   paymentProvider(id: string): PaymentProvider | undefined;
   paymentProviders(): PaymentProvider[];
-  notificationChannel(channel: 'email' | 'sms'): NotificationChannel | undefined;
+  notificationChannel(channel: MessageChannelKind): NotificationChannel | undefined;
   /** Every channel of this kind, in load order (a shop picks one). */
-  notificationChannels(channel: 'email' | 'sms'): NotificationChannel[];
+  notificationChannels(channel: MessageChannelKind): NotificationChannel[];
   storageProvider(): StorageProvider | undefined;
   taxProvider(): TaxProvider | undefined;
   identityProvider(): IdentityProvider | undefined;

@@ -29,6 +29,7 @@ import { registerSignatures } from './routes/signatures.ts';
 import { registerSso } from './routes/sso.ts';
 import { registerIntegrations } from './routes/integrations.ts';
 import { registerAccounting } from './routes/accounting.ts';
+import { registerPortal } from './routes/portal.ts';
 import { registerCalendar } from './routes/calendar.ts';
 import { registerDocuments } from './routes/documents.ts';
 import { registerWebhooks } from './routes/webhooks.ts';
@@ -114,12 +115,13 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
           sessionCookie: { type: 'apiKey', in: 'cookie', name: 'or_session', description: 'Back office session; state-changing requests also need X-CSRF-Token' },
           secretKey: { type: 'http', scheme: 'bearer', description: 'sk_live_... secret API key with scopes' },
           publishableKey: { type: 'http', scheme: 'bearer', description: 'pk_live_... key, storefront namespace only' },
-          tenantSlug: { type: 'apiKey', in: 'header', name: 'X-Tenant-Slug', description: 'Storefront only: identifies the shop' },
+          tenantSlug: { type: 'apiKey', in: 'header', name: 'X-Tenant-Slug', description: 'Storefront and portal: identifies the shop' },
+          customerSession: { type: 'apiKey', in: 'header', name: 'X-Customer-Session', description: 'Portal: the customer’s session token from /portal/auth/verify' },
         },
       },
       tags: [
         { name: 'Orders' }, { name: 'Products' }, { name: 'Inventory' }, { name: 'Availability' }, { name: 'Pricing' }, { name: 'Customers' }, { name: 'Payments' },
-        { name: 'Documents' }, { name: 'Notifications' }, { name: 'Webhooks' }, { name: 'Reports' }, { name: 'Storefront' }, { name: 'Labels & scanning' },
+        { name: 'Documents' }, { name: 'Notifications' }, { name: 'Webhooks' }, { name: 'Reports' }, { name: 'Storefront' }, { name: 'Portal' }, { name: 'Labels & scanning' },
         { name: 'Tenant' }, { name: 'Locations' }, { name: 'Users' }, { name: 'API keys' }, { name: 'Auth' }, { name: 'Setup' }, { name: 'Audit' }, { name: 'Plugins' }, { name: 'System' },
       ],
     },
@@ -150,6 +152,7 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
   registerWebhooks(r);
   registerReports(r);
   registerStorefront(r);
+  registerPortal(r);
   registerExtensions(r);
   registerFiles(r);
   registerImports(r);

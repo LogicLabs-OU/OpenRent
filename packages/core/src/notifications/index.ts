@@ -3,22 +3,25 @@ import type { Ctx } from '../context.ts';
 import * as domains from '../domains/index.ts';
 import { overridesFor } from '../strings/index.ts';
 import { withStrings } from '../i18n/index.ts';
-import { AppError, invalid } from '../errors.ts';
+import { AppError, invalid, notFound } from '../errors.ts';
 import { emit } from '../events.ts';
 import { newId } from '../ids.ts';
 import { exec, json, many, must, one } from '../sql.ts';
 import { addStaffNotices, emailRecipients } from './staff.ts';
 import { makeHandlebars, buildOrderData } from '../documents/index.ts';
 import { resolveSettings } from '../tenancy/settings.ts';
-import { DEFAULT_NOTIFICATIONS } from './templates.ts';
+import { DEFAULT_NOTIFICATIONS, DEFAULT_TEXTS } from './templates.ts';
+import { queueText } from './texts.ts';
 import { t, tAny, type MessageKey } from '../i18n/index.ts';
 
-export { DEFAULT_NOTIFICATIONS };
+export { DEFAULT_NOTIFICATIONS, DEFAULT_TEXTS };
+export { normalizePhone, renderText, textWebhookUrl, MAX_TEXT } from './texts.ts';
+import { MAX_TEXT } from './texts.ts';
 
 export function notificationToApi(n: any) {
   return {
     id: n.id, object: 'notification', channel: n.channel, template: n.template_key, recipient: n.recipient, audience: n.audience, subject: n.subject, order_id: n.order_id,
-    attachments: n.attachments ?? [], status: n.status, error: n.error, attempts: n.attempts ?? 0, next_attempt_at: n.next_attempt_at ?? null, sent_at: n.sent_at, created_at: n.created_at,
+    text: n.body_text ?? null, attachments: n.attachments ?? [], status: n.status, error: n.error, attempts: n.attempts ?? 0, next_attempt_at: n.next_attempt_at ?? null, sent_at: n.sent_at, created_at: n.created_at,
   };
 }
 
@@ -99,6 +102,8 @@ export async function orderMessageData(ctx: Ctx, orderId: string, extra: Record<
 
 export async function notifyCustomer(ctx: Ctx, orderId: string, template: string, extra: Record<string, any> = {}, dedupeKey?: string, opts: { attachments?: string[] } = {}) {
   const data = await orderMessageData(ctx, orderId, extra);
+  // The text version goes to customers who asked for one (FR-NOT-4), besides the email.
+  await queueText(ctx, { template, orderId, data, dedupeKey });
   return queue(ctx, { template, to: data.customer?.email, audience: 'customer', orderId, data, dedupeKey, attachments: opts.attachments });
 }
 
@@ -141,8 +146,11 @@ export async function markNotification(ctx: Ctx, id: string, status: 'sent' | 'f
   if (n && (status === 'sent' || status === 'bounced')) await emit(ctx, `notification.${status}`, { type: 'notification', id }, notificationToApi(n));
 }
 
-/** Marks sent messages delivered or bounced from an email plugin's delivery reports (FR-NOT-5). */
-export async function applyDeliveryReports(ctx: Ctx, pluginId: string, reports: { ref: string; status: 'delivered' | 'bounced' | 'complained'; error?: string | null }[]) {
+/**
+ * Marks sent messages delivered or bounced from a plugin's delivery reports (FR-NOT-5). A text message
+ * the network could not deliver (`failed`) counts as bounced.
+ */
+export async function applyDeliveryReports(ctx: Ctx, pluginId: string, reports: { ref: string; status: 'delivered' | 'bounced' | 'complained' | 'failed'; error?: string | null }[]) {
   let updated = 0;
   for (const r of reports) {
     const n = await one<{ id: string; status: string }>(ctx, `SELECT id, status FROM notifications WHERE provider = $1 AND provider_ref = $2`, [pluginId, r.ref]);
@@ -179,13 +187,48 @@ export async function listNotificationTemplates(ctx: Ctx, locale?: string | null
   const l = locale || tenant.locale || 'en';
   const custom = await many(ctx, `SELECT * FROM notification_templates WHERE locale = $1 ORDER BY event`, [l]);
   return Object.entries(DEFAULT_NOTIFICATIONS).map(([event, d]) => {
-    const own = custom.find((c) => c.event === event);
-    return notificationTemplateToApi(own ?? { id: `builtin:${event}`, event, channel: 'email', locale: l, subject: expandBuiltin(d.subject, l), body: expandBuiltin(d.body, l), enabled: true, builtin: true });
+    const own = custom.find((c) => c.event === event && c.channel === 'email');
+    // The text message version (FR-NOT-4): the shop's own, the built-in one, or none for this event.
+    const text = custom.find((c) => c.event === event && c.channel === 'sms');
+    return {
+      ...notificationTemplateToApi(own ?? { id: `builtin:${event}`, event, channel: 'email', locale: l, subject: expandBuiltin(d.subject, l), body: expandBuiltin(d.body, l), enabled: true, builtin: true }),
+      text: text ? (text.enabled ? text.body : '') : DEFAULT_TEXTS[event] ? expandBuiltin(DEFAULT_TEXTS[event]!, l) : null,
+      text_builtin: !text,
+    };
   });
 }
 
-export async function upsertNotificationTemplate(ctx: Ctx, event: string, input: { subject: string; body: string; locale?: string; enabled?: boolean }) {
+/** One template by id (`builtin:<event>` or the shop's own) in `locale`, else the shop language. */
+export async function getNotificationTemplate(ctx: Ctx, id: string, locale?: string | null) {
+  const own = id.startsWith('builtin:') ? null : await one(ctx, `SELECT * FROM notification_templates WHERE id = $1`, [id]);
+  if (own) return notificationTemplateToApi(own);
+  const tpl = (await listNotificationTemplates(ctx, locale)).find((t: any) => t.id === id || t.event === id.replace(/^builtin:/, ''));
+  if (!tpl) throw notFound('notification_template', id);
+  return tpl;
+}
+
+/**
+ * Saves the shop's own version of a message. The email is saved only when subject and body come
+ * with it, so changing just the text message leaves the email built in (and translated).
+ */
+export async function upsertNotificationTemplate(ctx: Ctx, event: string, input: { subject?: string; body?: string; locale?: string; enabled?: boolean; text?: string | null }) {
   if (!DEFAULT_NOTIFICATIONS[event]) throw invalid(msg('notifications.unknown_event', { event }));
+  // The text version: a string is the shop's own (empty sends none), null goes back to the built-in one.
+  if (input.text === null) await exec(ctx, `DELETE FROM notification_templates WHERE event = $1 AND channel = 'sms' AND locale = $2`, [event, input.locale ?? 'en']);
+  else if (typeof input.text === 'string') {
+    const text = input.text.trim();
+    if (text.length > MAX_TEXT) throw invalid(msg('code.too_long', { max: MAX_TEXT }), [{ field: 'text', code: 'too_long', message: msg('code.too_long', { max: MAX_TEXT }) }]);
+    await exec(
+      ctx,
+      `INSERT INTO notification_templates (id, tenant_id, event, channel, locale, subject, body, enabled) VALUES ($1,$2,$3,'sms',$4,'',$5,$6)
+       ON CONFLICT (tenant_id, event, channel, locale) DO UPDATE SET body = EXCLUDED.body, enabled = EXCLUDED.enabled`,
+      [newId('ntp'), ctx.tenantId, event, input.locale ?? 'en', text, !!text],
+    );
+  }
+  if (input.subject === undefined || input.body === undefined) {
+    const own = (await listNotificationTemplates(ctx, input.locale ?? 'en')).find((x) => x.event === event)!;
+    return own;
+  }
   const row = (
     await many(
       ctx,
@@ -287,9 +330,9 @@ export async function resendNotification(ctx: Ctx, id: string) {
   const copy = newId('ntf');
   await exec(
     ctx,
-    `INSERT INTO notifications (id, tenant_id, channel, template_key, recipient, audience, subject, body_html, order_id, attachments)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [copy, ctx.tenantId, n.channel, n.template_key, n.recipient, n.audience, n.subject, n.body_html, n.order_id, json(n.attachments ?? [])],
+    `INSERT INTO notifications (id, tenant_id, channel, template_key, recipient, audience, subject, body_html, body_text, order_id, attachments)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [copy, ctx.tenantId, n.channel, n.template_key, n.recipient, n.audience, n.subject, n.body_html, n.body_text ?? null, n.order_id, json(n.attachments ?? [])],
   );
   await emit(ctx, 'internal.notification.queued', { type: 'notification', id: copy }, { id: copy });
   return getNotification(ctx, copy);

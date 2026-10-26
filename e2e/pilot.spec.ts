@@ -19,6 +19,7 @@ test('staff add product photos, import a catalogue and request a payment', async
 
   // Photos: upload to the sea kayak and see them on the storefront.
   await page.goto(`${ADMIN}/products`);
+  await page.getByLabel('Search products').fill('Sea kayak');
   await page.getByRole('link', { name: 'Sea kayak' }).click();
   const gallery = page.getByTestId('image-gallery');
   await expect(gallery).toBeVisible();

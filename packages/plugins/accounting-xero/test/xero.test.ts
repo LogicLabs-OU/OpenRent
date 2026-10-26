@@ -114,4 +114,22 @@ describe('Xero integration against the Xero fake', () => {
     const checked = await xeroIntegration().check!(ctx, [{ localType: 'document', remoteId: inv.id }, { localType: 'document', remoteId: 'gone' }]);
     expect(checked).toEqual([{ remoteId: inv.id, total: 0, status: 'voided' }, { remoteId: 'gone', total: null, status: 'deleted' }]);
   });
+
+  it('attaches the issued PDF when the shop asks for it, and tries again after a failed upload', async () => {
+    const inv = { ...invoice, id: 'doc_pdf', number: 'INV-2026-00090', order_payments: [] };
+    const e = entry('ace_90', 'invoice', { type: 'document', id: 'doc_pdf' }, [['receivable', 12000, 0], ['revenue_rental', 0, 10000], ['tax', 0, 2000]]);
+    const pdf = { filename: 'invoice-INV-2026-00090.pdf', contentType: 'application/pdf' as const, body: new Uint8Array() };
+    const { ctx, links } = memoryContext(fake, { settings: { mapping, attach_pdf: true }, account: { tenant_id: fake.orgs[0]!.tenantId }, data: { contacts: [contact], invoices: [inv], entries: [e], pdfs: { doc_pdf: pdf } } });
+    const x = xeroIntegration();
+    const task = { id: 't', event: 'accounting.entry_posted', object: { type: 'accounting_entry', id: 'ace_90' }, attempt: 1 };
+    // An empty file is refused; the invoice stays and the link remembers the PDF is missing.
+    expect((await x.handle(ctx, task)).message).toMatch(/^Invoice INV-2026-00090 sent to Xero; the PDF was not attached \(Xero: The attachment needs a body/);
+    expect(links.get('document:doc_pdf')!.extra.pdf).toBe('failed');
+    pdf.body = new TextEncoder().encode('%PDF-1.7 test');
+    expect(await x.handle(ctx, task)).toEqual({ status: 'done', message: 'INV-2026-00090 is already in Xero with its PDF' });
+    const doc = fake.orgs[0]!.docs.find((d) => d.number === 'INV-2026-00090')!;
+    expect(doc.attachments).toEqual([{ name: pdf.filename, type: 'application/pdf', size: 13 }]);
+    expect(fake.orgs[0]!.docs.filter((d) => d.number === 'INV-2026-00090')).toHaveLength(1);
+    expect((await x.handle(ctx, task)).status).toBe('skipped');
+  });
 });

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import * as Card from '@openrent/ui/card';
   import * as Field from '@openrent/ui/field';
@@ -15,12 +14,13 @@
   import { Spinner } from '@openrent/ui/spinner';
   import { Money, PageHeader } from '@openrent/ui/openrent';
   import TrashIcon from '@lucide/svelte/icons/trash-2';
-  import PlusIcon from '@lucide/svelte/icons/plus';
   import UserPlusIcon from '@lucide/svelte/icons/user-plus';
   import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
-  import { allPages, api, fromLocalInput, session, t, toast, notifyError, fieldErrors, toLocalInput } from '#lib';
+  import { api, fromLocalInput, session, t, toast, notifyError, fieldErrors, toLocalInput } from '#lib';
   import { to } from '#lib/nav.ts';
   import AvailabilityElsewhere from '#lib/components/availability-elsewhere.svelte';
+  import ProductPicker, { type PickedVariant } from '#lib/components/product-picker.svelte';
+  import OrderSuggestions from '#lib/components/order-suggestions.svelte';
 
   const tomorrow = new Date(Date.now() + 86400_000);
   tomorrow.setMinutes(0, 0, 0);
@@ -31,23 +31,18 @@
   let customerQ = $state('');
   let customerHits = $state<any[]>([]);
   let newCustomer = $state<{ name: string; email: string; phone: string } | null>(null);
-  let products = $state<any[]>([]);
-  let lines = $state<{ variant_id: string; quantity: number; label: string }[]>([]);
-  let pick = $state('');
+  let lines = $state<{ variant_id: string; quantity: number; label: string; product_id?: string }[]>([]);
   let coupon = $state('');
   let quote = $state<any>(null);
   let avail = $state<Record<string, number | null>>({});
   let quoteError = $state('');
   let notes = $state('');
+  let po = $state('');
+  let cycle = $state('');
   let busy = $state(false);
   let errors = $state<Record<string, string>>({});
   let timer: ReturnType<typeof setTimeout>;
 
-  onMount(async () => {
-    products = await allPages('/products?limit=200&filter[visibility]=public,hidden');
-  });
-
-  const variantOptions = $derived(products.flatMap((p) => p.variants.map((v: any) => ({ id: v.id, label: v.name === p.name ? p.name : `${p.name} – ${v.name}`, type: p.type }))));
 
   function searchCustomers() {
     clearTimeout(timer);
@@ -56,13 +51,10 @@
     }, 150);
   }
 
-  function addLine() {
-    const v = variantOptions.find((x) => x.id === pick);
-    if (!v) return;
+  function addLine(v: PickedVariant) {
     const existing = lines.find((l) => l.variant_id === v.id);
     if (existing) existing.quantity++;
-    else lines.push({ variant_id: v.id, quantity: 1, label: v.label });
-    pick = '';
+    else lines.push({ variant_id: v.id, quantity: 1, label: v.label, product_id: v.product_id });
   }
 
   let reqId = 0;
@@ -93,8 +85,14 @@
   });
 
   async function create(reserve: boolean) {
-    busy = true;
     errors = {};
+    // The server checks it again at reserve; asking here keeps the booking from being left as a draft.
+    if (reserve && customer?.b2b?.po_required && !po.trim()) {
+      errors = { po_number: t('order.po_required') };
+      document.getElementById('po')?.focus();
+      return;
+    }
+    busy = true;
     try {
       let customerId = customer?.id ?? null;
       if (!customerId && newCustomer?.name) {
@@ -108,6 +106,8 @@
         lines: lines.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity })),
         coupon_codes: coupon ? [coupon] : [],
         notes: notes ? { internal: notes } : undefined,
+        po_number: po.trim() || null,
+        billing_cycle: cycle || null,
       });
       if (reserve) {
         try {
@@ -202,13 +202,8 @@
     <Card.Root>
       <Card.Header><Card.Title>{t('new_order.items')}</Card.Title><Card.Description>{t('new_order.items_hint')}</Card.Description></Card.Header>
       <Card.Content class="flex flex-col gap-4">
-        <div class="flex gap-2">
-          <NativeSelect.Root class="flex-1" bind:value={pick} aria-label={t('new_order.add_product')}>
-            <NativeSelect.Option value="">{t('new_order.add_product')}</NativeSelect.Option>
-            {#each variantOptions as v (v.id)}<NativeSelect.Option value={v.id}>{v.label}{v.type === 'bundle' ? ` (${t('product.type.bundle')})` : ''}</NativeSelect.Option>{/each}
-          </NativeSelect.Root>
-          <Button variant="outline" onclick={addLine} disabled={!pick}><PlusIcon />{t('common.add')}</Button>
-        </div>
+        <ProductPicker visibility="public,hidden" onpick={addLine} />
+        <OrderSuggestions productIds={lines.map((l) => l.product_id).filter((x): x is string => !!x)} onadd={addLine} />
         {#if lines.length}
           <div class="overflow-hidden rounded-lg border">
             <Table.Root>
@@ -247,6 +242,20 @@
       <Card.Header><Card.Title>{t('new_order.summary')}</Card.Title></Card.Header>
       <Card.Content class="flex flex-col gap-4">
         <Field.Field><Field.Label for="coupon">{t('field.coupon')}</Field.Label><Input id="coupon" bind:value={coupon} /></Field.Field>
+        <Field.Field>
+          <Field.Label for="cycle">{t('order.billing')}</Field.Label>
+          <NativeSelect.Root id="cycle" class="w-full" bind:value={cycle}>
+            <NativeSelect.Option value="">{t('order.billing.once')}</NativeSelect.Option>
+            <NativeSelect.Option value="weekly">{t('order.billing.weekly')}</NativeSelect.Option>
+            <NativeSelect.Option value="monthly">{t('order.billing.monthly')}</NativeSelect.Option>
+          </NativeSelect.Root>
+          {#if cycle}<Field.Description>{t('order.billing.hint')}</Field.Description>{/if}
+        </Field.Field>
+        <Field.Field data-invalid={!!errors.po_number || undefined}>
+          <Field.Label for="po">{t('order.po_number')}</Field.Label>
+          <Input id="po" bind:value={po} required={!!customer?.b2b?.po_required} aria-invalid={!!errors.po_number} />
+          {#if errors.po_number}<Field.Error>{errors.po_number}</Field.Error>{:else if customer?.b2b?.on_account}<Field.Description>{t('order.on_account_hint', { days: customer.b2b.payment_terms_days ?? 14 })}</Field.Description>{/if}
+        </Field.Field>
         {#if quote}
           <dl class="space-y-2 text-sm">
             <div class="flex justify-between"><dt class="text-muted-foreground">{t('price.subtotal')}</dt><dd><Money value={quote.subtotal} /></dd></div>

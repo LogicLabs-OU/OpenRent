@@ -4,6 +4,15 @@
  */
 export const checkoutExtra = $state<{ values: Record<string, unknown>; errors: Record<string, string> }>({ values: {}, errors: {} });
 
+/**
+ * Options picked in the slots of choice bundles (FR-CAT-6), by the bundle's variant id. The
+ * `product.before_add` slot fills it; adding the bundle to the cart sends them, so themes need no code.
+ */
+export const bundlePicks = $state<Record<string, Record<string, string>>>({});
+
+/** Accessories ticked on a product page (FR-CAT-7), by the product's variant id: added to the cart with it. */
+export const accessoryChoices = $state<Record<string, string[]>>({});
+
 export interface CheckoutFieldDef {
   key: string;
   type: 'text' | 'checkbox' | 'select';

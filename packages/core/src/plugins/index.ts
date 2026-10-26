@@ -179,13 +179,30 @@ export async function emailChannel(ctx: Ctx) {
   if (!all.length) return null;
   const t = await one<{ settings: any }>(ctx, `SELECT settings FROM tenants WHERE id = $1`, [ctx.tenantId]);
   const chosen = t?.settings?.email_channel as string | undefined;
+  const ready = await channelStates(ctx, all);
+  const usable = (r: (typeof ready)[number]) => r.enabled && r.channel.isConfigured({ tenantId: ctx.tenantId, config: r.config, logger: ctx.logger });
+  return ready.find((r) => r.pluginId === chosen && usable(r)) ?? ready.find(usable) ?? ready[0]!;
+}
+
+/**
+ * The SMS or WhatsApp channel a shop sends booking updates with (FR-NOT-4): only the plugin chosen in
+ * `settings.sms_channel` / `whatsapp_channel`, and only while it is on and set up; else null.
+ */
+export async function textChannel(ctx: Ctx, kind: 'sms' | 'whatsapp') {
+  const t = await one<{ settings: any }>(ctx, `SELECT settings FROM tenants WHERE id = $1`, [ctx.tenantId]);
+  const chosen = t?.settings?.[`${kind}_channel`] as string | undefined;
+  if (!chosen) return null;
+  const ready = await channelStates(ctx, ctx.plugins.notificationChannels(kind));
+  return ready.find((r) => r.pluginId === chosen && r.enabled && r.channel.isConfigured({ tenantId: ctx.tenantId, config: r.config, logger: ctx.logger })) ?? null;
+}
+
+async function channelStates(ctx: Ctx, all: ReturnType<Ctx['plugins']['notificationChannels']>) {
   const ready: { channel: (typeof all)[number]; pluginId: string; enabled: boolean; config: Record<string, unknown> }[] = [];
   for (const channel of all) {
     const pluginId = ctx.plugins.pluginIdOf(channel.id) ?? channel.id;
     const { enabled, config } = await pluginConfig(ctx, pluginId);
     ready.push({ channel, pluginId, enabled, config });
   }
-  const usable = (r: (typeof ready)[number]) => r.enabled && r.channel.isConfigured({ tenantId: ctx.tenantId, config: r.config, logger: ctx.logger });
-  return ready.find((r) => r.pluginId === chosen && usable(r)) ?? ready.find(usable) ?? ready[0]!;
+  return ready;
 }
 

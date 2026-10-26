@@ -18,6 +18,8 @@ export interface OrderFacts {
   hasLines: boolean;
   hasCustomer: boolean;
   customerBlocked: boolean;
+  /** The customer books on account (FR-CUS-7): what is unpaid is owed on their invoice, not at the counter. */
+  onAccount?: boolean;
   unassignedUnits: number;
   outstandingUnits: number;
   balance: number;
@@ -53,7 +55,7 @@ const allAssigned: Guard = {
 const settled: Guard = {
   code: 'balance_due',
   check: (f) =>
-    f.balance > 0 ? msg('order.guard.balance_due', { amount: new Intl.NumberFormat(currentLocale(), { style: 'currency', currency: f.currency }).format(f.balance / 100) }) : null,
+    f.balance > 0 && !f.onAccount ? msg('order.guard.balance_due', { amount: new Intl.NumberFormat(currentLocale(), { style: 'currency', currency: f.currency }).format(f.balance / 100) }) : null,
 };
 const depositsSettled: Guard = {
   code: 'deposit_open',

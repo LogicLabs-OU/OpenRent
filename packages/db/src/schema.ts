@@ -766,9 +766,20 @@ export const customers = pgTable(
     tags: text().array().default(['']).notNull(),
     flags: jsonb().default({}).notNull(),
     marketingConsent: boolean('marketing_consent').default(false).notNull(),
+    /** Booking updates by text message or WhatsApp, which the customer asked for (FR-NOT-4). */
+    smsOptIn: boolean('sms_opt_in').default(false).notNull(),
+    whatsappOptIn: boolean('whatsapp_opt_in').default(false).notNull(),
     notes: text().default('').notNull(),
     customFields: jsonb('custom_fields').default({}).notNull(),
     providerRefs: jsonb('provider_refs').default({}).notNull(),
+    /** B2B (FR-CUS-7): books on account and pays invoices within `payment_terms_days`. */
+    onAccount: boolean('on_account').default(false).notNull(),
+    paymentTermsDays: integer('payment_terms_days'),
+    /** Most the customer may owe at once (minor units); null means no limit. */
+    creditLimit: bigint('credit_limit', { mode: 'number' }),
+    poRequired: boolean('po_required').default(false).notNull(),
+    /** per_order: each booking is invoiced; monthly: finished bookings go on one invoice a month. */
+    invoiceSchedule: text('invoice_schedule').default('per_order').notNull(),
     mergedIntoId: text('merged_into_id'),
     anonymizedAt: timestamp('anonymized_at', { withTimezone: true, mode: 'string' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -893,6 +904,16 @@ export const orders = pgTable(
     notes: jsonb().default({}).notNull(),
     tags: text().array().default(['']).notNull(),
     customFields: jsonb('custom_fields').default({}).notNull(),
+    /** The booking's id in the system it was imported from (FR-MIG-2), so it is not imported twice. */
+    externalRef: text('external_ref'),
+    /** The customer's purchase order number (FR-CUS-7). */
+    poNumber: text('po_number'),
+    /** The monthly invoice this booking is on, for customers invoiced monthly. */
+    invoiceId: text('invoice_id'),
+    /** Long rentals billed per period while out (FR-OR-11): weekly or monthly; null bills once. */
+    billingCycle: text('billing_cycle'),
+    /** The end of the last period invoiced. */
+    billedUntil: timestamp('billed_until', { withTimezone: true, mode: 'string' }),
     version: integer().default(1).notNull(),
     closedAt: timestamp('closed_at', { withTimezone: true, mode: 'string' }),
     cancelledAt: timestamp('cancelled_at', { withTimezone: true, mode: 'string' }),
@@ -919,6 +940,7 @@ export const orders = pgTable(
       table.status.asc().nullsLast().op('timestamptz_ops'),
       table.startsAt.asc().nullsLast().op('timestamptz_ops'),
     ),
+    uniqueIndex('orders_external_ref').on(table.tenantId, table.externalRef).where(sql`external_ref IS NOT NULL`),
     foreignKey({
       columns: [table.tenantId],
       foreignColumns: [tenants.id],
@@ -951,7 +973,7 @@ export const orders = pgTable(
       'orders_payment_status_check',
       sql`payment_status = ANY (ARRAY['unpaid'::text, 'partially_paid'::text, 'paid'::text, 'refunded'::text, 'overdue'::text])`,
     ),
-    check('orders_source_check', sql`source = ANY (ARRAY['storefront'::text, 'admin'::text, 'api'::text])`),
+    check('orders_source_check', sql`source = ANY (ARRAY['storefront'::text, 'admin'::text, 'api'::text, 'import'::text])`),
     check('orders_check', sql`ends_at > starts_at`),
   ],
 );
@@ -1723,6 +1745,8 @@ export const notifications = pgTable(
     audience: text().default('customer').notNull(),
     subject: text().notNull(),
     bodyHtml: text('body_html').notNull(),
+    /** The message of a text (SMS or WhatsApp); email keeps it in `body_html`. */
+    bodyText: text('body_text'),
     orderId: text('order_id'),
     dedupeKey: text('dedupe_key'),
     /** Document ids whose PDFs are attached when the message is sent. */
@@ -1949,6 +1973,8 @@ export const checkoutSessions = pgTable(
     options: jsonb().default({}).notNull(),
     orderId: text('order_id'),
     expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+    /** When the abandoned-cart reminder went out (FR-SF-9); one per cart. */
+    reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true, mode: 'string' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   },
@@ -2415,6 +2441,11 @@ export const imports = pgTable(
     report: jsonb().default({}).notNull(),
     rowCount: integer('row_count').default(0).notNull(),
     errorCount: integer('error_count').default(0).notNull(),
+    /** Where the rows came from (FR-MIG-2): a file, or a system an import batch read them from. */
+    source: text().default('file').notNull(),
+    batchId: text('batch_id'),
+    /** File column → OpenRent column, as the shop mapped it; empty uses the built-in names. */
+    mapping: jsonb().default({}).notNull(),
     createdBy: text('created_by'),
     appliedAt: timestamp('applied_at', { withTimezone: true, mode: 'string' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -2423,7 +2454,52 @@ export const imports = pgTable(
   (table) => [
     foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'imports_tenant_id_fkey' }),
     check('imports_status_check', sql`status = ANY (ARRAY['validated'::text, 'applied'::text, 'failed'::text])`),
-    check('imports_entity_check', sql`entity = ANY (ARRAY['products'::text, 'stock_items'::text, 'prices'::text])`),
+    check('imports_entity_check', sql`entity = ANY (ARRAY['products'::text, 'stock_items'::text, 'prices'::text, 'customers'::text, 'orders'::text])`),
+    index('imports_batch').on(table.tenantId, table.batchId),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * A move from another system (FR-MIG-2): the imports read from it, checked together and applied in
+ * one go, customers and products before stock and bookings.
+ */
+export const importBatches = pgTable(
+  'import_batches',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    source: text().notNull(),
+    status: text().default('fetching').notNull(),
+    error: text(),
+    jobId: text('job_id'),
+    createdBy: text('created_by'),
+    appliedAt: timestamp('applied_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'import_batches_tenant_id_fkey' }),
+    check('import_batches_source_check', sql`source = ANY (ARRAY['shelf'::text, 'booqable'::text, 'snipeit'::text])`),
+    check('import_batches_status_check', sql`status = ANY (ARRAY['fetching'::text, 'validated'::text, 'applying'::text, 'applied'::text, 'failed'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** Column mappings the shop chose, kept per kind of file so the same export maps by itself next time. */
+export const importMappings = pgTable(
+  'import_mappings',
+  {
+    tenantId: text('tenant_id').notNull(),
+    entity: text().notNull(),
+    /** The file's normalised headers, joined: the same export gives the same signature. */
+    signature: text().notNull(),
+    mapping: jsonb().default({}).notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'import_mappings_tenant_id_fkey' }),
+    primaryKey({ columns: [table.tenantId, table.entity, table.signature], name: 'import_mappings_pkey' }),
     tenantPolicy(),
   ],
 );
@@ -2659,6 +2735,85 @@ export const customerSessions = pgTable(
     foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'customer_sessions_tenant_id_fkey' }),
     unique('customer_sessions_token_hash_key').on(table.tokenHash),
     index('customer_sessions_email').on(table.tenantId, table.email),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * Products that go with a product (FR-CAT-7): accessories offered with it, related products, and those
+ * often rented with it (worked out weekly from bookings, `score` = bookings with both).
+ */
+export const productRelations = pgTable(
+  'product_relations',
+  {
+    tenantId: text('tenant_id').notNull(),
+    productId: text('product_id').notNull(),
+    relatedProductId: text('related_product_id').notNull(),
+    kind: text().notNull(),
+    position: integer().default(0).notNull(),
+    score: integer().default(0).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'product_relations_tenant_id_fkey' }),
+    foreignKey({ columns: [table.productId], foreignColumns: [products.id], name: 'product_relations_product_id_fkey' }).onDelete('cascade'),
+    foreignKey({ columns: [table.relatedProductId], foreignColumns: [products.id], name: 'product_relations_related_product_id_fkey' }).onDelete('cascade'),
+    primaryKey({ columns: [table.productId, table.relatedProductId, table.kind], name: 'product_relations_pkey' }),
+    index('product_relations_tenant').on(table.tenantId, table.productId),
+    check('product_relations_kind_check', sql`kind = ANY (ARRAY['accessory'::text, 'related'::text, 'often_rented_with'::text])`),
+    check('product_relations_not_self', sql`product_id <> related_product_id`),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * Stock rented in from a supplier for a while (FR-CAT-9): it raises a variant's capacity at a location
+ * during `period` only. What it costs is kept for the product's return (reports); the supplier's own
+ * invoice is what the books record.
+ */
+export const externalStock = pgTable(
+  'external_stock',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    variantId: text('variant_id').notNull(),
+    locationId: text('location_id').notNull(),
+    supplier: text().notNull(),
+    quantity: integer().notNull(),
+    period: tstzrange('period').notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    unitCost: bigint('unit_cost', { mode: 'number' }).default(0).notNull(),
+    currency: char({ length: 3 }).notNull(),
+    reference: text(),
+    note: text().default('').notNull(),
+    status: text().default('booked').notNull(),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'external_stock_tenant_id_fkey' }),
+    foreignKey({ columns: [table.variantId], foreignColumns: [variants.id], name: 'external_stock_variant_id_fkey' }),
+    foreignKey({ columns: [table.locationId], foreignColumns: [locations.id], name: 'external_stock_location_id_fkey' }),
+    index('external_stock_pool').on(table.tenantId, table.variantId, table.locationId),
+    check('external_stock_quantity_check', sql`quantity > 0`),
+    check('external_stock_status_check', sql`status = ANY (ARRAY['booked'::text, 'cancelled'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** Emails that asked not to get a kind of message (abandoned-cart reminders, FR-SF-9). */
+export const emailOptouts = pgTable(
+  'email_optouts',
+  {
+    tenantId: text('tenant_id').notNull(),
+    email: text().notNull(),
+    kind: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'email_optouts_tenant_id_fkey' }),
+    primaryKey({ columns: [table.tenantId, table.email, table.kind], name: 'email_optouts_pkey' }),
     tenantPolicy(),
   ],
 );
@@ -3466,6 +3621,39 @@ export const accountingEntryLines = pgTable(
     foreignKey({ columns: [table.entryId], foreignColumns: [accountingEntries.id], name: 'accounting_entry_lines_entry_id_fkey' }),
     index('accounting_entry_lines_entry').on(table.entryId),
     check('accounting_entry_lines_amounts_check', sql`debit >= 0 AND credit >= 0 AND (debit = 0 OR credit = 0)`),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * A report with its filters, saved under a name (FR-REP-4). With a schedule it is emailed as CSV or
+ * XLSX to its recipients; `params.range` keeps the period relative (last month, the last 7 days…).
+ */
+export const savedReports = pgTable(
+  'saved_reports',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    name: text().notNull(),
+    report: text().notNull(),
+    params: jsonb().default({}).notNull(),
+    format: text().default('csv').notNull(),
+    schedule: text(),
+    recipients: jsonb().default([]).notNull(),
+    nextRunAt: timestamp('next_run_at', { withTimezone: true, mode: 'string' }),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true, mode: 'string' }),
+    lastError: text('last_error'),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'saved_reports_tenant_id_fkey' }),
+    foreignKey({ columns: [table.createdBy], foreignColumns: [users.id], name: 'saved_reports_created_by_fkey' }).onDelete('set null'),
+    index('saved_reports_tenant').on(table.tenantId, table.name),
+    index('saved_reports_due').on(table.nextRunAt).where(sql`schedule IS NOT NULL`),
+    check('saved_reports_format_check', sql`format = ANY (ARRAY['csv'::text, 'xlsx'::text])`),
+    check('saved_reports_schedule_check', sql`schedule IS NULL OR schedule = ANY (ARRAY['daily'::text, 'weekly'::text, 'monthly'::text])`),
     tenantPolicy(),
   ],
 );

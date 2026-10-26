@@ -71,4 +71,5 @@ OpenRent still keeps no ledger of its own (PRD §1.3). The books live in Xero, Q
 - The Accounting section of the admin holds everything accounting, and the Integrations page keeps the other categories. Permissions are `accounting:read` and `accounting:manage`.
 - The journal export and the sync read the same entries, so they always agree. Changing account codes or the mapping affects new entries only.
 - **Testing.** Tests run against stateful fakes of the three APIs (`packages/accounting-fakes`) that enforce each system's documented rules. `pnpm test:accounting-live` checks the real APIs when sandbox credentials are set. Real-account behaviour that the documentation does not describe can still differ, so the live check comes before relying on a system.
-- **Not yet:** attaching the issued PDF to the remote invoice, and Stripe fees as expenses.
+- **PDFs (plugin API 1.5).** The issued PDF goes onto the remote invoice (and credit note where the system takes one) through `ctx.data.accounting.documentPdf`. The PDF is rendered once and stored, by whichever process has the renderer. A failed upload never undoes the invoice: the link records it, and sending again retries only the PDF.
+- **Not yet:** Stripe fees as expenses.

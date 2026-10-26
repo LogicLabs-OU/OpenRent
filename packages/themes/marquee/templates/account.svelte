@@ -118,6 +118,8 @@
   </div>
   <div class="grid gap-10 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
     <div class="flex min-w-0 flex-col gap-10">
+      <!-- What is owed, business account, insurance and signatures (theme API 1.7). -->
+      <rt.components.Slot name="account.extra" />
       <section class="flex flex-col gap-4" aria-labelledby="or-upcoming">
         <h2 id="or-upcoming" class={[h3, 'flex items-baseline gap-3']}>
           {rt.t('account.upcoming')}<span class="mq-mono text-base font-normal">{pad(upcoming.length)}</span>

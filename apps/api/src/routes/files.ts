@@ -48,6 +48,13 @@ export function registerFiles(r: Router) {
       return reply.status(201).send({ ...files.fileToApi(f), ...(purpose === 'import' || purpose === 'attachment' ? {} : catalog.imageUrls(ctx, f.id)) });
     },
   );
+  r.delete('/files/:id', { tags: F, summary: 'Delete an upload that nothing uses yet (photos and attachments go with what they belong to)', params: IdParams }, async (ctx, req) => {
+    const f = await files.getFile(ctx, req.params.id);
+    if (f.kind === 'attachment') {
+      if (!(['orders:write', 'customers:write', 'inventory:write'] as const).some((p) => can(ctx.actor, p))) assertCan(ctx.actor, 'orders:write');
+    } else assertCan(ctx.actor, f.kind === 'photo' ? 'orders:fulfil' : 'catalog:write');
+    await files.deleteUpload(ctx, f.id);
+  });
   r.get('/files/:id', { permission: 'catalog:read', tags: F, summary: 'File metadata', params: IdParams }, async (ctx, req) => files.fileToApi(await files.getFile(ctx, req.params.id)));
   r.get('/files/:id/content', { permission: 'catalog:read', tags: F, summary: 'Download a file (images accept ?variant=sm|lg)', params: IdParams, querystring: Type.Object({ variant: Type.Optional(Type.Union([Type.Literal('sm'), Type.Literal('lg'), Type.Literal('original')])) }), raw: true }, async (ctx, req, reply) => {
     // Data exports hold every customer's details: they download only through GET /jobs/{id}/download.

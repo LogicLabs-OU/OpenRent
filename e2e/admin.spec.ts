@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { ADMIN, collectErrors, localInput, shot } from './helpers.ts';
+import { ADMIN, addProduct, collectErrors, localInput, shot } from './helpers.ts';
 
 test('staff run an order from creation to return', async ({ page }) => {
   const errors = collectErrors(page);
@@ -21,8 +21,7 @@ test('staff run an order from creation to return', async ({ page }) => {
   // A counter rental starting now: pickup in a few minutes, return later today (shop time zone).
   await page.getByLabel(/^Pickup/).fill(localInput('Europe/Tallinn', 2));
   await page.getByLabel(/^Return/).fill(localInput('Europe/Tallinn', 300));
-  await page.getByLabel('Add a product').selectOption({ label: 'Sea kayak' });
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await addProduct(page, 'Sea kayak');
   await expect(page.getByText('Total').first()).toBeVisible();
   await shot(page, 'admin-new-order');
   await page.getByRole('button', { name: /create and reserve/i }).click();
@@ -52,6 +51,7 @@ test('staff run an order from creation to return', async ({ page }) => {
   await shot(page, 'admin-order-returned');
 
   await page.goto(`${ADMIN}/products`);
+  await page.getByLabel('Search products').fill('Sea kayak');
   await expect(page.getByRole('link', { name: 'Sea kayak' })).toBeVisible();
   await page.getByRole('link', { name: 'Sea kayak' }).click();
   await expect(page.getByText('Availability', { exact: true })).toBeVisible();

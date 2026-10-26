@@ -142,7 +142,7 @@ const ProductFields = {
     Type.Object({
       pricing_mode: Type.Optional(Type.Union([Type.Literal('sum'), Type.Literal('fixed'), Type.Literal('discount_pct')])),
       discount_bp: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })),
-      components: Type.Array(Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 1 }), slot_name: Type.Optional(Type.String()) }), { minItems: 1 }),
+      components: Type.Array(Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 1 }), slot_name: Type.Optional(Nullable(Type.String({ maxLength: 80, description: 'Components with the same slot name are alternatives: the booking picks one (FR-CAT-6)' }))) }), { minItems: 1 }),
     }),
   ),
 };
@@ -162,6 +162,7 @@ export const LineInput = Type.Object(
     stock_item_ids: Type.Optional(Type.Array(Id, { maxItems: 100 })),
     buffer_before_min: Type.Optional(Type.Integer({ minimum: 0 })),
     buffer_after_min: Type.Optional(Type.Integer({ minimum: 0 })),
+    picks: Type.Optional(Nullable(Type.Record(Type.String({ maxLength: 80 }), Id, { description: 'Choice bundles: the variant picked per slot; a slot not named takes its first option' }))),
   },
   { additionalProperties: false },
 );
@@ -191,6 +192,8 @@ export const OrderInput = Type.Object(
     tags: Type.Optional(Type.Array(Type.String())),
     custom_fields: Type.Optional(Json),
     options: Type.Optional(QuoteOptions),
+    po_number: Type.Optional(Nullable(Type.String({ maxLength: 100 }))),
+    billing_cycle: Type.Optional(Nullable(Type.String({ description: 'weekly or monthly: invoice each period while out (FR-OR-11); null bills once' }))),
   },
   { additionalProperties: false },
 );
@@ -226,8 +229,22 @@ export const CustomerFields = {
   tags: Type.Optional(Type.Array(Type.String())),
   flags: Type.Optional(Type.Object({ blocked: Type.Optional(Type.Boolean()), deposit_waived: Type.Optional(Type.Boolean()), requires_id_check: Type.Optional(Type.Boolean()), id_verified: Type.Optional(Type.Boolean()) })),
   marketing_consent: Type.Optional(Type.Boolean()),
+  sms_opt_in: Type.Optional(Type.Boolean({ description: 'Booking updates by SMS (FR-NOT-4)' })),
+  whatsapp_opt_in: Type.Optional(Type.Boolean({ description: 'Booking updates on WhatsApp (FR-NOT-4)' })),
   notes: Type.Optional(Type.String()),
   custom_fields: Type.Optional(Json),
+  b2b: Type.Optional(
+    Type.Object(
+      {
+        on_account: Type.Optional(Type.Boolean({ description: 'Books without paying first; invoices are paid within the terms (FR-CUS-7)' })),
+        payment_terms_days: Type.Optional(Nullable(Type.Integer({ description: '0 to 365' }))),
+        credit_limit: Type.Optional(Nullable(Type.Integer({ description: 'Minor units, 0 or more; null for no limit' }))),
+        po_required: Type.Optional(Type.Boolean()),
+        invoice_schedule: Type.Optional(Type.Union([Type.Literal('per_order'), Type.Literal('monthly')])),
+      },
+      { additionalProperties: false },
+    ),
+  ),
 };
 export const CustomerInput = Type.Object(CustomerFields, { additionalProperties: false });
 export const CustomerPatch = Type.Partial(Type.Object(CustomerFields), { additionalProperties: false });

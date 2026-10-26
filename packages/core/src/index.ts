@@ -31,6 +31,7 @@ export * as imports from './imports/index.ts';
 export * as maintenance from './maintenance/index.ts';
 export * as stocktakes from './stocktakes/index.ts';
 export * as accounts from './accounts/index.ts';
+export * as portal from './portal/index.ts';
 export * as attachments from './attachments/index.ts';
 export * as customfields from './customfields/index.ts';
 export * as staffNotices from './notifications/staff.ts';

@@ -1,6 +1,6 @@
 import type { Ctx, Role } from '../context.ts';
 import { SYSTEM_ROLES } from '../context.ts';
-import { AppError, invalid, type FieldError } from '../errors.ts';
+import { AppError, invalid, notFound, type FieldError } from '../errors.ts';
 import { audit } from '../events.ts';
 import { newId } from '../ids.ts';
 import { t as msg } from '../i18n/index.ts';
@@ -37,6 +37,12 @@ export async function listRoles(ctx: Ctx) {
   );
   const custom = await many(ctx, `SELECT * FROM roles WHERE deleted_at IS NULL ORDER BY lower(name)`);
   return [...SYSTEM_ROLES.map((k) => systemRole(k, counts.get(k) ?? 0)), ...custom.map((r) => roleToApi({ ...r, members: counts.get(r.id) ?? 0 }))];
+}
+
+export async function getRole(ctx: Ctx, id: string) {
+  const role = (await listRoles(ctx)).find((r) => r.id === id);
+  if (!role) throw notFound('role', id);
+  return role;
 }
 
 async function check(ctx: Ctx, input: RoleInput, id: string | null) {

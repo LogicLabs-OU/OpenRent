@@ -9,6 +9,8 @@ import { allocateDowntime, bumpFutureAssignments, deleteUnitAllocations, endAllo
 import { getLocation } from '../tenancy/index.ts';
 import { ensureTicket, releaseUnit } from '../maintenance/tickets.ts';
 
+export { listExternalStock, createExternalStock, cancelExternalStock } from './external.ts';
+
 export type StockStatus = 'available' | 'reserved' | 'out' | 'needs_inspection' | 'soft_down' | 'hard_down' | 'retired' | 'lost' | 'in_transit';
 export const DOWN_STATUSES: StockStatus[] = ['needs_inspection', 'soft_down', 'hard_down'];
 const MANUAL_STATUSES: StockStatus[] = ['available', 'needs_inspection', 'soft_down', 'hard_down', 'retired', 'lost'];

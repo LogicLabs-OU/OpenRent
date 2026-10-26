@@ -1,4 +1,6 @@
 <script lang="ts">
+  import UploadIcon from '@lucide/svelte/icons/upload';
+  import ImportDialog from '#lib/components/import-dialog.svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import * as Table from '@openrent/ui/table';
@@ -60,6 +62,7 @@
   import CancellationRequests from '#lib/components/cancellation-requests.svelte';
   import ExtensionRequests from '#lib/components/extension-requests.svelte';
   import ListExportMenu from '#lib/components/list-export-menu.svelte';
+  let importOpen = $state(false);
 </script>
 
 <svelte:window onkeydown={key} />
@@ -68,9 +71,11 @@
 <PageHeader title={t('nav.orders')} description={t('orders.description')}>
   {#snippet actions()}
     <ListExportMenu path="/orders/export" query={{ 'filter[status]': filter, q, sort: tab === 'upcoming' ? 'starts_at' : undefined }} />
+    {#if session.can('orders:write')}<Button variant="outline" onclick={() => (importOpen = true)}><UploadIcon />{t('import.import')}</Button>{/if}
     <Button href={to('/orders/new')}><PlusIcon />{t('action.new_order')}</Button>
   {/snippet}
 </PageHeader>
+<ImportDialog entity="orders" bind:open={importOpen} onapplied={() => load()} />
 <CancellationRequests />
 <ExtensionRequests />
 

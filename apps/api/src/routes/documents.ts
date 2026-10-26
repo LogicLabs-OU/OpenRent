@@ -1,6 +1,6 @@
 import { documents, notifications, plugins, tenancy, AppError, serverT } from '@openrent/core';
 import type { Router } from '../http.ts';
-import { Id, IdParams, Locale, Type } from '../schemas.ts';
+import { Id, IdParams, Locale, Nullable, Type } from '../schemas.ts';
 
 export function registerDocuments(r: Router) {
   const D = ['Documents'];
@@ -45,6 +45,21 @@ export function registerDocuments(r: Router) {
     async (ctx, req) => ({ object: 'list', data: await documents.listTemplates(ctx, req.query.locale) }),
   );
   r.get('/document_templates/variables', { permission: 'documents:read', tags: D, summary: 'Data and helpers a template can use' }, async () => documents.TEMPLATE_VARIABLES);
+  r.get('/document_templates/:id', { permission: 'documents:read', tags: D, summary: 'One template (builtin:<type> is the built-in one)', params: IdParams }, async (ctx, req) => documents.getTemplate(ctx, req.params.id));
+  r.patch(
+    '/document_templates/:id',
+    { permission: 'documents:write', tags: D, summary: 'Change a template; changing a built-in one creates the shop’s own', params: IdParams, body: Type.Object({ name: Type.Optional(Type.String()), locale: Type.Optional(Type.String()), body: Type.Optional(Type.String({ minLength: 1 })), css: Type.Optional(Type.String()) }) },
+    async (ctx, req) => documents.updateTemplate(ctx, req.params.id, req.body),
+  );
+  r.post(
+    '/document_templates/:id/preview',
+    { permission: 'documents:read', tags: D, summary: 'Render a stored template against a real order', params: IdParams, body: Type.Object({ order_id: Type.Optional(Id), locale: Type.Optional(Type.String()) }), raw: true },
+    async (ctx, req, reply) => {
+      const tpl = await documents.getTemplate(ctx, req.params.id);
+      const html = await documents.previewTemplate(ctx, { type: tpl.type, body: tpl.body, css: tpl.css, order_id: req.body.order_id, locale: req.body.locale ?? tpl.locale });
+      return reply.type('text/html; charset=utf-8').send(html);
+    },
+  );
   r.delete('/document_templates/:id', { permission: 'documents:write', tags: D, summary: 'Go back to the built-in template (issued documents keep their HTML)', params: IdParams }, async (ctx, req) => documents.resetTemplate(ctx, req.params.id));
   r.post(
     '/document_templates',
@@ -100,13 +115,39 @@ export function registerDocuments(r: Router) {
       }
     },
   );
+  r.post(
+    '/notifications/actions/test_text',
+    {
+      permission: 'plugins:manage', tags: N, summary: 'Send a test SMS or WhatsApp message right away with the chosen plugin and report the response',
+      body: Type.Object({ to: Type.String({ maxLength: 40 }), channel: Type.Union([Type.Literal('sms'), Type.Literal('whatsapp')]) }), status: 200,
+    },
+    async (ctx, req) => {
+      const to = notifications.normalizePhone(req.body.to);
+      if (!to) throw new AppError('validation_error', 422, serverT('error.field.phone_e164'), { errors: [{ field: 'to', code: 'invalid', message: serverT('error.field.phone_e164') }] });
+      const picked = await plugins.textChannel(ctx, req.body.channel);
+      if (!picked) throw new AppError('no_text_channel', 409, serverT('notifications.no_text_channel'));
+      const tenant = await tenancy.getTenant(ctx);
+      try {
+        const res = await picked.channel.send(
+          { tenantId: ctx.tenantId, config: picked.config, logger: ctx.logger, webhookUrl: notifications.textWebhookUrl(ctx, picked.pluginId) },
+          { to, subject: '', html: '', text: serverT('notifications.test_text', { shop: tenant.name }), template: 'test' },
+        );
+        return { object: 'text_test', status: 'sent', to, provider_ref: res.ref };
+      } catch (err: any) {
+        throw new AppError('text_failed', 502, notifications.deliveryErrorMessage(err), { extra: { cause_code: err?.code ?? null } });
+      }
+    },
+  );
   r.get('/notification_templates', { permission: 'documents:read', tags: N, summary: 'Message templates in one language (?locale=, default the shop language)', querystring: Type.Object({ locale: Type.Optional(Locale) }) }, async (ctx, req) => ({
     object: 'list',
     data: await notifications.listNotificationTemplates(ctx, req.query.locale),
   }));
+  r.get('/notification_templates/:id', { permission: 'documents:read', tags: N, summary: 'One message template (id = builtin:<event> or the shop’s own)', params: IdParams, querystring: Type.Object({ locale: Type.Optional(Locale) }) }, async (ctx, req) =>
+    notifications.getNotificationTemplate(ctx, req.params.id, req.query.locale),
+  );
   r.patch(
     '/notification_templates/:id',
-    { permission: 'documents:write', tags: N, summary: 'Override a message template (id = event name, e.g. order_confirmed)', params: IdParams, body: Type.Object({ subject: Type.String(), body: Type.String(), locale: Type.Optional(Locale), enabled: Type.Optional(Type.Boolean()) }) },
+    { permission: 'documents:write', tags: N, summary: 'Override a message template (id = event name, e.g. order_confirmed)', params: IdParams, body: Type.Object({ subject: Type.Optional(Type.String()), body: Type.Optional(Type.String()), locale: Type.Optional(Locale), enabled: Type.Optional(Type.Boolean()), text: Type.Optional(Nullable(Type.String({ description: 'The SMS and WhatsApp text; empty sends none, null restores the built-in one' }))) }) },
     async (ctx, req) => notifications.upsertNotificationTemplate(ctx, req.params.id.replace(/^builtin:/, ''), req.body),
   );
   r.post(

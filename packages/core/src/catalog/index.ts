@@ -14,13 +14,15 @@ function cleanDescriptions(input: { description?: string; translations?: Record<
 }
 import type { Ctx } from '../context.ts';
 import { makeCrud } from '../crud.ts';
-import { AppError, invalid, type FieldError } from '../errors.ts';
+import { AppError, invalid, notFound, type FieldError } from '../errors.ts';
 import { audit, emit } from '../events.ts';
 import { newId } from '../ids.ts';
 import { exec, json, listPage, many, must, one, updateSql, type ListParams } from '../sql.ts';
 import { slugify } from '../tenancy/index.ts';
 import type { FeeRule, PriceRule, PriceStructure } from '../pricing/engine.ts';
 import { imagesFor } from './images.ts';
+
+export { relationsOf, setRelations, relationsToApi, computeOftenRentedWith, type RelationKind } from './relations.ts';
 
 export * from './images.ts';
 
@@ -303,7 +305,7 @@ export interface ProductInput {
   residual_bp?: number;
   price?: VariantInput['price'];
   variants?: VariantInput[];
-  bundle?: { pricing_mode?: 'sum' | 'fixed' | 'discount_pct'; discount_bp?: number; components: { variant_id: string; quantity: number; slot_name?: string }[] };
+  bundle?: { pricing_mode?: 'sum' | 'fixed' | 'discount_pct'; discount_bp?: number; components: { variant_id: string; quantity: number; slot_name?: string | null }[] };
 }
 
 const PRODUCT_COLS = {
@@ -452,6 +454,13 @@ async function setCategories(ctx: Ctx, productId: string, ids: string[]) {
   for (const c of ids) {
     await exec(ctx, `INSERT INTO product_categories (tenant_id, product_id, category_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [ctx.tenantId, productId, c]);
   }
+}
+
+/** A product of type bundle, or a 404. */
+export async function getBundle(ctx: Ctx, id: string) {
+  const p = await getProduct(ctx, id);
+  if (p.type !== 'bundle') throw notFound('bundle', id);
+  return p;
 }
 
 async function setBundle(ctx: Ctx, productId: string, b: NonNullable<ProductInput['bundle']>) {

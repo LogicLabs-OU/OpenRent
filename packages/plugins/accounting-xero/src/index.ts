@@ -42,7 +42,7 @@ async function call(ctx: IntegrationContext, method: string, path: string, body?
   const res = await ctx.fetch(`${base(ctx)}/api.xro/2.0${path}`, {
     method,
     headers: { 'xero-tenant-id': tenantId, 'content-type': 'application/json', ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof Uint8Array ? body : JSON.stringify(body),
   });
   if (res.status === 429) throw new RetryLater('Xero asked to slow down', (Number(res.headers?.get('retry-after')) || 60) * 1000);
   const data = await res.json().catch(() => ({}));
@@ -129,10 +129,32 @@ async function lineItems(ctx: IntegrationContext, inv: AccountingInvoice) {
   return out;
 }
 
+/**
+ * Attaches the issued PDF to the Xero copy unless the shop turned it off. A failed upload never undoes the
+ * invoice: the link notes it, and sending the invoice again tries the PDF once more.
+ */
+async function attachPdf(ctx: IntegrationContext, inv: AccountingInvoice, remoteId: string): Promise<string> {
+  if (ctx.connection.settings.attach_pdf === false) return '';
+  const link = (await ctx.links.get('document', inv.id))!;
+  const pdf = await ctx.data.accounting.documentPdf(inv.id);
+  if (!pdf) return '';
+  try {
+    const kind = inv.type === 'invoice' ? 'Invoices' : 'CreditNotes';
+    await call(ctx, 'PUT', `/${kind}/${remoteId}/Attachments/${encodeURIComponent(pdf.filename)}?IncludeOnline=true`, pdf.body, undefined, { 'content-type': pdf.contentType });
+    await ctx.links.set('document', inv.id, remoteId, { ...link.extra, pdf: 'attached' });
+    return ' with its PDF';
+  } catch (e) {
+    await ctx.links.set('document', inv.id, remoteId, { ...link.extra, pdf: 'failed' });
+    return `; the PDF was not attached (${(e as Error).message})`;
+  }
+}
+
 async function sendDocument(ctx: IntegrationContext, documentId: string): Promise<IntegrationResult> {
   const inv = await ctx.data.accounting.invoice(documentId);
   if (!inv) return { status: 'skipped', message: 'Not an invoice or credit note with a customer' };
-  if (await ctx.links.get('document', inv.id)) return { status: 'skipped', message: `${inv.number} is already in Xero` };
+  const known = await ctx.links.get('document', inv.id);
+  if (known?.extra.pdf === 'failed') return { status: 'done', message: `${inv.number} is already in Xero${await attachPdf(ctx, inv, known.remoteId)}` };
+  if (known) return { status: 'skipped', message: `${inv.number} is already in Xero` };
   const contact = await contactId(ctx, inv.contact.id);
   const status = str(ctx.connection.settings.invoice_status) === 'DRAFT' ? 'DRAFT' : 'AUTHORISED';
   const common = {
@@ -160,7 +182,8 @@ async function sendDocument(ctx: IntegrationContext, documentId: string): Promis
       }
     }
   }
-  return { status: 'done', message: `${isInv ? 'Invoice' : 'Credit note'} ${inv.number} sent to Xero` };
+  const attached = await attachPdf(ctx, inv, id);
+  return { status: 'done', message: `${isInv ? 'Invoice' : 'Credit note'} ${inv.number} sent to Xero${attached}` };
 }
 
 /** Money that reached Xero before this invoice (held as overpayments) is allocated to it now. */
@@ -307,6 +330,7 @@ export function xeroIntegration(): IntegrationProvider {
     settings: [
       { key: 'invoice_status', label: 'Invoices in Xero', type: 'select', options: ['AUTHORISED', 'DRAFT'], help: 'DRAFT leaves invoices for you to approve; payments then wait' },
       { key: 'send_deposits', label: 'Send deposits', type: 'boolean', help: 'Deposits held, returned and kept, booked to the deposits account' },
+      { key: 'attach_pdf', label: 'Attach the invoice PDF', type: 'boolean', help: 'The issued PDF goes onto the invoice or credit note in Xero, so it shows online too' },
     ],
     async onConnected(ctx) {
       // Which organisations the shop shared on Xero's consent screen; the first one is used until another is chosen.
@@ -395,7 +419,7 @@ export default definePlugin({
   version: '0.2.0',
   author: 'OpenRent',
   license: 'AGPL-3.0-only',
-  compat: '^1.4.0',
+  compat: '^1.5.0',
   permissions: ['integrations', 'network', 'documents:read', 'payments:read', 'customers:read'],
   settings: [
     { key: 'client_id', label: 'Client ID', type: 'text', required: true, help: 'From your app at developer.xero.com; redirect URL as shown on the Accounting page' },

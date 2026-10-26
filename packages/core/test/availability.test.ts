@@ -19,8 +19,19 @@ describe('peakConcurrent', () => {
     expect(peakConcurrent([{ start: 5, end: Infinity, quantity: 1 }], 0, 100)).toBe(1);
   });
 
+  it('counts stock rented in for a while as lowering the count, and only then', () => {
+    // 3 booked all along; 2 more units are there from 10 to 20: at the tightest instant 3 are out.
+    const spans: Span[] = [{ start: 0, end: 30, quantity: 3 }, { start: 10, end: 20, quantity: -2 }];
+    expect(peakConcurrent(spans, 0, 30)).toBe(3);
+    expect(peakConcurrent(spans, 12, 18)).toBe(1);
+    // Rented-in stock that ends as a booking starts does not cover it.
+    expect(peakConcurrent([{ start: 0, end: 10, quantity: -2 }, { start: 10, end: 20, quantity: 1 }], 0, 20)).toBe(1);
+    // Covering more than is booked: negative, so more than the shop's own stock is free.
+    expect(peakConcurrent([{ start: 0, end: 50, quantity: -2 }], 10, 20)).toBe(-2);
+  });
+
   it('matches a brute-force reference', () => {
-    const span = fc.record({ start: fc.integer({ min: 0, max: 100 }), len: fc.integer({ min: 1, max: 50 }), quantity: fc.integer({ min: 1, max: 5 }) }).map((s) => ({ start: s.start, end: s.start + s.len, quantity: s.quantity }));
+    const span = fc.record({ start: fc.integer({ min: 0, max: 100 }), len: fc.integer({ min: 1, max: 50 }), quantity: fc.integer({ min: -3, max: 5 }) }).map((s) => ({ start: s.start, end: s.start + s.len, quantity: s.quantity }));
     fc.assert(
       fc.property(fc.array(span, { maxLength: 25 }), fc.integer({ min: 0, max: 120 }), fc.integer({ min: 1, max: 80 }), (spans, from, len) => {
         return peakConcurrent(spans, from, from + len) === peakConcurrentNaive(spans, from, from + len);

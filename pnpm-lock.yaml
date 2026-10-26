@@ -14,6 +14,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.13.0(jiti@2.7.0))
+      '@openrent/messaging-fakes':
+        specifier: workspace:*
+        version: link:packages/messaging-fakes
       '@openrent/plugin-accounting-quickbooks':
         specifier: workspace:*
         version: link:packages/plugins/accounting-quickbooks
@@ -23,6 +26,24 @@ importers:
       '@openrent/plugin-accounting-zoho-books':
         specifier: workspace:*
         version: link:packages/plugins/accounting-zoho-books
+      '@openrent/plugin-calendar-google':
+        specifier: workspace:*
+        version: link:packages/plugins/calendar-google
+      '@openrent/plugin-calendar-microsoft':
+        specifier: workspace:*
+        version: link:packages/plugins/calendar-microsoft
+      '@openrent/plugin-notify-messagebird':
+        specifier: workspace:*
+        version: link:packages/plugins/notify-messagebird
+      '@openrent/plugin-notify-twilio':
+        specifier: workspace:*
+        version: link:packages/plugins/notify-twilio
+      '@openrent/plugin-payment-mollie':
+        specifier: workspace:*
+        version: link:packages/plugins/payment-mollie
+      '@openrent/plugin-payment-paypal':
+        specifier: workspace:*
+        version: link:packages/plugins/payment-paypal
       '@openrent/plugin-sdk':
         specifier: workspace:*
         version: link:packages/plugin-sdk
@@ -186,12 +207,21 @@ importers:
       '@openrent/plugin-accounting-zoho-books':
         specifier: workspace:*
         version: link:../../packages/plugins/accounting-zoho-books
+      '@openrent/plugin-calendar-google':
+        specifier: workspace:*
+        version: link:../../packages/plugins/calendar-google
+      '@openrent/plugin-calendar-microsoft':
+        specifier: workspace:*
+        version: link:../../packages/plugins/calendar-microsoft
       '@openrent/plugin-crm-hubspot':
         specifier: workspace:*
         version: link:../../packages/plugins/crm-hubspot
       '@openrent/plugin-host':
         specifier: workspace:*
         version: link:../../packages/plugin-host
+      '@openrent/plugin-notify-messagebird':
+        specifier: workspace:*
+        version: link:../../packages/plugins/notify-messagebird
       '@openrent/plugin-notify-postmark':
         specifier: workspace:*
         version: link:../../packages/plugins/notify-postmark
@@ -201,6 +231,15 @@ importers:
       '@openrent/plugin-notify-smtp':
         specifier: workspace:*
         version: link:../../packages/plugins/notify-smtp
+      '@openrent/plugin-notify-twilio':
+        specifier: workspace:*
+        version: link:../../packages/plugins/notify-twilio
+      '@openrent/plugin-payment-mollie':
+        specifier: workspace:*
+        version: link:../../packages/plugins/payment-mollie
+      '@openrent/plugin-payment-paypal':
+        specifier: workspace:*
+        version: link:../../packages/plugins/payment-paypal
       '@openrent/plugin-payment-stripe':
         specifier: workspace:*
         version: link:../../packages/plugins/payment-stripe
@@ -310,6 +349,18 @@ importers:
       '@openrent/accounting-fakes':
         specifier: workspace:*
         version: link:../../packages/accounting-fakes
+      '@openrent/calendar-fakes':
+        specifier: workspace:*
+        version: link:../../packages/calendar-fakes
+      '@openrent/import-fakes':
+        specifier: workspace:*
+        version: link:../../packages/import-fakes
+      '@openrent/messaging-fakes':
+        specifier: workspace:*
+        version: link:../../packages/messaging-fakes
+      '@openrent/payment-fakes':
+        specifier: workspace:*
+        version: link:../../packages/payment-fakes
       '@types/pg':
         specifier: ^8.23.1
         version: 8.23.1
@@ -547,6 +598,15 @@ importers:
 
   packages/api-spec: {}
 
+  packages/calendar-fakes:
+    dependencies:
+      '@openrent/accounting-fakes':
+        specifier: workspace:*
+        version: link:../accounting-fakes
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../plugin-sdk
+
   packages/cli:
     dependencies:
       '@openrent/api':
@@ -676,6 +736,12 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/import-fakes: {}
+
+  packages/messaging-fakes: {}
+
+  packages/payment-fakes: {}
+
   packages/plugin-host:
     dependencies:
       '@openrent/plugin-sdk':
@@ -753,12 +819,57 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/plugins/calendar-google:
+    dependencies:
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@openrent/accounting-fakes':
+        specifier: workspace:*
+        version: link:../../accounting-fakes
+      '@openrent/calendar-fakes':
+        specifier: workspace:*
+        version: link:../../calendar-fakes
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugins/calendar-microsoft:
+    dependencies:
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@openrent/accounting-fakes':
+        specifier: workspace:*
+        version: link:../../accounting-fakes
+      '@openrent/calendar-fakes':
+        specifier: workspace:*
+        version: link:../../calendar-fakes
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
   packages/plugins/crm-hubspot:
     dependencies:
       '@openrent/plugin-sdk':
         specifier: workspace:*
         version: link:../../plugin-sdk
     devDependencies:
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugins/notify-messagebird:
+    dependencies:
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@openrent/messaging-fakes':
+        specifier: workspace:*
+        version: link:../../messaging-fakes
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
@@ -801,6 +912,45 @@ importers:
       smtp-server:
         specifier: ^3.21.1
         version: 3.21.1
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugins/notify-twilio:
+    dependencies:
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@openrent/messaging-fakes':
+        specifier: workspace:*
+        version: link:../../messaging-fakes
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugins/payment-mollie:
+    dependencies:
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@openrent/payment-fakes':
+        specifier: workspace:*
+        version: link:../../payment-fakes
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/plugins/payment-paypal:
+    dependencies:
+      '@openrent/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../plugin-sdk
+    devDependencies:
+      '@openrent/payment-fakes':
+        specifier: workspace:*
+        version: link:../../payment-fakes
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))

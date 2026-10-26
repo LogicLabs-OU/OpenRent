@@ -58,4 +58,21 @@ suite('document template editor', () => {
     expect((await admin.del(`/api/v1/document_templates/${saved.body.id}`)).status).toBe(204);
     expect((await admin.get('/api/v1/document_templates?locale=en')).body.data.find((d: any) => d.type === 'confirmation').builtin).toBe(true);
   });
+
+  it('reads, changes and previews one template by id (PRD §5.4)', async () => {
+    const builtin = await admin.get('/api/v1/document_templates/builtin:quote');
+    expect(builtin.body).toMatchObject({ type: 'quote', locale: 'en' });
+    expect((await admin.get('/api/v1/document_templates/dtp_missing')).status).toBe(404);
+    const own = await admin.patch('/api/v1/document_templates/builtin:quote', { locale: 'de', body: '<h1>{{t "doc.total"}}</h1>' });
+    expect(own.status, JSON.stringify(own.body)).toBe(200);
+    expect(own.body).toMatchObject({ type: 'quote', locale: 'de' });
+    const changed = await admin.patch(`/api/v1/document_templates/${own.body.id}`, { css: 'h1 { color: teal }' });
+    expect(changed.body).toMatchObject({ id: own.body.id, body: '<h1>{{t "doc.total"}}</h1>', css: 'h1 { color: teal }', version: own.body.version + 1 });
+    expect((await admin.patch(`/api/v1/document_templates/${own.body.id}`, { body: '{{#if x}}' })).body.errors[0].field).toBe('body');
+    const html = await admin.post(`/api/v1/document_templates/${own.body.id}/preview`, { order_id: order.id });
+    expect(html.status).toBe(200);
+    expect(html.body).toContain('Gesamt');
+    expect(html.body).toContain('color: teal');
+    expect((await admin.del(`/api/v1/document_templates/${own.body.id}`)).status).toBe(204);
+  });
 });

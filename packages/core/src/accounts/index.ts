@@ -63,26 +63,40 @@ export async function requestLogin(ctx: Ctx, rawEmail: string) {
       ])
     : null;
   if (booked) {
-    const token = randomToken(24);
-    await exec(
-      ctx,
-      `INSERT INTO customer_login_tokens (id, tenant_id, email, token_hash, expires_at) VALUES ($1,$2,$3,$4, now() + make_interval(mins => $5))`,
-      [newId('cltk'), ctx.tenantId, email, sha256(token), LOGIN_TTL_MIN],
-    );
     const c = customers[0]!;
-    await queue(ctx, {
-      template: 'customer_login',
-      to: email,
-      audience: 'customer',
-      data: {
-        // In the language the customer asked from, so the email matches the page.
-        customer: { name: c.name, email, locale: currentLocale() },
-        link: `${await storefrontBase(ctx, currentLocale())}/account/verify?token=${token}`,
-        minutes: LOGIN_TTL_MIN,
-      },
-    });
+    // In the language the customer asked from, so the email matches the page.
+    const link = await loginLink(ctx, email, LOGIN_TTL_MIN, currentLocale());
+    await queue(ctx, { template: 'customer_login', to: email, audience: 'customer', data: { customer: { name: c.name, email, locale: currentLocale() }, link, minutes: LOGIN_TTL_MIN } });
   }
   return { object: 'account_login', sent: true };
+}
+
+async function loginLink(ctx: Ctx, email: string, minutes: number, locale?: string | null) {
+  const token = randomToken(24);
+  await exec(
+    ctx,
+    `INSERT INTO customer_login_tokens (id, tenant_id, email, token_hash, expires_at) VALUES ($1,$2,$3,$4, now() + make_interval(mins => $5))`,
+    [newId('cltk'), ctx.tenantId, email, sha256(token), minutes],
+  );
+  return `${await storefrontBase(ctx, locale ?? undefined)}/account/verify?token=${token}`;
+}
+
+/** Days a link staff send stays valid. */
+const INVITATION_DAYS = 7;
+
+/**
+ * Staff send a customer a link to their account (PRD §5.4 send_portal_link), also before their first
+ * booking, e.g. a business customer who will book online. It is valid for a week and works once.
+ */
+export async function sendPortalLink(ctx: Ctx, customerId: string) {
+  const c = await one<any>(ctx, `SELECT * FROM customers WHERE id = $1 AND deleted_at IS NULL AND anonymized_at IS NULL`, [customerId]);
+  if (!c) throw notFound('customer', customerId);
+  const email = normalizeEmail(c.email);
+  if (!email) throw invalid(t('account.needs_email'), [{ field: 'email', code: 'required', message: t('account.needs_email') }]);
+  const link = await loginLink(ctx, email, INVITATION_DAYS * 24 * 60, c.locale);
+  await queue(ctx, { template: 'portal_invitation', to: email, audience: 'customer', data: { customer: { name: c.name, email, locale: c.locale }, link, days: INVITATION_DAYS } });
+  await audit(ctx, { entity_type: 'customer', entity_id: c.id, action: 'portal_link_sent' });
+  return { object: 'portal_link', sent: true, email };
 }
 
 /** Consumes a sign-in link once and opens a session. */
@@ -237,6 +251,8 @@ function profileToApi(c: any, email: string) {
     phone: c?.phone ?? null,
     locale: c?.locale ?? null,
     marketing_consent: !!c?.marketing_consent,
+    sms_opt_in: !!c?.sms_opt_in,
+    whatsapp_opt_in: !!c?.whatsapp_opt_in,
   };
 }
 
@@ -287,7 +303,7 @@ export async function overview(ctx: Ctx, email: string) {
 export async function updateProfile(
   ctx: Ctx,
   email: string,
-  patch: { name?: string; phone?: string | null; locale?: string | null; marketing_consent?: boolean },
+  patch: { name?: string; phone?: string | null; locale?: string | null; marketing_consent?: boolean; sms_opt_in?: boolean; whatsapp_opt_in?: boolean },
 ) {
   const primary = (await customersFor(ctx, email))[0];
   if (!primary) throw new AppError('unauthenticated', 401, t('account.signed_out'));
@@ -304,6 +320,8 @@ export async function updateProfile(
     data.phone = patch.phone ? String(patch.phone).trim().slice(0, 40) || null : null;
   if (patch.locale !== undefined) data.locale = isLocale(patch.locale) ? patch.locale : null;
   if (patch.marketing_consent !== undefined) data.marketing_consent = !!patch.marketing_consent;
+  if (patch.sms_opt_in !== undefined) data.sms_opt_in = !!patch.sms_opt_in;
+  if (patch.whatsapp_opt_in !== undefined) data.whatsapp_opt_in = !!patch.whatsapp_opt_in;
   const c = Object.keys(data).length
     ? await updateCustomer(asCustomer(ctx, primary.id), primary.id, data)
     : primary;
@@ -312,7 +330,7 @@ export async function updateProfile(
 
 // --- Cancellation requests ---------------------------------------------------
 
-async function ownedOrder(ctx: Ctx, email: string, orderId: string) {
+export async function ownedOrder(ctx: Ctx, email: string, orderId: string) {
   const customers = await customersFor(ctx, email);
   const o = customers.length
     ? await one(ctx, `SELECT * FROM orders WHERE id = $1 AND customer_id = ANY($2) FOR UPDATE`, [

@@ -4,7 +4,7 @@ import { RuntimeError, translator, isLocale, type ThemeModule } from '@openrent/
 import { lookup, t as appT } from './i18n/index.ts';
 import Payment from './Payment.svelte';
 import Slot from './Slot.svelte';
-import { checkoutExtra } from './extensions.svelte.ts';
+import { accessoryChoices, bundlePicks, checkoutExtra } from './extensions.svelte.ts';
 import { makeZone } from './zone.ts';
 
 async function call<T = any>(locale: string, method: string, path: string, body?: unknown): Promise<T> {
@@ -23,6 +23,15 @@ async function call<T = any>(locale: string, method: string, path: string, body?
 
 /** The runtime handed to themes. `getShop` returns the latest shop data after navigation. */
 /** The same page in another storefront language: the default has no prefix, others `/xx`. */
+/**
+ * Providers that take payment on their own page (Mollie, PayPal; plugin API 1.5) answer with a URL: the
+ * browser goes there, and the theme's code after the call never runs, so themes need no code for it.
+ */
+function payOnProviderPage(url: string): Promise<never> {
+  window.location.assign(url);
+  return new Promise<never>(() => undefined);
+}
+
 export function switchLocalePath(target: string, defaultLocale: string, pathWithSearch: string) {
   const m = /^\/([a-z]{2})(?=\/|\?|$)/.exec(pathWithSearch);
   const rest = (m && isLocale(m[1]) ? pathWithSearch.slice(3) : pathWithSearch) || '/';
@@ -64,7 +73,10 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
       await invalidateAll();
     },
     async addToCart(variantId, quantity) {
-      await call(shop0.locale, 'POST', 'cart', { variant_id: variantId, quantity, mode: 'add' });
+      await call(shop0.locale, 'POST', 'cart', { variant_id: variantId, quantity, mode: 'add', picks: bundlePicks[variantId] ?? null });
+      // Accessories ticked with it come along, one each (FR-CAT-7).
+      for (const accessory of accessoryChoices[variantId] ?? []) await call(shop0.locale, 'POST', 'cart', { variant_id: accessory, quantity: 1, mode: 'add' });
+      accessoryChoices[variantId] = [];
       await invalidateAll();
     },
     async setQuantity(variantId, quantity) {
@@ -85,7 +97,9 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
     checkout: async (input) => {
       checkoutExtra.errors = {};
       try {
-        return await call(shop0.locale, 'POST', 'checkout', { ...input, extra: checkoutExtra.values });
+        const r = await call(shop0.locale, 'POST', 'checkout', { ...input, extra: checkoutExtra.values });
+        if (r.payment?.redirect_url) return payOnProviderPage(r.payment.redirect_url);
+        return r;
       } catch (err) {
         // Plugin fields show their own errors in the checkout.extra_fields slot.
         if (err instanceof RuntimeError) checkoutExtra.errors = Object.fromEntries(Object.entries(err.fields).filter(([k]) => k.startsWith('extra.')).map(([k, v]) => [k.slice(6), v]));
@@ -94,6 +108,7 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
     },
     payOrder: async (token) => {
       const r = await call(shop0.locale, 'POST', 'order-payment', { token });
+      if (r.redirect_url) return payOnProviderPage(r.redirect_url);
       return { clientSecret: r.client_secret ?? null, publishableKey: r.public_config?.publishable_key ?? null };
     },
     account: {

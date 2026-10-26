@@ -1,4 +1,4 @@
-import type { AccountingContact, AccountingEntry, AccountingInvoice, AccountingPayment, IntegrationContext, IntegrationOrder } from '@openrent/plugin-sdk';
+import type { AccountingContact, AccountingEntry, AccountingInvoice, AccountingPayment, DocumentPdf, IntegrationContext, IntegrationOrder } from '@openrent/plugin-sdk';
 import type { FakeServer } from './common.ts';
 
 /**
@@ -11,6 +11,8 @@ export interface MemoryData {
   payments?: AccountingPayment[];
   entries?: AccountingEntry[];
   orders?: IntegrationOrder[];
+  /** Issued PDFs by document id. */
+  pdfs?: Record<string, DocumentPdf>;
 }
 
 export function memoryContext(fake: FakeServer, opts: { tokenPrefix?: string; settings?: Record<string, unknown>; account?: Record<string, unknown>; config?: Record<string, unknown>; data?: MemoryData } = {}) {
@@ -21,7 +23,7 @@ export function memoryContext(fake: FakeServer, opts: { tokenPrefix?: string; se
     tenantId: 'ten_test', config: { api_base_url: fake.url, ...(opts.config ?? {}) }, logger: { info() {}, warn() {}, error() {}, debug() {} } as any, credentials: {},
     connection: { id: 'icn_test', settings: opts.settings ?? {}, account: opts.account ?? {} },
     fetch: async (url, init = {}) => {
-      const res = await fetch(url, { method: init.method ?? 'GET', body: init.body, headers: { accept: 'application/json', authorization: `${opts.tokenPrefix ?? 'Bearer'} ${token}`, ...(init.headers ?? {}) } });
+      const res = await fetch(url, { method: init.method ?? 'GET', body: init.body as BodyInit | undefined, headers: { accept: 'application/json', authorization: `${opts.tokenPrefix ?? 'Bearer'} ${token}`, ...(init.headers ?? {}) } });
       return res;
     },
     links: {
@@ -34,6 +36,7 @@ export function memoryContext(fake: FakeServer, opts: { tokenPrefix?: string; se
         invoice: async (id) => data.invoices?.find((i) => i.id === id) ?? null,
         payment: async (id) => data.payments?.find((p) => p.id === id) ?? null,
         entry: async (id) => data.entries?.find((e) => e.id === id) ?? null,
+        documentPdf: async (id) => data.pdfs?.[id] ?? null,
       },
       contact: async (id) => data.contacts?.find((c) => c.id === id) ?? null,
       order: async (id) => data.orders?.find((o) => o.id === id) ?? null,

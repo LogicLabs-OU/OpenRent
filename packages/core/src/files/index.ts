@@ -1,9 +1,9 @@
 import type { Ctx } from '../context.ts';
-import { AppError } from '../errors.ts';
+import { AppError, conflict } from '../errors.ts';
 import { newId, sha256 } from '../ids.ts';
 import { t } from '../i18n/index.ts';
 import { exec, many, one } from '../sql.ts';
-import { emit } from '../events.ts';
+import { audit, emit } from '../events.ts';
 import { pluginConfig } from '../plugins/index.ts';
 
 export interface FileRow {
@@ -125,6 +125,17 @@ export async function deleteFile(ctx: Ctx, fileId: string) {
   const all = [await one<FileRow>(ctx, `SELECT ${META} FROM files WHERE id = $1`, [fileId]), ...(await derivedFiles(ctx, fileId))].filter(Boolean) as FileRow[];
   await many(ctx, `DELETE FROM files WHERE id = ANY($1) RETURNING id`, [all.map((f) => f.id)]);
   for (const f of all) await purgeLater(ctx, f);
+}
+
+/**
+ * Deletes an upload nothing uses yet (`DELETE /files/{id}`). Files of photos, documents and attachments
+ * go with their owner, so deleting one of those directly is refused.
+ */
+export async function deleteUpload(ctx: Ctx, fileId: string) {
+  const f = await getFile(ctx, fileId);
+  if (f.owner_type) throw conflict('file_in_use', t('files.in_use'));
+  await deleteFile(ctx, f.id);
+  await audit(ctx, { entity_type: 'file', entity_id: f.id, action: 'delete', before: fileToApi(f) });
 }
 
 /**

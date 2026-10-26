@@ -37,6 +37,51 @@ async function call(ctx: IntegrationContext, method: string, path: string, body?
   return data;
 }
 
+/** A multipart/form-data body (attachments are uploaded no other way). */
+function formData(parts: { name: string; filename?: string; type: string; data: Uint8Array | string }[]) {
+  const boundary = `openrent${Math.random().toString(36).slice(2)}`;
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  for (const p of parts) {
+    chunks.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"${p.filename ? `; filename="${p.filename.replace(/"/g, '')}"` : ''}\r\nContent-Type: ${p.type}\r\n\r\n`));
+    chunks.push(typeof p.data === 'string' ? enc.encode(p.data) : p.data, enc.encode('\r\n'));
+  }
+  chunks.push(enc.encode(`--${boundary}--\r\n`));
+  const body = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    body.set(c, at);
+    at += c.length;
+  }
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+/**
+ * Attaches the issued PDF to the Zoho Books invoice unless the shop turned it off (Zoho Books takes files
+ * on invoices). A failed upload never undoes the invoice: the link notes it, and sending the invoice
+ * again tries once more.
+ */
+async function attachPdf(ctx: IntegrationContext, inv: AccountingInvoice, remoteId: string): Promise<string> {
+  if (ctx.connection.settings.attach_pdf === false || inv.type !== 'invoice') return '';
+  const link = (await ctx.links.get('document', inv.id))!;
+  const pdf = await ctx.data.accounting.documentPdf(inv.id);
+  if (!pdf) return '';
+  try {
+    const form = formData([{ name: 'attachment', filename: pdf.filename, type: pdf.contentType, data: pdf.body }]);
+    const url = new URL(`${apiBase(ctx)}/invoices/${remoteId}/attachment`);
+    url.searchParams.set('organization_id', String(ctx.connection.account.organization_id ?? ''));
+    url.searchParams.set('can_send_in_email', 'true');
+    const res = await ctx.fetch(url.href, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || (typeof data?.code === 'number' && data.code !== 0)) throw new Error(`Zoho Books: ${data?.message ?? `HTTP ${res.status}`}`);
+    await ctx.links.set('document', inv.id, remoteId, { ...link.extra, pdf: 'attached' });
+    return ' with its PDF';
+  } catch (e) {
+    await ctx.links.set('document', inv.id, remoteId, { ...link.extra, pdf: 'failed' });
+    return `; the PDF was not attached (${(e as Error).message})`;
+  }
+}
+
 function need(ctx: IntegrationContext, slot: string, fallback?: string) {
   const id = mapped(ctx, slot) ?? (fallback ? mapped(ctx, fallback) : null);
   if (!id) throw new Error(`Map "${slot}" on the Accounting page first`);
@@ -96,7 +141,9 @@ export function zohoLines(ctx: IntegrationContext, inv: AccountingInvoice) {
 async function sendDocument(ctx: IntegrationContext, documentId: string): Promise<IntegrationResult> {
   const inv = await ctx.data.accounting.invoice(documentId);
   if (!inv) return { status: 'skipped', message: 'Not an invoice or credit note with a customer' };
-  if (await ctx.links.get('document', inv.id)) return { status: 'skipped', message: `${inv.number} is already in Zoho Books` };
+  const known = await ctx.links.get('document', inv.id);
+  if (known?.extra.pdf === 'failed') return { status: 'done', message: `${inv.number} is already in Zoho Books${await attachPdf(ctx, inv, known.remoteId)}` };
+  if (known) return { status: 'skipped', message: `${inv.number} is already in Zoho Books` };
   const customer = await contactId(ctx, inv.contact.id);
   const { items, adjustment } = zohoLines(ctx, inv);
   const common = {
@@ -127,7 +174,8 @@ async function sendDocument(ctx: IntegrationContext, documentId: string): Promis
       if (amount > 0) await call(ctx, 'POST', `/creditnotes/${id}/invoices`, { invoices: [{ invoice_id: original.remoteId, amount_applied: major(amount, inv.currency) }] });
     }
   }
-  return { status: 'done', message: `${isInv ? 'Invoice' : 'Credit note'} ${inv.number} sent to Zoho Books` };
+  const attached = await attachPdf(ctx, inv, String(id));
+  return { status: 'done', message: `${isInv ? 'Invoice' : 'Credit note'} ${inv.number} sent to Zoho Books${attached}` };
 }
 
 /** Excess payments that reached Zoho before this invoice are applied to it now. */
@@ -252,6 +300,7 @@ export function zohoBooksIntegration(): IntegrationProvider {
     settings: [
       { key: 'invoice_status', label: 'Invoices in Zoho Books', type: 'select', options: ['sent', 'draft'], help: 'draft leaves invoices for you to approve; payments then wait' },
       { key: 'send_deposits', label: 'Send deposits', type: 'boolean', help: 'Deposits held, returned and kept, booked to the deposits account' },
+      { key: 'attach_pdf', label: 'Attach the invoice PDF', type: 'boolean', help: 'The issued PDF goes onto the invoice in Zoho Books and can be emailed with it' },
     ],
     async onConnected(ctx) {
       const orgs = await this.organisations!(ctx);
@@ -324,7 +373,7 @@ export default definePlugin({
   version: '0.2.0',
   author: 'OpenRent',
   license: 'AGPL-3.0-only',
-  compat: '^1.4.0',
+  compat: '^1.5.0',
   permissions: ['integrations', 'network', 'documents:read', 'payments:read', 'customers:read'],
   settings: [
     { key: 'client_id', label: 'Client ID', type: 'text', required: true, help: 'From api-console.zoho.com (server-based app); redirect URL as shown on the Accounting page' },

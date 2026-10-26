@@ -38,6 +38,51 @@ async function call(ctx: IntegrationContext, method: string, path: string, body?
   if (!res.ok) throw new Error(`QuickBooks: ${data?.Fault?.Error?.map((e: any) => e.Detail ?? e.Message).join('; ') ?? `HTTP ${res.status}`}`);
   return data;
 }
+/** A multipart/form-data body (the upload endpoint takes files no other way). */
+function formData(parts: { name: string; filename?: string; type: string; data: Uint8Array | string }[]) {
+  const boundary = `openrent${Math.random().toString(36).slice(2)}`;
+  const enc = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  for (const p of parts) {
+    chunks.push(enc.encode(`--${boundary}\r\nContent-Disposition: form-data; name="${p.name}"${p.filename ? `; filename="${p.filename.replace(/"/g, '')}"` : ''}\r\nContent-Type: ${p.type}\r\n\r\n`));
+    chunks.push(typeof p.data === 'string' ? enc.encode(p.data) : p.data, enc.encode('\r\n'));
+  }
+  chunks.push(enc.encode(`--${boundary}--\r\n`));
+  const body = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    body.set(c, at);
+    at += c.length;
+  }
+  return { body, contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+/**
+ * Attaches the issued PDF to the QuickBooks copy (an Attachable) unless the shop turned it off. A failed
+ * upload never undoes the invoice: the link notes it, and sending the invoice again tries once more.
+ */
+async function attachPdf(ctx: IntegrationContext, inv: AccountingInvoice, remoteId: string): Promise<string> {
+  if (ctx.connection.settings.attach_pdf === false) return '';
+  const link = (await ctx.links.get('document', inv.id))!;
+  const pdf = await ctx.data.accounting.documentPdf(inv.id);
+  if (!pdf) return '';
+  try {
+    const meta = { AttachableRef: [{ EntityRef: { type: inv.type === 'invoice' ? 'Invoice' : 'CreditMemo', value: remoteId }, IncludeOnSend: true }], FileName: pdf.filename, ContentType: pdf.contentType };
+    const form = formData([
+      { name: 'file_metadata_0', type: 'application/json', data: JSON.stringify(meta) },
+      { name: 'file_content_0', filename: pdf.filename, type: pdf.contentType, data: pdf.body },
+    ]);
+    const res = await ctx.fetch(`${baseUrl(ctx)}/v3/company/${ctx.connection.account.realm_id}/upload?minorversion=75`, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`QuickBooks: ${data?.Fault?.Error?.map((e: any) => e.Detail ?? e.Message).join('; ') ?? `HTTP ${res.status}`}`);
+    await ctx.links.set('document', inv.id, remoteId, { ...link.extra, pdf: 'attached' });
+    return ' with its PDF';
+  } catch (e) {
+    await ctx.links.set('document', inv.id, remoteId, { ...link.extra, pdf: 'failed' });
+    return `; the PDF was not attached (${(e as Error).message})`;
+  }
+}
+
 const query = async (ctx: IntegrationContext, q: string) => (await call(ctx, 'GET', `/query?query=${encodeURIComponent(q)}`)).QueryResponse ?? {};
 
 function need(ctx: IntegrationContext, slot: string, fallback?: string) {
@@ -89,7 +134,9 @@ function lines(ctx: IntegrationContext, inv: AccountingInvoice) {
 async function sendDocument(ctx: IntegrationContext, documentId: string): Promise<IntegrationResult> {
   const inv = await ctx.data.accounting.invoice(documentId);
   if (!inv) return { status: 'skipped', message: 'Not an invoice or credit note with a customer' };
-  if (await ctx.links.get('document', inv.id)) return { status: 'skipped', message: `${inv.number} is already in QuickBooks` };
+  const known = await ctx.links.get('document', inv.id);
+  if (known?.extra.pdf === 'failed') return { status: 'done', message: `${inv.number} is already in QuickBooks${await attachPdf(ctx, inv, known.remoteId)}` };
+  if (known) return { status: 'skipped', message: `${inv.number} is already in QuickBooks` };
   const customer = await customerId(ctx, inv.contact.id);
   const isInv = inv.type === 'invoice';
   const body = {
@@ -117,7 +164,8 @@ async function sendDocument(ctx: IntegrationContext, documentId: string): Promis
       }).catch(() => undefined);
     }
   }
-  return { status: 'done', message: `${isInv ? 'Invoice' : 'Credit memo'} ${inv.number} sent to QuickBooks` };
+  const attached = await attachPdf(ctx, inv, doc.Id);
+  return { status: 'done', message: `${isInv ? 'Invoice' : 'Credit memo'} ${inv.number} sent to QuickBooks${attached}` };
 }
 
 /** Payments that reached QuickBooks before this invoice (unapplied) are applied to it now. */
@@ -224,7 +272,10 @@ export function quickbooksIntegration(): IntegrationProvider {
     events: ['accounting.entry_posted', 'customer.updated'],
     mapping: slots,
     mapsTaxes: true,
-    settings: [{ key: 'send_deposits', label: 'Send deposits', type: 'boolean', help: 'Deposits held, returned and kept, booked to the deposits account' }],
+    settings: [
+      { key: 'send_deposits', label: 'Send deposits', type: 'boolean', help: 'Deposits held, returned and kept, booked to the deposits account' },
+      { key: 'attach_pdf', label: 'Attach the invoice PDF', type: 'boolean', help: 'The issued PDF goes onto the invoice or credit memo in QuickBooks and is sent with it' },
+    ],
     async onConnected(ctx, params) {
       const realm = params.realmId;
       if (!realm) throw new Error('QuickBooks did not say which company was chosen');
@@ -306,7 +357,7 @@ export default definePlugin({
   version: '0.2.0',
   author: 'OpenRent',
   license: 'AGPL-3.0-only',
-  compat: '^1.4.0',
+  compat: '^1.5.0',
   permissions: ['integrations', 'network', 'documents:read', 'payments:read', 'customers:read'],
   settings: [
     { key: 'client_id', label: 'Client ID', type: 'text', required: true, help: 'From your app at developer.intuit.com; redirect URL as shown on the Accounting page' },

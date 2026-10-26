@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, collectErrors, localInput, shot, signIn } from './helpers.ts';
+import { ADMIN, addProduct, collectErrors, localInput, shot, signIn } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -170,8 +170,7 @@ test('a short order line shows the other locations and plans a transfer from one
     await page.getByLabel('Location', { exact: true }).selectOption({ label: main.name });
     await page.getByLabel(/^Pickup/).fill(localInput('Europe/Tallinn', 3 * 24 * 60));
     await page.getByLabel(/^Return/).fill(localInput('Europe/Tallinn', 4 * 24 * 60));
-    await page.getByLabel('Add a product').selectOption({ label });
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await addProduct(page, chairs.name, label);
     await page.getByLabel('Quantity').last().fill('3');
     await expect(page.getByText('Short by 2')).toBeVisible();
     await page.getByRole('button', { name: 'Other locations' }).click();

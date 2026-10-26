@@ -25,6 +25,7 @@
   import AttachmentsCard from '#lib/components/attachments-card.svelte';
   import TagInput from '#lib/components/tag-input.svelte';
   import CustomFieldsForm from '#lib/components/custom-fields-form.svelte';
+  import CustomerTermsCard from '#lib/components/customer-terms-card.svelte';
 
   const ADDRESS_FIELDS = ['line1', 'line2', 'postal_code', 'city', 'country'] as const;
   const blankAddress = () => Object.fromEntries(ADDRESS_FIELDS.map((k) => [k, ''])) as Record<string, string>;
@@ -238,10 +239,13 @@
             <Field.Field orientation="horizontal"><Field.Label for="fi" class="flex-1 font-normal">{t('customer.flag.id_check')}</Field.Label><Switch id="fi" checked={c.flags.requires_id_check} onCheckedChange={(v) => flag('requires_id_check', v)} /></Field.Field>
             {#if c.flags.requires_id_check}<Field.Field orientation="horizontal"><Field.Label for="fv" class="flex-1 font-normal">{t('customer.flag.id_verified')}</Field.Label><Switch id="fv" checked={c.flags.id_verified} onCheckedChange={(v) => flag('id_verified', v)} /></Field.Field>{/if}
             <Field.Field orientation="horizontal"><Field.Label for="mc" class="flex-1 font-normal">{t('customer.marketing_consent')}</Field.Label><Switch id="mc" checked={c.marketing_consent} onCheckedChange={(v) => run(() => api.patch(`/customers/${id}`, { marketing_consent: v }), t('common.saved'))} /></Field.Field>
+            <Field.Field orientation="horizontal"><Field.Label for="sms-in" class="flex-1 font-normal">{t('customer.sms_opt_in')}</Field.Label><Switch id="sms-in" checked={c.sms_opt_in} onCheckedChange={(v) => run(() => api.patch(`/customers/${id}`, { sms_opt_in: v }), t('common.saved'))} /></Field.Field>
+            <Field.Field orientation="horizontal"><Field.Label for="wa-in" class="flex-1 font-normal">{t('customer.whatsapp_opt_in')}</Field.Label><Switch id="wa-in" checked={c.whatsapp_opt_in} onCheckedChange={(v) => run(() => api.patch(`/customers/${id}`, { whatsapp_opt_in: v }), t('common.saved'))} /></Field.Field>
           </Field.Group>
         </Card.Content>
         <Card.Footer><Button onclick={save}>{t('common.save')}</Button></Card.Footer>
       </Card.Root>
+      <CustomerTermsCard customer={c} onsaved={() => load().catch(notifyError)} />
       <Card.Root data-testid="customer-account">
         <Card.Header><Card.Title>{t('customer.account.title')}</Card.Title><Card.Description>{t('customer.account.description')}</Card.Description></Card.Header>
         <Card.Content class="flex flex-col gap-3 text-sm">
@@ -252,6 +256,12 @@
           {/each}
           {#if sessions.length && session.can('customers:write')}
             <Button variant="outline" class="w-fit" onclick={() => run(() => api.del(`/customers/${id}/sessions`), t('customer.account.signed_out'))}>{t('customer.account.sign_out')}</Button>
+          {/if}
+          {#if c.email && session.can('customers:write')}
+            <div class="flex flex-col gap-1">
+              <Button variant="outline" class="w-fit" onclick={() => run(() => api.post(`/customers/${id}/actions/send_portal_link`), t('customer.account.link_sent', { email: c.email }))}>{t('customer.account.send_link')}</Button>
+              <p class="text-xs text-muted-foreground">{t('customer.account.send_link_hint')}</p>
+            </div>
           {/if}
         </Card.Content>
       </Card.Root>

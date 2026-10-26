@@ -7,6 +7,8 @@
   import { Button } from '@openrent/ui/button';
   import { Badge } from '@openrent/ui/badge';
   import { Skeleton } from '@openrent/ui/skeleton';
+  import { Switch } from '@openrent/ui/switch';
+  import { Label } from '@openrent/ui/label';
   import { StatusBadge, PageHeader, formatMoney } from '@openrent/ui/openrent';
   import SearchIcon from '@lucide/svelte/icons/search';
   import PlusIcon from '@lucide/svelte/icons/plus';
@@ -16,15 +18,20 @@
   import ImportExportMenu from '#lib/components/import-export-menu.svelte';
 
   let rows = $state<any[]>([]);
+  let cursor = $state<string | null>(null);
   let q = $state('');
   let type = $state('');
+  // Archived products stay out of the list unless asked for.
+  let archived = $state(false);
   let loading = $state(true);
   let timer: ReturnType<typeof setTimeout>;
 
-  async function load() {
+  async function load(append = false) {
     loading = true;
     try {
-      rows = (await api.get(`/products?${qs({ q, 'filter[type]': type, limit: 200 })}`)).data;
+      const r = await api.get(`/products?${qs({ q, 'filter[type]': type, 'filter[visibility]': archived ? 'archived' : 'public,hidden', limit: 100, cursor: append ? cursor : undefined })}`);
+      rows = append ? [...rows, ...r.data] : r.data;
+      cursor = r.next_cursor;
     } catch (e) {
       notifyError(e);
     } finally {
@@ -33,6 +40,7 @@
   }
   $effect(() => {
     void type;
+    void archived;
     load();
   });
   const price = (v: any) => {
@@ -47,16 +55,17 @@
 <svelte:head><title>{t('nav.products')} · OpenRent</title></svelte:head>
 
 <PageHeader title={t('nav.products')} description={t('products.description')}>
-  {#snippet actions()}<ImportExportMenu entities={['products', 'prices']} onimported={load} /><Button href={to('/products/new')}><PlusIcon />{t('products.new')}</Button>{/snippet}
+  {#snippet actions()}<ImportExportMenu entities={['products', 'prices']} onimported={() => load()} /><Button href={to('/products/new')}><PlusIcon />{t('products.new')}</Button>{/snippet}
 </PageHeader>
 
 <div class="mb-4 flex flex-wrap items-center justify-end gap-3">
+  <div class="flex items-center gap-2"><Switch id="show-archived" bind:checked={archived} /><Label for="show-archived" class="font-normal">{t('products.show_archived')}</Label></div>
   <NativeSelect.Root bind:value={type} aria-label={t('field.type')}>
     <NativeSelect.Option value="">{t('products.all_types')}</NativeSelect.Option>
     {#each ['rental', 'bundle', 'sale', 'service', 'consumable'] as x}<NativeSelect.Option value={x}>{t(`product.type.${x}` as any)}</NativeSelect.Option>{/each}
   </NativeSelect.Root>
   <InputGroup.Root class="w-full sm:w-72">
-    <InputGroup.Input placeholder={t('products.search')} bind:value={q} oninput={() => { clearTimeout(timer); timer = setTimeout(load, 200); }} aria-label={t('products.search')} />
+    <InputGroup.Input placeholder={t('products.search')} bind:value={q} oninput={() => { clearTimeout(timer); timer = setTimeout(() => load(), 200); }} aria-label={t('products.search')} />
     <InputGroup.Addon><SearchIcon /></InputGroup.Addon>
   </InputGroup.Root>
 </div>
@@ -83,6 +92,7 @@
       </Table.Body>
     </Table.Root>
   </div>
+  {#if cursor}<div class="mt-3 flex justify-end"><Button variant="outline" size="sm" disabled={loading} onclick={() => load(true)}>{t('common.load_more')}</Button></div>{/if}
 {:else}
   <Empty.Root class="border border-dashed">
     <Empty.Header>

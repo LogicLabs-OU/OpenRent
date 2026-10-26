@@ -42,6 +42,8 @@ export function registerOrders(r: Router) {
           customer_id: Type.Optional(Nullable(Id)), location_id: Type.Optional(Id), starts_at: Type.Optional(Type.String({ format: 'date-time' })), ends_at: Type.Optional(Type.String({ format: 'date-time' })),
           coupon_codes: Type.Optional(Type.Array(Type.String())), deposit: Type.Optional(DepositPolicy), notes: Type.Optional(Type.Object({ internal: Type.Optional(Type.String()), customer: Type.Optional(Type.String()) })),
           tags: Type.Optional(Type.Array(Type.String())), custom_fields: Type.Optional(Type.Record(Type.String(), Type.Unknown())), options: Type.Optional(QuoteOptions),
+          po_number: Type.Optional(Nullable(Type.String({ maxLength: 100 }))),
+          billing_cycle: Type.Optional(Nullable(Type.String({ description: 'weekly or monthly, until pickup' }))),
         },
         { additionalProperties: false },
       ),
@@ -57,7 +59,7 @@ export function registerOrders(r: Router) {
   r.post('/orders/:id/lines', { permission: 'orders:write', tags: O, summary: 'Add a line (draft or quote)', params: IdParams, body: LineInput, response: ok(Order, 201) }, async (ctx, req) => orders.addLine(ctx, req.params.id, req.body));
   r.patch(
     '/orders/:id/lines/:line_id',
-    { permission: 'orders:write', tags: O, summary: 'Change a line (draft or quote)', params: Type.Object({ id: Id, line_id: Id }), body: Type.Object({ quantity: Type.Optional(Type.Integer({ minimum: 1 })), amount: Type.Optional(Nullable(Type.Integer({ minimum: 0 }))), description: Type.Optional(Type.String()), buffer_before_min: Type.Optional(Type.Integer({ minimum: 0 })), buffer_after_min: Type.Optional(Type.Integer({ minimum: 0 })), stock_item_ids: Type.Optional(Type.Array(Id)) }) },
+    { permission: 'orders:write', tags: O, summary: 'Change a line (draft or quote)', params: Type.Object({ id: Id, line_id: Id }), body: Type.Object({ quantity: Type.Optional(Type.Integer({ minimum: 1 })), amount: Type.Optional(Nullable(Type.Integer({ minimum: 0 }))), description: Type.Optional(Type.String()), buffer_before_min: Type.Optional(Type.Integer({ minimum: 0 })), buffer_after_min: Type.Optional(Type.Integer({ minimum: 0 })), stock_item_ids: Type.Optional(Type.Array(Id)), picks: Type.Optional(Type.Record(Type.String({ maxLength: 80 }), Id)) }) },
     async (ctx, req) => orders.updateLine(ctx, req.params.id, req.params.line_id, req.body),
   );
   r.delete('/orders/:id/lines/:line_id', { permission: 'orders:write', tags: O, summary: 'Remove a line (draft or quote)', params: Type.Object({ id: Id, line_id: Id }), status: 200 }, async (ctx, req) =>
@@ -75,7 +77,11 @@ export function registerOrders(r: Router) {
   // State transitions as sub-resources (PRD §5.1.2).
   const transitionBodies: Record<string, unknown> = {
     send_quote: Type.Object({ ttl_hours: Type.Optional(Type.Number({ minimum: 0.1 })), notify: Type.Optional(Type.Boolean()) }),
-    reserve: Type.Object({ notify: Type.Optional(Type.Boolean()), overbook: Type.Optional(Type.Object({ reason: Type.String({ maxLength: 500, description: 'Why stock is booked past capacity (needs orders:overbook)' }) })) }),
+    reserve: Type.Object({
+      notify: Type.Optional(Type.Boolean()),
+      overbook: Type.Optional(Type.Object({ reason: Type.String({ maxLength: 500, description: 'Why stock is booked past capacity (needs orders:overbook)' }) })),
+      override_credit_limit: Type.Optional(Type.Boolean({ description: 'Book over the customer’s credit limit on purpose (written to the audit log)' })),
+    }),
     prepare: Type.Object({}),
     // Meter readings taken at the counter (FR-CAT-10).
     check_out: Type.Object({
@@ -243,6 +249,9 @@ export function registerOrders(r: Router) {
   );
   r.post('/payments/:id/actions/refund', { permission: 'payments:refund', tags: P, summary: 'Refund all or part of a payment', params: IdParams, body: Type.Object({ amount: Type.Optional(Type.Integer({ minimum: 1 })), reason: Type.Optional(Type.String()) }), status: 200 }, async (ctx, req) =>
     payments.refundPayment(ctx, req.params.id, req.body ?? {}),
+  );
+  r.post('/payments/:id/actions/void', { permission: 'payments:refund', tags: P, summary: 'Cancel a payment that has not settled: a pending online payment or an authorisation not captured', params: IdParams, body: Type.Object({ reason: Type.Optional(Type.String({ maxLength: 500 })) }), status: 200 }, async (ctx, req) =>
+    payments.voidPayment(ctx, req.params.id, req.body ?? {}),
   );
 
   // Deposits.

@@ -1,10 +1,10 @@
-import { storefront, accounts, availability, orders, themes, AppError, invalid, serverT } from '@openrent/core';
+import { storefront, accounts, availability, customers, orders, themes, AppError, invalid, serverT } from '@openrent/core';
 import type { FastifyReply } from 'fastify';
 import { imageBytes } from '../images.ts';
 import type { Router } from '../http.ts';
-import { Address, Id, IdParams, QuoteOptions, Type } from '../schemas.ts';
+import { Address, Id, IdParams, Nullable, QuoteOptions, Type } from '../schemas.ts';
 
-const CartLine = Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 0, maximum: 1000 }) });
+const CartLine = Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 0, maximum: 1000 }), picks: Type.Optional(Nullable(Type.Record(Type.String({ maxLength: 80 }), Id, { description: 'Choice bundles: the option picked per slot' }))) });
 
 export function registerStorefront(r: Router) {
   const S = ['Storefront'];
@@ -70,6 +70,13 @@ export function registerStorefront(r: Router) {
   r.get('/storefront/checkout_sessions/:id', { tags: S, summary: 'Cart with live quote and availability; ?locale= names lines in a storefront language', params: IdParams, querystring: Type.Object({ locale: Type.Optional(Type.String()) }) }, async (ctx, req) =>
     storefront.getCheckoutSession(ctx, req.params.id, req.query.locale),
   );
+  const ReminderToken = Type.Object({ token: Type.String({ minLength: 20, maxLength: 1000 }) });
+  r.post('/storefront/checkout_sessions/restore', { tags: S, summary: 'A new cart with the items of the cart a reminder email named (FR-SF-9)', body: ReminderToken, rateLimit: { max: 20, timeWindow: '1 minute' } }, async (ctx, req) =>
+    storefront.restoreCart(ctx, req.body.token),
+  );
+  r.post('/storefront/cart_reminders/opt_out', { tags: S, summary: 'No more cart reminders to the email a reminder went to', body: ReminderToken, rateLimit: { max: 20, timeWindow: '1 minute' }, status: 200 }, async (ctx, req) =>
+    storefront.stopCartReminders(ctx, req.body.token),
+  );
   r.patch('/storefront/checkout_sessions/:id', { tags: S, summary: 'Change dates, lines, coupons or contact details', params: IdParams, body: SessionPatch }, async (ctx, req) => storefront.updateCheckoutSession(ctx, req.params.id, req.body as any));
   r.post(
     '/storefront/checkout_sessions/:id/actions/complete',
@@ -84,6 +91,8 @@ export function registerStorefront(r: Router) {
           phone: Type.Optional(Type.String()),
           locale: Type.Optional(Type.String()),
           marketing_consent: Type.Optional(Type.Boolean()),
+          sms_opt_in: Type.Optional(Type.Boolean()),
+          whatsapp_opt_in: Type.Optional(Type.Boolean()),
           company_name: Type.Optional(Type.String({ maxLength: 200 })),
           tax_id: Type.Optional(Type.String({ maxLength: 40 })),
           billing_address: Type.Optional(Address),
@@ -91,12 +100,18 @@ export function registerStorefront(r: Router) {
         terms_accepted: Type.Boolean(),
         terms_hash: Type.String(),
         notes: Type.Optional(Type.String({ maxLength: 2000 })),
+        extra: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: 'Plugin checkout fields by "<plugin id>.<key>"; b2b.pay_on_account and b2b.po_number for customers on account (signed in)' })),
         return_url: Type.Optional(Type.String({ maxLength: 2000, description: 'Widget checkout: the embedding page to return to after paying (its origin must be in settings.widget_origins)' })),
       }),
       rateLimit: { max: 20, timeWindow: '1 minute' },
       status: 200,
     },
-    async (ctx, req) => storefront.completeCheckout(ctx, req.params.id, req.body as any),
+    async (ctx, req) => {
+      // Booking on account needs the customer signed in (X-Customer-Session from the storefront server).
+      const token = req.headers['x-customer-session'];
+      const email = token ? await accounts.resolveSession(ctx, String(token)).then((s) => s.email, () => null) : null;
+      return storefront.completeCheckout(ctx, req.params.id, req.body as any, email);
+    },
   );
   r.get('/storefront/orders/:id', { tags: S, summary: 'Order confirmation by id or token (?token= required)', params: IdParams, querystring: Type.Object({ token: Type.String({ minLength: 16 }) }), rateLimit: { max: 120, timeWindow: '1 minute' } }, async (ctx, req) =>
     storefront.publicOrder(ctx, req.params.id, req.query.token),
@@ -161,16 +176,24 @@ function registerAccount(r: Router, S: string[]) {
   );
   r.post('/storefront/account/logout', { tags: A, summary: 'End the session', status: 200 }, async (ctx, req) => accounts.logout(ctx, session(req)));
   r.get('/storefront/account', { tags: A, summary: 'Profile, bookings, cancellation requests and documents' }, async (ctx, req) => accounts.overview(ctx, await signedIn(ctx, req)));
+  r.get('/storefront/account/b2b', { tags: A, summary: 'Whether the signed-in customer can book on account, with their terms and credit left (FR-CUS-7)' }, async (ctx, req) => {
+    const token = session(req);
+    const email = token ? await accounts.resolveSession(ctx, token).then((s) => s.email, () => null) : null;
+    const terms = email ? await customers.accountTermsFor(ctx, email) : null;
+    return terms ? { object: 'b2b', on_account: true, po_required: terms.po_required, payment_terms_days: terms.payment_terms_days, available_credit: terms.available_credit } : { object: 'b2b', on_account: false };
+  });
   r.patch(
     '/storefront/account',
     {
       tags: A,
-      summary: 'Update name, phone, language and marketing consent',
+      summary: 'Update name, phone, language, marketing consent and text message updates',
       body: Type.Object({
         name: Type.Optional(Type.String({ maxLength: 200 })),
         phone: Type.Optional(Type.Union([Type.String({ maxLength: 40 }), Type.Null()])),
         locale: Type.Optional(Type.Union([Type.String({ maxLength: 10 }), Type.Null()])),
         marketing_consent: Type.Optional(Type.Boolean()),
+        sms_opt_in: Type.Optional(Type.Boolean()),
+        whatsapp_opt_in: Type.Optional(Type.Boolean()),
       }),
     },
     async (ctx, req) => accounts.updateProfile(ctx, await signedIn(ctx, req), req.body),

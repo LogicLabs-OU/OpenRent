@@ -64,11 +64,15 @@ export async function loadSpans(
   excludeOrderId?: string | null,
   excludeAllocationIds: string[] = [],
 ): Promise<Span[]> {
+  // Stock rented in for a while (FR-CAT-9) counts as negative: it frees that much while it is there.
   const rows = await many<{ s: Date; e: Date | null; quantity: number }>(
     ctx,
     `SELECT lower(period) AS s, upper(period) AS e, quantity FROM allocations
       WHERE variant_id = $1 AND location_id = $2 AND period && tstzrange($3, $4, '[)')
-        AND ($5::text IS NULL OR order_id IS DISTINCT FROM $5) AND NOT (id = ANY($6::text[]))`,
+        AND ($5::text IS NULL OR order_id IS DISTINCT FROM $5) AND NOT (id = ANY($6::text[]))
+     UNION ALL
+     SELECT lower(period), upper(period), -quantity FROM external_stock
+      WHERE variant_id = $1 AND location_id = $2 AND status = 'booked' AND period && tstzrange($3, $4, '[)') AND NOT (id = ANY($6::text[]))`,
     [variantId, locationId, from, to, excludeOrderId ?? null, excludeAllocationIds],
   );
   return rows.map((r) => ({ start: r.s.getTime(), end: r.e ? r.e.getTime() : Number.POSITIVE_INFINITY, quantity: r.quantity }));
@@ -87,9 +91,9 @@ export interface AvailabilityResult {
 }
 
 async function bundleComponents(ctx: Ctx, productId: string) {
-  return many<{ variant_id: string; quantity: number; tracking: VariantInfo['tracking'] }>(
+  return many<{ variant_id: string; quantity: number; tracking: VariantInfo['tracking']; slot_name: string | null }>(
     ctx,
-    `SELECT bc.variant_id, bc.quantity, v.tracking FROM bundles b
+    `SELECT bc.variant_id, bc.quantity, v.tracking, bc.slot_name FROM bundles b
        JOIN bundle_components bc ON bc.bundle_id = b.id
        JOIN variants v ON v.id = bc.variant_id
       WHERE b.product_id = $1 ORDER BY bc.position`,
@@ -107,16 +111,16 @@ export async function check(
   if (v.product_type === 'bundle') {
     const comps = await bundleComponents(ctx, v.product_id);
     const parts = await Promise.all(
-      comps.map(async (c) => ({ quantity: c.quantity, r: await check(ctx, { ...q, variantId: c.variant_id }) })),
+      comps.map(async (c) => ({ quantity: c.quantity, slot: c.slot_name, r: await check(ctx, { ...q, variantId: c.variant_id }) })),
     );
-    const avail = bundleAvailable(parts.map((p) => ({ available: p.r.available ?? Number.POSITIVE_INFINITY, quantity: p.quantity })));
-    return { ...base, capacity: null, allocated: 0, available: avail, shortage: parts.some((p) => p.r.shortage) };
+    const avail = bundleAvailable(parts.map((p) => ({ available: p.r.available ?? Number.POSITIVE_INFINITY, quantity: p.quantity, slot: p.slot })));
+    return { ...base, capacity: null, allocated: 0, available: avail, shortage: parts.some((p) => p.r.shortage && !p.slot) };
   }
   if (v.tracking === 'none') return { ...base, capacity: null, allocated: 0, available: null, shortage: false };
   const cap = await capacity(ctx, v.id, q.locationId, v.tracking);
   const spans = await loadSpans(ctx, v.id, q.locationId, q.from, q.to, q.excludeOrderId);
   const peak = peakConcurrent(spans, q.from.getTime(), q.to.getTime());
-  return { ...base, capacity: cap, allocated: peak, available: Math.max(0, cap - peak), shortage: peak > cap };
+  return { ...base, capacity: cap, allocated: Math.max(0, peak), available: Math.max(0, cap - peak), shortage: peak > cap };
 }
 
 /** One variant at every open location, default first: where else the stock is free (FR-LOC-2). */
@@ -154,20 +158,21 @@ export async function calendar(ctx: Ctx, q: { variantId: string; locationId: str
   const blackouts = await loadBlackouts(ctx, q.locationId, from, to);
   const noticeUntil = addMinutes(ctx.now, v.min_notice_min ?? 0);
 
-  type Comp = { quantity: number; cap: number; spans: Span[]; none: boolean };
+  type Comp = { quantity: number; cap: number; spans: Span[]; none: boolean; slot: string | null };
   let comps: Comp[];
   if (v.product_type === 'bundle') {
     const cs = await bundleComponents(ctx, v.product_id);
     comps = await Promise.all(
       cs.map(async (c) => ({
         quantity: c.quantity,
+        slot: c.slot_name,
         none: c.tracking === 'none',
         cap: await capacity(ctx, c.variant_id, q.locationId, c.tracking),
         spans: await loadSpans(ctx, c.variant_id, q.locationId, from, to),
       })),
     );
   } else {
-    comps = [{ quantity: 1, none: v.tracking === 'none', cap: await capacity(ctx, v.id, q.locationId, v.tracking), spans: await loadSpans(ctx, v.id, q.locationId, from, to) }];
+    comps = [{ quantity: 1, slot: null, none: v.tracking === 'none', cap: await capacity(ctx, v.id, q.locationId, v.tracking), spans: await loadSpans(ctx, v.id, q.locationId, from, to) }];
   }
 
   const hasHours = loc.opening_hours && Object.keys(loc.opening_hours).length > 0;
@@ -177,7 +182,7 @@ export async function calendar(ctx: Ctx, q: { variantId: string; locationId: str
     const weekday = WEEKDAY_KEYS[zonedParts(addMinutes(a, 720), loc.timezone).weekday]!;
     const avail = comps.every((c) => c.none)
       ? null
-      : bundleAvailable(comps.filter((c) => !c.none).map((c) => ({ quantity: c.quantity, available: c.cap - peakConcurrent(c.spans, a.getTime(), b.getTime()) })));
+      : bundleAvailable(comps.filter((c) => !c.none).map((c) => ({ quantity: c.quantity, slot: c.slot, available: c.cap - peakConcurrent(c.spans, a.getTime(), b.getTime()) })));
     let status: CalendarDay['status'] = avail === null || avail > 0 ? 'available' : 'unavailable';
     let reason: string | undefined = status === 'unavailable' ? 'fully_booked' : undefined;
     if (b <= ctx.now) {
@@ -231,7 +236,7 @@ export async function forecast(ctx: Ctx, q: { from: string; days: number; locati
         const a = startOfLocalDay(date, l.timezone).getTime();
         const b = startOfLocalDay(addLocalDays(date, 1), l.timezone).getTime();
         const booked = peakConcurrent(spans, a, b);
-        rows.push({ date, location: l.name, product: v.product, variant: v.variant, capacity: cap, booked, available: Math.max(0, cap - booked), shortage: booked > cap });
+        rows.push({ date, location: l.name, product: v.product, variant: v.variant, capacity: cap, booked: Math.max(0, booked), available: Math.max(0, cap - booked), shortage: booked > cap });
       }
     }
   }
@@ -434,6 +439,31 @@ export async function assertUnitUsable(ctx: Ctx, stockItemId: string, variantId:
   if (s.location_id !== locationId) throw new AppError('wrong_location', 422, msg('error.is_kept_at_another_location', { barcode: s.barcode }));
   if (['retired', 'lost'].includes(s.status)) throw new AppError('unit_unavailable', 409, msg('error.unit_has_status', { barcode: s.barcode, status: s.status }));
   return s;
+}
+
+/**
+ * Overbookings at a pool that fit now (stock rented in, FR-CAT-9): settled, and their allocations become
+ * ordinary ones (FR-AV-8). Returns how many.
+ */
+export async function settleOverbookings(ctx: Ctx, variantId: string, locationId: string): Promise<number> {
+  const open = await many<{ id: string; s: Date; e: Date }>(
+    ctx,
+    `SELECT o.id, min(lower(a.period)) AS s, max(upper(a.period)) AS e FROM overbookings o JOIN allocations a ON a.overbooking_id = o.id
+      WHERE o.variant_id = $1 AND o.location_id = $2 AND o.resolved_at IS NULL GROUP BY o.id ORDER BY min(lower(a.period))`,
+    [variantId, locationId],
+  );
+  if (!open.length) return 0;
+  const v = await variantInfo(ctx, variantId);
+  const cap = await capacity(ctx, variantId, locationId, v.tracking);
+  let n = 0;
+  for (const o of open) {
+    const spans = await loadSpans(ctx, variantId, locationId, new Date(o.s), new Date(o.e));
+    if (peakConcurrent(spans, new Date(o.s).getTime(), new Date(o.e).getTime()) > cap) continue;
+    await exec(ctx, `UPDATE allocations SET overbooking_id = NULL WHERE overbooking_id = $1`, [o.id]);
+    await exec(ctx, `UPDATE overbookings SET resolved_at = now() WHERE id = $1`, [o.id]);
+    n++;
+  }
+  return n;
 }
 
 /** Removes reservation allocations of an order (cancel, expire, edit). */

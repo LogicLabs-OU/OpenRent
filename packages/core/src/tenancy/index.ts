@@ -90,9 +90,15 @@ function validateSettings(s: TenantSettings) {
   if (lock !== null && (typeof lock !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(lock) || Number.isNaN(Date.parse(lock)) || lock > new Date().toISOString().slice(0, 10)))
     errors.push({ field: 'accounting.locked_until', code: 'invalid', message: tr('error.field.lock_date') });
   if (!['manual', 'reserved', 'checked_out', 'closed'].includes(s.accounting.invoice_when)) errors.push({ field: 'accounting.invoice_when', code: 'invalid', message: tr('settings.invalid') });
+  const cr = s.cart_reminders;
+  if (typeof cr.enabled !== 'boolean') errors.push({ field: 'cart_reminders.enabled', code: 'invalid', message: tr('settings.invalid') });
+  if (!Number.isInteger(cr.after_hours) || cr.after_hours < 1 || cr.after_hours > 72) errors.push({ field: 'cart_reminders.after_hours', code: 'out_of_range', message: tr('settings.invalid_reminder_hours') });
   if (typeof s.require_inspection_on_return !== 'boolean') errors.push({ field: 'require_inspection_on_return', code: 'invalid', message: tr('settings.invalid') });
   if (!['notify', 'reauthorize', 'convert_to_charge'].includes(s.deposit_expiry_policy)) errors.push({ field: 'deposit_expiry_policy', code: 'invalid', message: tr('settings.invalid_deposit_expiry_policy') });
   if (s.email_channel !== null && (typeof s.email_channel !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s.email_channel))) errors.push({ field: 'email_channel', code: 'invalid', message: tr('settings.invalid_email_channel') });
+  for (const k of ['sms_channel', 'whatsapp_channel'] as const) {
+    if (s[k] !== null && (typeof s[k] !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s[k]))) errors.push({ field: k, code: 'invalid', message: tr('settings.invalid_text_channel') });
+  }
   if (!Array.isArray(s.widget_origins) || s.widget_origins.length > 20) errors.push({ field: 'widget_origins', code: 'invalid', message: tr('settings.invalid_widget_origin') });
   else s.widget_origins.forEach((o, i) => {
     if (typeof o !== 'string' || !/^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i.test(o)) errors.push({ field: `widget_origins.${i}`, code: 'invalid', message: tr('settings.invalid_widget_origin') });
@@ -105,7 +111,8 @@ function validateSettings(s: TenantSettings) {
 }
 
 export async function updateSettings(ctx: Ctx, patch: Record<string, unknown>): Promise<TenantSettings> {
-  const t = await getTenant(ctx);
+  // Locked while merging: two saves of different settings at once must both stay.
+  const t = (await one<{ settings: Record<string, unknown> | null }>(ctx, `SELECT settings FROM tenants WHERE id = $1 FOR UPDATE`, [ctx.tenantId]))!;
   const merged = deepMerge(t.settings ?? {}, patch);
   validateSettings(resolveSettings(merged));
   // The shop's own language (emails, documents, staff messages) follows the storefront default.

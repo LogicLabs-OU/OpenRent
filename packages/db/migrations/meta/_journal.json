@@ -267,6 +267,62 @@
       "when": 1793017928354,
       "tag": "20261026123208_accounting_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793030320152,
+      "tag": "20261026155840_b2b_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793031917943,
+      "tag": "20261026162517_recurring_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793033065838,
+      "tag": "20261026164425_cart_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793034654414,
+      "tag": "20261026171054_product_relations",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793034958862,
+      "tag": "20261026171558_external_stock",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793043628592,
+      "tag": "20261026194028_saved_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793045227985,
+      "tag": "20261026200707_messaging",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793046563949,
+      "tag": "20261026202923_import_sources",
+      "breakpoints": true
     }
   ]
 }

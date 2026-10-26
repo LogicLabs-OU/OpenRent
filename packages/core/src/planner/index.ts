@@ -71,8 +71,21 @@ export async function planner(ctx: Ctx, q: PlannerQuery) {
       ORDER BY lower(a.period)`,
     [q.location_id, from, to, q.product_id ?? null],
   );
+  // Stock rented in during the window (FR-CAT-9), shown under the rows it adds to.
+  const external = await many<any>(
+    ctx,
+    `SELECT x.id, x.supplier, x.quantity, lower(x.period) AS s, upper(x.period) AS e, x.variant_id, p.id AS product_id, p.name AS product_name, v.name AS variant_name
+       FROM external_stock x JOIN variants v ON v.id = x.variant_id JOIN products p ON p.id = v.product_id
+      WHERE x.status = 'booked' AND x.location_id = $1 AND x.period && tstzrange($2, $3, '[)') AND ($4::text IS NULL OR p.id = $4)
+      ORDER BY lower(x.period)`,
+    [q.location_id, from, to, q.product_id ?? null],
+  );
   return {
     object: 'planner', from: from.toISOString(), to: to.toISOString(), days, truncated,
+    external: external.map((x) => ({
+      id: x.id, supplier: x.supplier, quantity: x.quantity, variant_id: x.variant_id, product_id: x.product_id, product_name: x.product_name, variant_name: x.variant_name,
+      starts_at: new Date(x.s).toISOString(), ends_at: new Date(x.e).toISOString(),
+    })),
     units: shown.map((u) => ({
       id: u.id, barcode: u.barcode, status: u.status, bin: u.bin, variant_id: u.variant_id, product_id: u.product_id,
       product_name: u.product_name, variant_name: u.variant_name, bars: byUnit.get(u.id) ?? [],

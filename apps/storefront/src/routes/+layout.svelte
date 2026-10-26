@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { Toaster } from '@openrent/ui/sonner';
+  import { toast } from 'svelte-sonner';
   import { Button } from '@openrent/ui/button';
   import EyeIcon from '@lucide/svelte/icons/eye';
   import RuntimeProvider from '#lib/RuntimeProvider.svelte';
@@ -19,6 +20,16 @@
   const Layout = theme.layout;
   // Marks the page interactive (used by end-to-end tests and analytics hooks).
   onMount(() => document.body.setAttribute('data-hydrated', '1'));
+  // A short message after a link from an email (?notice=), in every theme; the address is cleaned after.
+  const NOTICES = { cart_restored: 'notice.cart_restored', cart_restored_pick_dates: 'notice.cart_restored_pick_dates', reminders_stopped: 'notice.reminders_stopped', cart_link_expired: 'notice.cart_link_expired' } as const;
+  onMount(() => {
+    const key = page.url.searchParams.get('notice') as keyof typeof NOTICES | null;
+    if (!key || !(key in NOTICES)) return;
+    (key === 'cart_link_expired' ? toast.info : toast.success)(t(NOTICES[key], {}, data.shop.locale));
+    const u = new URL(location.href);
+    u.searchParams.delete('notice');
+    history.replaceState(history.state, '', u);
+  });
 </script>
 
 <svelte:head>
@@ -33,8 +44,9 @@
 </svelte:head>
 
 {#if data.preview}
-  <!-- Fixed colours: the banner must stay readable whatever the previewed theme does with its tokens. -->
-  <div class="sticky top-0 z-50 flex bg-[#18181b] text-white flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 text-sm" role="status">
+  <!-- Fixed colours: the banner must stay readable whatever the previewed theme does with its tokens.
+       It scrolls with the page, so it never covers a theme's sticky header. -->
+  <div class="relative z-50 flex bg-[#18181b] text-white flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 text-sm" role="status">
     <span class="flex items-center gap-2"><EyeIcon class="size-4" />{t('preview.banner', { theme: data.preview }, data.shop.locale)}</span>
     <Button size="sm" class="bg-white text-[#18181b] hover:bg-white/90" href="/_or/preview" data-sveltekit-reload>{t('preview.exit', {}, data.shop.locale)}</Button>
   </div>

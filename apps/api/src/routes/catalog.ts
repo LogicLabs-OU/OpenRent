@@ -23,6 +23,35 @@ export function registerCatalog(r: Router) {
   );
   r.delete('/variants/:id', { permission: 'catalog:write', tags: P, summary: 'Delete a variant', params: IdParams }, async (ctx, req) => catalog.deleteVariant(ctx, req.params.id));
 
+  // Bundles are products of type bundle; their id is the product's (PRD §5.4).
+  const BundleCreate = Type.Intersect([Type.Omit(ProductInput, ['type']), Type.Object({ bundle: Type.Index(ProductInput, ['bundle']) })]);
+  r.get('/products/:id/relations', { permission: 'catalog:read', tags: P, summary: 'Accessories, related products and those often rented with it (FR-CAT-7)', params: IdParams }, async (ctx, req) =>
+    catalog.relationsToApi((await catalog.relationsOf(ctx, [req.params.id])).get(req.params.id)!),
+  );
+  r.put(
+    '/products/:id/relations',
+    {
+      permission: 'catalog:write', tags: P, summary: 'Set the accessories and related products (often rented with is worked out from bookings)', params: IdParams,
+      body: Type.Object({ accessory: Type.Optional(Type.Array(Id, { maxItems: 50 })), related: Type.Optional(Type.Array(Id, { maxItems: 50 })) }, { additionalProperties: false }),
+    },
+    async (ctx, req) => catalog.setRelations(ctx, req.params.id, req.body),
+  );
+  r.get('/bundles', { permission: 'catalog:read', tags: P, summary: 'List bundles (products of type bundle) with their components and slots', querystring: ListQuery, response: ok(Page(Product)) }, async (ctx, req) => {
+    const q = parseList(req.query);
+    return catalog.listProducts(ctx, { ...q, filters: { ...(q.filters ?? {}), type: { eq: ['bundle'] } } });
+  });
+  r.post('/bundles', { permission: 'catalog:write', tags: P, summary: 'Create a bundle: a product of fixed components and slots of alternatives', body: BundleCreate, response: ok(Product, 201) }, async (ctx, req) =>
+    catalog.createProduct(ctx, { ...(req.body as any), type: 'bundle' }),
+  );
+  r.get('/bundles/:id', { permission: 'catalog:read', tags: P, summary: 'Get a bundle', params: IdParams, response: ok(Product) }, async (ctx, req) => catalog.getBundle(ctx, req.params.id));
+  r.patch('/bundles/:id', { permission: 'catalog:write', tags: P, summary: 'Update a bundle', params: IdParams, body: ProductPatch, response: ok(Product) }, async (ctx, req) => {
+    await catalog.getBundle(ctx, req.params.id);
+    return catalog.updateProduct(ctx, req.params.id, req.body);
+  });
+  r.delete('/bundles/:id', { permission: 'catalog:write', tags: P, summary: 'Delete a bundle without open orders', params: IdParams }, async (ctx, req) => {
+    await catalog.getBundle(ctx, req.params.id);
+    return catalog.deleteProduct(ctx, req.params.id);
+  });
   r.get('/bundles/:id/components', { permission: 'catalog:read', tags: P, summary: 'Bundle components (id = bundle product id)', params: IdParams }, async (ctx, req) => ({ object: 'list', data: (await catalog.getProduct(ctx, req.params.id)).bundle?.components ?? [] }));
   r.put(
     '/bundles/:id/components',
@@ -31,7 +60,7 @@ export function registerCatalog(r: Router) {
       tags: P,
       summary: 'Replace bundle components (id = bundle product id)',
       params: IdParams,
-      body: Type.Object({ pricing_mode: Type.Optional(Type.Union([Type.Literal('sum'), Type.Literal('fixed'), Type.Literal('discount_pct')])), discount_bp: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })), components: Type.Array(Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 1 }) }), { minItems: 1 }) }),
+      body: Type.Object({ pricing_mode: Type.Optional(Type.Union([Type.Literal('sum'), Type.Literal('fixed'), Type.Literal('discount_pct')])), discount_bp: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })), components: Type.Array(Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 1 }), slot_name: Type.Optional(Nullable(Type.String({ maxLength: 80 }))) }), { minItems: 1 }) }),
     },
     async (ctx, req) => catalog.updateProduct(ctx, req.params.id, { bundle: req.body }),
   );

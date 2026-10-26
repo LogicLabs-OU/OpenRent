@@ -90,6 +90,7 @@ export function registerTenant(r: Router) {
     data: await roles.listRoles(ctx),
     permissions: PERMISSIONS,
   }));
+  r.get('/roles/:id', { permission: 'users:read', tags: RL, summary: 'One role with its permissions and member count', params: IdParams }, async (ctx, req) => roles.getRole(ctx, req.params.id));
   r.post('/roles', { permission: 'users:write', tags: RL, summary: 'Create a role (owners only)', body: Type.Object(RoleBody, { additionalProperties: false }) }, async (ctx, req) => roles.createRole(ctx, req.body));
   r.patch('/roles/:id', { permission: 'users:write', tags: RL, summary: 'Change a role (owners only)', params: IdParams, body: Type.Partial(Type.Object(RoleBody, { additionalProperties: false })) }, async (ctx, req) =>
     roles.updateRole(ctx, req.params.id, req.body),
@@ -107,7 +108,7 @@ export function registerTenant(r: Router) {
   r.post('/api_keys/:id/actions/rotate', { permission: 'api_keys:manage', tags: K, summary: 'Revoke and replace a key', params: IdParams }, async (ctx, req) => tenancy.rotateApiKey(ctx, req.params.id));
 
   const P = ['Payments'];
-  r.get('/payment_providers', { permission: 'payments:read', tags: P, summary: 'Installed payment providers and their state' }, async (ctx) => ({ object: 'list', data: await payments.listPaymentProviders(ctx) }));
+  r.get('/payment_providers', { permission: 'payments:read', tags: P, summary: 'Installed payment providers and their state' }, async (ctx) => ({ object: 'list', data: await payments.listPaymentProviders(ctx, r.deps.plugins.statuses) }));
   r.patch(
     '/payment_providers/:id',
     { permission: 'tenant:write', tags: P, summary: 'Configure a provider (secrets are encrypted at rest)', params: IdParams, body: Type.Object({ enabled: Type.Optional(Type.Boolean()), mode: Type.Optional(Type.Union([Type.Literal('test'), Type.Literal('live')])), config: Type.Optional(Type.Record(Type.String(), Nullable(Type.String()))) }) },

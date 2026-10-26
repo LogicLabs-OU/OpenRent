@@ -69,6 +69,9 @@ export interface TenantSettings {
   email_from: string | null;
   /** Plugin that sends the shop's email (FR-NOT-1); null picks the first one that is set up. */
   email_channel: string | null;
+  /** Plugins that send booking updates by SMS and WhatsApp (FR-NOT-4); null sends none. */
+  sms_channel: string | null;
+  whatsapp_channel: string | null;
   /** Sites that embed the widget checkout (`https://example.com`); payments may only return to these (FR-SF-2). */
   widget_origins: string[];
   /** Live storefront theme. `settings` is the pre-0.2 store of the live theme's settings. */
@@ -87,6 +90,8 @@ export interface TenantSettings {
    * payments but no revenue).
    */
   accounting: { accounts: Record<AccountKey, string>; locked_until: string | null; invoice_when: 'manual' | 'reserved' | 'checked_out' | 'closed' };
+  /** One email to carts left with an email and items, after this many hours (FR-SF-9); off unless turned on. */
+  cart_reminders: { enabled: boolean; after_hours: number };
   /** The shop's own CSS and header/footer HTML, cleaned on save (FR-SF-4). */
   storefront_code: { css: string; header_html: string; footer_html: string; translations?: Record<string, { header_html?: string; footer_html?: string }> };
 }
@@ -127,10 +132,13 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   low_availability_days_ahead: 7,
   storefront: { enabled: true, payment: 'none', locales: ['en'], default_locale: 'en', show_unavailable: true },
   terms: { text: DEFAULT_TERMS, version: '1' },
+  cart_reminders: { enabled: false, after_hours: 4 },
   document_prefixes: { invoice: 'INV', credit_note: 'CN', receipt: 'RC', quote: 'Q', confirmation: 'OC', contract: 'RA' },
   staff_email: null,
   email_from: null,
   email_channel: null,
+  sms_channel: null,
+  whatsapp_channel: null,
   widget_origins: [],
   theme: { id: 'default', settings: {} },
   theme_settings: {},

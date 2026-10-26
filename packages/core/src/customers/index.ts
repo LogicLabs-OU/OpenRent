@@ -8,6 +8,10 @@ import { allPages, exec, json, listPage, many, must, one, updateSql, type ListPa
 import { t } from '../i18n/index.ts';
 import { tenantLocale } from '../i18n/context.ts';
 import { removeCustomerAttachments } from '../attachments/index.ts';
+import { b2bColumns, b2bToApi, openBalance, openBalances } from './b2b.ts';
+
+export { openBalance, accountTermsFor } from './b2b.ts';
+export { invoiceNow, consolidateMonthly } from './billing.ts';
 
 export interface CustomerFlags {
   blocked?: boolean;
@@ -21,14 +25,16 @@ export function customerToApi(c: any) {
   return {
     id: c.id, object: 'customer', type: c.type, name: c.name, email: c.email, phone: c.phone, company_name: c.company_name, tax_id: c.tax_id,
     addresses: c.addresses, locale: c.locale, tags: c.tags, flags: { blocked: false, deposit_waived: false, requires_id_check: false, id_verified: false, ...c.flags },
-    marketing_consent: c.marketing_consent, notes: c.notes, custom_fields: c.custom_fields, merged_into_id: c.merged_into_id,
+    marketing_consent: c.marketing_consent, sms_opt_in: !!c.sms_opt_in, whatsapp_opt_in: !!c.whatsapp_opt_in, notes: c.notes, custom_fields: c.custom_fields, merged_into_id: c.merged_into_id,
+    b2b: b2bToApi(c), open_balance: c.open_balance ?? undefined,
     anonymized_at: c.anonymized_at, stats: c.stats ?? undefined, created_at: c.created_at, updated_at: c.updated_at,
   };
 }
 
 const COLS = {
   type: {}, name: {}, email: {}, phone: {}, company_name: {}, tax_id: {}, addresses: { json: true }, locale: {}, tags: {},
-  flags: { json: true }, marketing_consent: {}, notes: {}, custom_fields: { json: true },
+  flags: { json: true }, marketing_consent: {}, sms_opt_in: {}, whatsapp_opt_in: {}, notes: {}, custom_fields: { json: true },
+  on_account: {}, payment_terms_days: {}, credit_limit: {}, po_required: {}, invoice_schedule: {},
 };
 
 export const normalizeEmail = (e?: string | null) => (e ? e.trim().toLowerCase() : null);
@@ -49,7 +55,7 @@ export async function getCustomer(ctx: Ctx, id: string) {
     [id],
   );
   const damage = await one(ctx, `SELECT count(*)::int AS n FROM damage_charges d JOIN orders o ON o.id = d.order_id WHERE o.customer_id = $1`, [id]);
-  return customerToApi({ ...c, stats: { ...stats, lifetime_value: Number(stats?.lifetime_value ?? 0), damage_incidents: damage?.n ?? 0 } });
+  return customerToApi({ ...c, open_balance: await openBalance(ctx, id), stats: { ...stats, lifetime_value: Number(stats?.lifetime_value ?? 0), damage_incidents: damage?.n ?? 0 } });
 }
 
 export async function listCustomers(ctx: Ctx, p: ListParams) {
@@ -65,7 +71,8 @@ export async function listCustomers(ctx: Ctx, p: ListParams) {
     },
     p,
   );
-  return { ...page, data: page.data.map(customerToApi) };
+  const owed = await openBalances(ctx, page.data.map((c) => c.id));
+  return { ...page, data: page.data.map((c) => customerToApi({ ...c, open_balance: owed.get(c.id) ?? 0 })) };
 }
 
 /** The customer list as a spreadsheet, with the same filters and search as the list (FR-INT-2). */
@@ -99,16 +106,19 @@ export async function findDuplicates(ctx: Ctx, email?: string | null, phone?: st
 export async function createCustomer(ctx: Ctx, input: Record<string, any>) {
   if (!input.name?.trim()) throw invalid(msg('error.name_is_required'), [{ field: 'name', code: 'required', message: msg('error.field.enter_a_name') }]);
   input = { ...input, custom_fields: await validateCustomFields(ctx, 'customer', input.custom_fields) };
+  const terms = b2bColumns(null, input.b2b ?? {});
   const duplicates = await findDuplicates(ctx, input.email, input.phone);
   const row = (
     await many(
       ctx,
-      `INSERT INTO customers (id, tenant_id, type, name, email, phone, company_name, tax_id, addresses, locale, tags, flags, marketing_consent, notes, custom_fields)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      `INSERT INTO customers (id, tenant_id, type, name, email, phone, company_name, tax_id, addresses, locale, tags, flags, marketing_consent, notes, custom_fields,
+         on_account, payment_terms_days, credit_limit, po_required, invoice_schedule, sms_opt_in, whatsapp_opt_in)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
       [
         newId('cus'), ctx.tenantId, input.type ?? 'person', input.name.trim(), normalizeEmail(input.email), input.phone ?? null, input.company_name ?? null,
         input.tax_id ?? null, json(input.addresses ?? {}), input.locale ?? null, input.tags ?? [], json(input.flags ?? {}), !!input.marketing_consent,
-        input.notes ?? '', json(input.custom_fields ?? {}),
+        input.notes ?? '', json(input.custom_fields ?? {}), terms.on_account, terms.payment_terms_days, terms.credit_limit, terms.po_required, terms.invoice_schedule,
+        !!input.sms_opt_in, !!input.whatsapp_opt_in,
       ],
     )
   )[0];
@@ -134,6 +144,9 @@ export interface CheckoutCustomer {
   phone?: string | null;
   locale?: string | null;
   marketing_consent?: boolean;
+  /** Booking updates by text message or WhatsApp (FR-NOT-4). */
+  sms_opt_in?: boolean;
+  whatsapp_opt_in?: boolean;
   company_name?: string | null;
   tax_id?: string | null;
   billing_address?: Address | null;
@@ -151,6 +164,9 @@ export async function findOrCreateByEmail(ctx: Ctx, input: CheckoutCustomer) {
     if (input.billing_address?.line1) patch.addresses = { ...(existing.addresses ?? {}), billing: input.billing_address };
     if (input.locale && !existing.locale) patch.locale = input.locale;
     if (input.marketing_consent === true && !existing.marketing_consent) patch.marketing_consent = true;
+    // Asking for texts at checkout means this number, today.
+    for (const k of ['sms_opt_in', 'whatsapp_opt_in'] as const) if (input[k] === true && !existing[k]) patch[k] = true;
+    if ((input.sms_opt_in || input.whatsapp_opt_in) && input.phone) patch.phone = input.phone;
     if (Object.keys(patch).length) await updateCustomer(ctx, existing.id, patch);
     return getCustomerRow(ctx, existing.id);
   }
@@ -194,6 +210,8 @@ export async function updateCustomer(ctx: Ctx, id: string, patch: Record<string,
   if (data.email !== undefined) data.email = normalizeEmail(data.email);
   if (data.custom_fields !== undefined) data.custom_fields = await validateCustomFields(ctx, 'customer', data.custom_fields);
   if (data.flags) data.flags = { ...before.flags, ...data.flags };
+  if (data.b2b) Object.assign(data, b2bColumns(before, data.b2b));
+  delete data.b2b;
   const q = updateSql('customers', id, data, COLS);
   if (!q) return customerToApi(before);
   const after = (await many(ctx, q.text, q.values))[0];
@@ -247,7 +265,7 @@ export async function anonymizeCustomer(ctx: Ctx, id: string) {
   await exec(
     ctx,
     `UPDATE customers SET name = $2, email = NULL, phone = NULL, company_name = NULL, tax_id = NULL, addresses = '{}',
-       notes = '', tags = '{}', custom_fields = '{}', provider_refs = '{}', marketing_consent = false, anonymized_at = now() WHERE id = $1`,
+       notes = '', tags = '{}', custom_fields = '{}', provider_refs = '{}', marketing_consent = false, sms_opt_in = false, whatsapp_opt_in = false, anonymized_at = now() WHERE id = $1`,
     [id, msg('customer.anonymised_name', {}, await tenantLocale(ctx))],
   );
   // Contact people and the customer's own files (ID scans, certificates) are personal data too.

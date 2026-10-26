@@ -1523,7 +1523,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** One role with its permissions and member count */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
         post?: never;
         /** Delete a role nobody has (owners only) */
@@ -2129,7 +2149,8 @@ export interface paths {
                             components: {
                                 variant_id: string;
                                 quantity: number;
-                                slot_name?: string;
+                                /** @description Components with the same slot name are alternatives: the booking picks one (FR-CAT-6) */
+                                slot_name?: string | null;
                             }[];
                         };
                     };
@@ -2427,7 +2448,8 @@ export interface paths {
                             components: {
                                 variant_id: string;
                                 quantity: number;
-                                slot_name?: string;
+                                /** @description Components with the same slot name are alternatives: the booking picks one (FR-CAT-6) */
+                                slot_name?: string | null;
                             }[];
                         };
                     };
@@ -2818,6 +2840,657 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/v1/products/{id}/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Accessories, related products and those often rented with it (FR-CAT-7) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        /** Set the accessories and related products (often rented with is worked out from bookings) */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        accessory?: string[];
+                        related?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List bundles (products of type bundle) with their components and slots */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    cursor?: string;
+                    /** @description Comma separated; prefix with - for descending */
+                    sort?: string;
+                    /** @description Full-text search */
+                    q?: string;
+                    expand?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "product";
+                                name: string;
+                                slug: string;
+                                type: string;
+                                variants: ({
+                                    id: string;
+                                    /** @enum {string} */
+                                    object: "variant";
+                                } & {
+                                    [key: string]: unknown;
+                                })[];
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                            next_cursor: string | null;
+                            has_more: boolean;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a bundle: a product of fixed components and slots of alternatives */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        slug?: string;
+                        description?: string;
+                        visibility?: "public" | "hidden" | "archived";
+                        tags?: string[];
+                        category_ids?: string[];
+                        tax_profile_id?: string | null;
+                        deposit_amount?: number;
+                        buffer_before_min?: number;
+                        buffer_after_min?: number;
+                        min_duration_min?: number | null;
+                        max_duration_min?: number | null;
+                        min_notice_min?: number;
+                        increment_min?: number | null;
+                        custom_fields?: {
+                            [key: string]: unknown;
+                        };
+                        translations?: {
+                            [key: string]: unknown;
+                        };
+                        seo?: {
+                            [key: string]: unknown;
+                        };
+                        tracking?: "serialized" | "bulk" | "none";
+                        /** @description What the units’ meter counts (hours, km); null for none */
+                        meter_unit?: string | null;
+                        depreciation_months?: number | null;
+                        /** @description Value left at the end of the life, in basis points of the price */
+                        residual_bp?: number;
+                        price?: {
+                            name?: string;
+                            kind: "fixed" | "per_period" | "tiered" | "table";
+                            period_unit?: "hour" | "day" | "week" | "month";
+                            amount?: number;
+                            rounding?: "up" | "nearest" | "down";
+                            charge_day_rules?: {
+                                non_billable_weekdays?: number[];
+                                /** @description Do not charge the pickup day (day prices only). */
+                                free_pickup_day?: boolean;
+                                /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
+                                pickup_after?: string | null;
+                                /** @description Do not charge the return day (day prices only). */
+                                free_return_day?: boolean;
+                                /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
+                                return_before?: string | null;
+                            };
+                            tiers?: {
+                                from: number;
+                                pct_bp: number;
+                            }[];
+                            cap?: {
+                                every: number;
+                                charge: number;
+                            } | null;
+                            price_table?: {
+                                periods: number;
+                                amount: number;
+                            }[];
+                            extra_per_period?: number;
+                        };
+                        variants?: {
+                            name?: string;
+                            sku?: string | null;
+                            tracking?: "serialized" | "bulk" | "none";
+                            options?: {
+                                [key: string]: string;
+                            };
+                            translations?: {
+                                [key: string]: {
+                                    name?: string;
+                                };
+                            };
+                            price_structure_id?: string | null;
+                            price?: {
+                                name?: string;
+                                kind: "fixed" | "per_period" | "tiered" | "table";
+                                period_unit?: "hour" | "day" | "week" | "month";
+                                amount?: number;
+                                rounding?: "up" | "nearest" | "down";
+                                charge_day_rules?: {
+                                    non_billable_weekdays?: number[];
+                                    /** @description Do not charge the pickup day (day prices only). */
+                                    free_pickup_day?: boolean;
+                                    /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
+                                    pickup_after?: string | null;
+                                    /** @description Do not charge the return day (day prices only). */
+                                    free_return_day?: boolean;
+                                    /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
+                                    return_before?: string | null;
+                                };
+                                tiers?: {
+                                    from: number;
+                                    pct_bp: number;
+                                }[];
+                                cap?: {
+                                    every: number;
+                                    charge: number;
+                                } | null;
+                                price_table?: {
+                                    periods: number;
+                                    amount: number;
+                                }[];
+                                extra_per_period?: number;
+                            };
+                            deposit_amount?: number | null;
+                            position?: number;
+                            /** @description Tell staff when fewer than this many are free in the coming days; null turns it off. */
+                            low_availability_threshold?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            buffer_before_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            buffer_after_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            min_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            max_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            min_notice_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            increment_min?: number | null;
+                        }[];
+                        bundle?: {
+                            pricing_mode?: "sum" | "fixed" | "discount_pct";
+                            discount_bp?: number;
+                            components: {
+                                variant_id: string;
+                                quantity: number;
+                                /** @description Components with the same slot name are alternatives: the booking picks one (FR-CAT-6) */
+                                slot_name?: string | null;
+                            }[];
+                        };
+                    } & {
+                        bundle?: {
+                            pricing_mode?: "sum" | "fixed" | "discount_pct";
+                            discount_bp?: number;
+                            components: {
+                                variant_id: string;
+                                quantity: number;
+                                /** @description Components with the same slot name are alternatives: the booking picks one (FR-CAT-6) */
+                                slot_name?: string | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "product";
+                            name: string;
+                            slug: string;
+                            type: string;
+                            variants: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "variant";
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bundles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a bundle */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "product";
+                            name: string;
+                            slug: string;
+                            type: string;
+                            variants: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "variant";
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a bundle without open orders */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a bundle */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        type?: "rental" | "sale" | "service" | "consumable" | "bundle";
+                        name?: string;
+                        slug?: string;
+                        description?: string;
+                        visibility?: "public" | "hidden" | "archived";
+                        tags?: string[];
+                        category_ids?: string[];
+                        tax_profile_id?: string | null;
+                        deposit_amount?: number;
+                        buffer_before_min?: number;
+                        buffer_after_min?: number;
+                        min_duration_min?: number | null;
+                        max_duration_min?: number | null;
+                        min_notice_min?: number;
+                        increment_min?: number | null;
+                        custom_fields?: {
+                            [key: string]: unknown;
+                        };
+                        translations?: {
+                            [key: string]: unknown;
+                        };
+                        seo?: {
+                            [key: string]: unknown;
+                        };
+                        tracking?: "serialized" | "bulk" | "none";
+                        /** @description What the units’ meter counts (hours, km); null for none */
+                        meter_unit?: string | null;
+                        depreciation_months?: number | null;
+                        /** @description Value left at the end of the life, in basis points of the price */
+                        residual_bp?: number;
+                        price?: {
+                            name?: string;
+                            kind: "fixed" | "per_period" | "tiered" | "table";
+                            period_unit?: "hour" | "day" | "week" | "month";
+                            amount?: number;
+                            rounding?: "up" | "nearest" | "down";
+                            charge_day_rules?: {
+                                non_billable_weekdays?: number[];
+                                /** @description Do not charge the pickup day (day prices only). */
+                                free_pickup_day?: boolean;
+                                /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
+                                pickup_after?: string | null;
+                                /** @description Do not charge the return day (day prices only). */
+                                free_return_day?: boolean;
+                                /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
+                                return_before?: string | null;
+                            };
+                            tiers?: {
+                                from: number;
+                                pct_bp: number;
+                            }[];
+                            cap?: {
+                                every: number;
+                                charge: number;
+                            } | null;
+                            price_table?: {
+                                periods: number;
+                                amount: number;
+                            }[];
+                            extra_per_period?: number;
+                        };
+                        variants?: {
+                            name?: string;
+                            sku?: string | null;
+                            tracking?: "serialized" | "bulk" | "none";
+                            options?: {
+                                [key: string]: string;
+                            };
+                            translations?: {
+                                [key: string]: {
+                                    name?: string;
+                                };
+                            };
+                            price_structure_id?: string | null;
+                            price?: {
+                                name?: string;
+                                kind: "fixed" | "per_period" | "tiered" | "table";
+                                period_unit?: "hour" | "day" | "week" | "month";
+                                amount?: number;
+                                rounding?: "up" | "nearest" | "down";
+                                charge_day_rules?: {
+                                    non_billable_weekdays?: number[];
+                                    /** @description Do not charge the pickup day (day prices only). */
+                                    free_pickup_day?: boolean;
+                                    /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
+                                    pickup_after?: string | null;
+                                    /** @description Do not charge the return day (day prices only). */
+                                    free_return_day?: boolean;
+                                    /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
+                                    return_before?: string | null;
+                                };
+                                tiers?: {
+                                    from: number;
+                                    pct_bp: number;
+                                }[];
+                                cap?: {
+                                    every: number;
+                                    charge: number;
+                                } | null;
+                                price_table?: {
+                                    periods: number;
+                                    amount: number;
+                                }[];
+                                extra_per_period?: number;
+                            };
+                            deposit_amount?: number | null;
+                            position?: number;
+                            /** @description Tell staff when fewer than this many are free in the coming days; null turns it off. */
+                            low_availability_threshold?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            buffer_before_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            buffer_after_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            min_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            max_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            min_notice_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
+                            increment_min?: number | null;
+                        }[];
+                        bundle?: {
+                            pricing_mode?: "sum" | "fixed" | "discount_pct";
+                            discount_bp?: number;
+                            components: {
+                                variant_id: string;
+                                quantity: number;
+                                /** @description Components with the same slot name are alternatives: the booking picks one (FR-CAT-6) */
+                                slot_name?: string | null;
+                            }[];
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "product";
+                            name: string;
+                            slug: string;
+                            type: string;
+                            variants: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "variant";
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        trace?: never;
+    };
     "/api/v1/bundles/{id}/components": {
         parameters: {
             query?: never;
@@ -2864,6 +3537,7 @@ export interface paths {
                         components: {
                             variant_id: string;
                             quantity: number;
+                            slot_name?: string | null;
                         }[];
                     };
                 };
@@ -4768,6 +5442,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/external_stock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock rented in from suppliers, by variant, location, status and dates */
+        get: {
+            parameters: {
+                query?: {
+                    variant_id?: string;
+                    location_id?: string;
+                    status?: "booked" | "cancelled";
+                    from?: string;
+                    to?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Rent stock in for some dates: it raises capacity then only, and settles overbookings it covers */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        variant_id: string;
+                        location_id: string;
+                        supplier: string;
+                        /** @description 1 or more */
+                        quantity: number;
+                        /** Format: date-time */
+                        starts_at: string;
+                        /** Format: date-time */
+                        ends_at: string;
+                        /** @description What one unit costs for the whole time, minor units */
+                        unit_cost?: number;
+                        reference?: string | null;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/external_stock/{id}/actions/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel rented-in stock; refused while bookings need it unless force */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        force?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/downtimes": {
         parameters: {
             query?: never;
@@ -5203,9 +5995,23 @@ export interface paths {
                             id_verified?: boolean;
                         };
                         marketing_consent?: boolean;
+                        /** @description Booking updates by SMS (FR-NOT-4) */
+                        sms_opt_in?: boolean;
+                        /** @description Booking updates on WhatsApp (FR-NOT-4) */
+                        whatsapp_opt_in?: boolean;
                         notes?: string;
                         custom_fields?: {
                             [key: string]: unknown;
+                        };
+                        b2b?: {
+                            /** @description Books without paying first; invoices are paid within the terms (FR-CUS-7) */
+                            on_account?: boolean;
+                            /** @description 0 to 365 */
+                            payment_terms_days?: number | null;
+                            /** @description Minor units, 0 or more; null for no limit */
+                            credit_limit?: number | null;
+                            po_required?: boolean;
+                            invoice_schedule?: "per_order" | "monthly";
                         };
                     };
                 };
@@ -5467,9 +6273,23 @@ export interface paths {
                             id_verified?: boolean;
                         };
                         marketing_consent?: boolean;
+                        /** @description Booking updates by SMS (FR-NOT-4) */
+                        sms_opt_in?: boolean;
+                        /** @description Booking updates on WhatsApp (FR-NOT-4) */
+                        whatsapp_opt_in?: boolean;
                         notes?: string;
                         custom_fields?: {
                             [key: string]: unknown;
+                        };
+                        b2b?: {
+                            /** @description Books without paying first; invoices are paid within the terms (FR-CUS-7) */
+                            on_account?: boolean;
+                            /** @description 0 to 365 */
+                            payment_terms_days?: number | null;
+                            /** @description Minor units, 0 or more; null for no limit */
+                            credit_limit?: number | null;
+                            po_required?: boolean;
+                            invoice_schedule?: "per_order" | "monthly";
                         };
                     };
                 };
@@ -5624,6 +6444,78 @@ export interface paths {
                     };
                 };
             };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/actions/send_portal_link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email the customer a link to their account, valid for a week (also before the first booking) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/actions/invoice_now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put every finished booking not invoiced yet on one invoice (customers invoiced monthly) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
             responses: {
                 /** @description Default Response */
                 200: {
@@ -5933,6 +6825,10 @@ export interface paths {
                             stock_item_ids?: string[];
                             buffer_before_min?: number;
                             buffer_after_min?: number;
+                            /** @description Choice bundles: the variant picked per slot; a slot not named takes its first option */
+                            picks?: {
+                                [key: string]: string;
+                            } | null;
                         }[];
                         coupon_codes?: string[];
                         deposit?: {
@@ -6142,6 +7038,10 @@ export interface paths {
                             stock_item_ids?: string[];
                             buffer_before_min?: number;
                             buffer_after_min?: number;
+                            /** @description Choice bundles: the variant picked per slot; a slot not named takes its first option */
+                            picks?: {
+                                [key: string]: string;
+                            } | null;
                         }[];
                         coupon_codes?: string[];
                         deposit?: {
@@ -6162,6 +7062,9 @@ export interface paths {
                             postcode?: string | null;
                             address?: string | null;
                         };
+                        po_number?: string | null;
+                        /** @description weekly or monthly: invoice each period while out (FR-OR-11); null bills once */
+                        billing_cycle?: string | null;
                     };
                 };
             };
@@ -6381,6 +7284,9 @@ export interface paths {
                             postcode?: string | null;
                             address?: string | null;
                         };
+                        po_number?: string | null;
+                        /** @description weekly or monthly, until pickup */
+                        billing_cycle?: string | null;
                     };
                 };
             };
@@ -6494,6 +7400,10 @@ export interface paths {
                         stock_item_ids?: string[];
                         buffer_before_min?: number;
                         buffer_after_min?: number;
+                        /** @description Choice bundles: the variant picked per slot; a slot not named takes its first option */
+                        picks?: {
+                            [key: string]: string;
+                        } | null;
                     };
                 };
             };
@@ -6611,6 +7521,9 @@ export interface paths {
                         buffer_before_min?: number;
                         buffer_after_min?: number;
                         stock_item_ids?: string[];
+                        picks?: {
+                            [key: string]: string;
+                        };
                     };
                 };
             };
@@ -6848,6 +7761,8 @@ export interface paths {
                             /** @description Why stock is booked past capacity (needs orders:overbook) */
                             reason: string;
                         };
+                        /** @description Book over the customer’s credit limit on purpose (written to the audit log) */
+                        override_credit_limit?: boolean;
                     };
                 };
             };
@@ -8586,6 +9501,48 @@ export interface paths {
                 content: {
                     "application/json": {
                         amount?: number;
+                        reason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payments/{id}/actions/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a payment that has not settled: a pending online payment or an authorisation not captured */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
                         reason?: string;
                     };
                 };
@@ -12881,7 +13838,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** One template (builtin:<type> is the built-in one) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
         post?: never;
         /** Go back to the built-in template (issued documents keep their HTML) */
@@ -12905,6 +13882,78 @@ export interface paths {
                 };
             };
         };
+        options?: never;
+        head?: never;
+        /** Change a template; changing a built-in one creates the shop’s own */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        locale?: string;
+                        body?: string;
+                        css?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/document_templates/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render a stored template against a real order */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        order_id?: string;
+                        locale?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -13251,6 +14300,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications/actions/test_text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a test SMS or WhatsApp message right away with the chosen plugin and report the response */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        to: string;
+                        channel: "sms" | "whatsapp";
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/notification_templates": {
         parameters: {
             query?: never;
@@ -13294,7 +14384,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** One message template (id = builtin:<event> or the shop’s own) */
+        get: {
+            parameters: {
+                query?: {
+                    locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -13317,6 +14429,8 @@ export interface paths {
                         body: string;
                         locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
                         enabled?: boolean;
+                        /** @description The SMS and WhatsApp text; empty sends none, null restores the built-in one */
+                        text?: string | null;
                     };
                 };
             };
@@ -13790,12 +14904,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Run a report: revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation. Add format=csv or format=xlsx for a download. */
+        /** Run a report: revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation, customer_value, product_roi, damage_frequency, staff_activity. Add format=csv or format=xlsx for a download. */
         get: {
             parameters: {
                 query?: {
                     from?: string;
                     to?: string;
+                    /** @description A relative period instead of from and to: today, last_7_days, last_30_days, this_month, last_month, year_to_date, last_year, all_time, next_7_days, next_14_days */
+                    range?: string;
                     group_by?: string;
                     location_id?: string;
                     variant_id?: string;
@@ -13820,6 +14936,222 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saved_reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List saved reports */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    cursor?: string;
+                    /** @description Comma separated; prefix with - for descending */
+                    sort?: string;
+                    /** @description Full-text search */
+                    q?: string;
+                    expand?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save a report with its filters, optionally with a schedule and recipients */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        /** @description revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation, customer_value, product_roi, damage_frequency, staff_activity */
+                        report: string;
+                        params?: {
+                            range?: string;
+                            from?: string;
+                            to?: string;
+                            group_by?: string;
+                            location_id?: string;
+                            variant_id?: string;
+                        };
+                        format?: "csv" | "xlsx";
+                        schedule?: ("daily" | null) | ("weekly" | null) | ("monthly" | null) | null;
+                        recipients?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/saved_reports/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a saved report */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a saved report */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a saved report */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        /** @description revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation, customer_value, product_roi, damage_frequency, staff_activity */
+                        report?: string;
+                        params?: {
+                            range?: string;
+                            from?: string;
+                            to?: string;
+                            group_by?: string;
+                            location_id?: string;
+                            variant_id?: string;
+                        };
+                        format?: "csv" | "xlsx";
+                        schedule?: ("daily" | null) | ("weekly" | null) | ("monthly" | null) | null;
+                        recipients?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/saved_reports/{id}/actions/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Build the report now and email it to its recipients (or to the addresses given); returns the export job */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        recipients?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -14048,6 +15380,10 @@ export interface paths {
                         lines: {
                             variant_id: string;
                             quantity: number;
+                            /** @description Choice bundles: the option picked per slot */
+                            picks?: {
+                                [key: string]: string;
+                            } | null;
                         }[];
                         coupon_codes?: string[];
                         locale?: string;
@@ -14101,6 +15437,10 @@ export interface paths {
                         lines?: {
                             variant_id: string;
                             quantity: number;
+                            /** @description Choice bundles: the option picked per slot */
+                            picks?: {
+                                [key: string]: string;
+                            } | null;
                         }[];
                         coupon_codes?: string[];
                         customer?: {
@@ -14186,6 +15526,10 @@ export interface paths {
                         lines?: {
                             variant_id: string;
                             quantity: number;
+                            /** @description Choice bundles: the option picked per slot */
+                            picks?: {
+                                [key: string]: string;
+                            } | null;
                         }[];
                         coupon_codes?: string[];
                         customer?: {
@@ -14211,6 +15555,86 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/v1/storefront/checkout_sessions/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new cart with the items of the cart a reminder email named (FR-SF-9) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        token: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/cart_reminders/opt_out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** No more cart reminders to the email a reminder went to */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        token: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/storefront/checkout_sessions/{id}/actions/complete": {
@@ -14242,6 +15666,8 @@ export interface paths {
                             phone?: string;
                             locale?: string;
                             marketing_consent?: boolean;
+                            sms_opt_in?: boolean;
+                            whatsapp_opt_in?: boolean;
                             company_name?: string;
                             tax_id?: string;
                             billing_address?: {
@@ -14257,6 +15683,10 @@ export interface paths {
                         terms_accepted: boolean;
                         terms_hash: string;
                         notes?: string;
+                        /** @description Plugin checkout fields by "<plugin id>.<key>"; b2b.pay_on_account and b2b.po_number for customers on account (signed in) */
+                        extra?: {
+                            [key: string]: unknown;
+                        };
                         /** @description Widget checkout: the embedding page to return to after paying (its origin must be in settings.widget_origins) */
                         return_url?: string;
                     };
@@ -14545,7 +15975,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update name, phone, language and marketing consent */
+        /** Update name, phone, language, marketing consent and text message updates */
         patch: {
             parameters: {
                 query?: never;
@@ -14560,6 +15990,8 @@ export interface paths {
                         phone?: string | null;
                         locale?: string | null;
                         marketing_consent?: boolean;
+                        sms_opt_in?: boolean;
+                        whatsapp_opt_in?: boolean;
                     };
                 };
             };
@@ -14573,6 +16005,40 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/v1/storefront/account/b2b": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the signed-in customer can book on account, with their terms and credit left (FR-CUS-7) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/storefront/account/orders/{id}/cancellation_request": {
@@ -15016,6 +16482,403 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/auth/request_link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email a one-time sign-in link to a customer who has bookings. The answer is the same either way. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        email: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/auth/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange the token from the sign-in link for a session token (send it as X-Customer-Session) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        token: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End the session */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Profile, account terms, what is owed, insurance documents and signatures waiting */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update name, phone, language, marketing consent and text message updates */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        phone?: string | null;
+                        locale?: string | null;
+                        marketing_consent?: boolean;
+                        sms_opt_in?: boolean;
+                        whatsapp_opt_in?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/portal/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The customer’s bookings with what is left to pay */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One booking: lines, totals, payments and deliveries */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/documents/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download a document of one of the customer’s bookings */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/orders/{id}/actions/request_extension": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the shop to keep a booking longer */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        ends_at: string;
+                        reason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/orders/{id}/payment_intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pay what is left on a booking online (a payment client secret for the provider’s form) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/insurance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload an insurance certificate as multipart/form-data (field "file", optional field "label"); it counts for pickup (FR-PAY-8) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -15893,7 +17756,27 @@ export interface paths {
         };
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete an upload that nothing uses yet (photos and attachments go with what they belong to) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -15989,6 +17872,43 @@ export interface paths {
                 path: {
                     id: string;
                     name: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/public/theme_previews/{theme}/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A preview image of an installed code theme */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    theme: string;
+                    index: number;
                 };
                 cookie?: never;
             };
@@ -16211,7 +18131,7 @@ export interface paths {
             };
         };
         put?: never;
-        /** Validate an uploaded CSV or XLSX file (POST /files?purpose=import) and return the dry-run report; nothing is changed yet */
+        /** Validate an uploaded CSV or XLSX file (POST /files?purpose=import) and return the dry-run report; nothing is changed yet. Without a mapping, the one saved for files with the same columns is used. */
         post: {
             parameters: {
                 query?: never;
@@ -16222,8 +18142,12 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        entity: "products" | "stock_items" | "prices";
+                        entity: "products" | "stock_items" | "prices" | "customers" | "orders";
                         file_id: string;
+                        /** @description File column → OpenRent column; "" skips the column */
+                        mapping?: {
+                            [key: string]: string;
+                        };
                     };
                 };
             };
@@ -16237,6 +18161,42 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/imports/columns/{entity}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The columns an import can fill, for mapping a file’s columns */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    entity: "products" | "stock_items" | "prices" | "customers" | "orders";
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -16276,7 +18236,36 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Map the file’s columns and check it again; the mapping is kept for files with the same columns */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description File column → OpenRent column; "" skips the column */
+                        mapping: {
+                            [key: string]: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         trace?: never;
     };
     "/api/v1/imports/{id}/actions/apply": {
@@ -16289,6 +18278,140 @@ export interface paths {
         get?: never;
         put?: never;
         /** Apply a validated import in one transaction (re-validated first) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import_batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent moves from other systems */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Start a move from Shelf.nu (its CSV export as file_id), Booqable (company and API key) or Snipe-IT (base URL and API token). Booqable and Snipe-IT are read by a background job. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        source: "shelf" | "booqable" | "snipeit";
+                        file_id?: string;
+                        company?: string;
+                        base_url?: string;
+                        api_key?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import_batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A move with its imports and their reports */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/import_batches/{id}/actions/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply every import of the move in one transaction, in the background */
         post: {
             parameters: {
                 query?: never;
@@ -16330,7 +18453,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
-                    entity: "products" | "stock_items" | "prices";
+                    entity: "products" | "stock_items" | "prices" | "customers" | "orders";
                 };
                 cookie?: never;
             };
@@ -16360,7 +18483,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export products, stock items or prices in the import columns */
+        /** Export products, stock items, prices, customers or bookings in the import columns */
         get: {
             parameters: {
                 query?: {
@@ -16368,7 +18491,7 @@ export interface paths {
                 };
                 header?: never;
                 path: {
-                    entity: "products" | "stock_items" | "prices";
+                    entity: "products" | "stock_items" | "prices" | "customers" | "orders";
                 };
                 cookie?: never;
             };
@@ -17972,6 +20095,7 @@ export interface paths {
                         format?: "csv" | "xlsx";
                         from?: string;
                         to?: string;
+                        range?: string;
                         group_by?: string;
                         location_id?: string;
                         variant_id?: string;

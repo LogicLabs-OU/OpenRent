@@ -20,6 +20,7 @@
   import { shopLocales } from './shop-locales.svelte.ts';
   import { api, session, t, toast, notifyError, fieldErrors } from '#lib';
   import EmailDelivery from './email-delivery.svelte';
+  import TextMessageSettings from './text-message-settings.svelte';
 
   const SMTP = 'notify-smtp';
   let plugin = $state<any>(null);
@@ -32,7 +33,7 @@
 
   let templates = $state<any[]>([]);
   let editing = $state<any>(null);
-  let draft = $state({ subject: '', body: '', enabled: true });
+  let draft = $state({ subject: '', body: '', enabled: true, text: '' });
   let draftErrors = $state<Record<string, string>>({});
   let preview = $state<{ subject: string; html: string } | null>(null);
   let savingTpl = $state(false);
@@ -138,7 +139,7 @@
 
   function edit(tpl: any) {
     editing = tpl;
-    draft = { subject: tpl.subject, body: tpl.body, enabled: tpl.enabled };
+    draft = { subject: tpl.subject, body: tpl.body, enabled: tpl.enabled, text: tpl.text ?? '' };
     draftErrors = {};
     preview = null;
     renderPreview();
@@ -159,7 +160,11 @@
     if (!editing) return;
     savingTpl = true;
     try {
-      await api.patch(`/notification_templates/${editing.event}`, { subject: draft.subject, body: draft.body, enabled: draft.enabled, locale: tplLocale });
+      // The text message version is saved only when it was changed, so built-in texts keep updating.
+      const text = editing.text === null && !draft.text ? undefined : draft.text !== (editing.text ?? '') ? draft.text : undefined;
+      // The email stays built in (and follows the translations) unless it was changed.
+      const emailChanged = !editing.builtin || draft.subject !== editing.subject || draft.body !== editing.body || draft.enabled !== editing.enabled;
+      await api.patch(`/notification_templates/${editing.event}`, { ...(emailChanged ? { subject: draft.subject, body: draft.body, enabled: draft.enabled } : {}), locale: tplLocale, text });
       toast.success(t('common.saved'));
       editing = null;
       await load();
@@ -168,6 +173,18 @@
       if (!Object.keys(draftErrors).length) notifyError(err);
     } finally {
       savingTpl = false;
+    }
+  }
+
+  async function resetText() {
+    if (!editing) return;
+    try {
+      await api.patch(`/notification_templates/${editing.event}`, { locale: tplLocale, text: null });
+      toast.success(t('email.text_reset'));
+      editing = null;
+      await load();
+    } catch (err) {
+      notifyError(err);
     }
   }
 
@@ -280,6 +297,8 @@
   </Card.Root>
 {/if}
 
+<TextMessageSettings />
+
 {#key deliveryKey}<EmailDelivery />{/key}
 
 <Card.Root>
@@ -333,6 +352,13 @@
             <Textarea id="tpl-body" class="min-h-80 font-mono text-xs" bind:value={draft.body} onchange={renderPreview} aria-invalid={!!draftErrors.body} />
             {#if draftErrors.body}<Field.Error>{draftErrors.body}</Field.Error>{:else}<Field.Description>{t('email.variables_hint')}</Field.Description>{/if}
           </Field.Field>
+          {#if editing.text !== null || !editing.text_builtin}
+            <Field.Field data-invalid={!!draftErrors.text || undefined}>
+              <Field.Label for="tpl-text">{t('email.text_message')}</Field.Label>
+              <Textarea id="tpl-text" class="min-h-24 font-mono text-xs" maxlength={640} bind:value={draft.text} aria-invalid={!!draftErrors.text} />
+              {#if draftErrors.text}<Field.Error>{draftErrors.text}</Field.Error>{:else}<Field.Description>{t('email.text_message_hint', { count: draft.text.length })}{#if !editing.text_builtin} <button type="button" class="underline" onclick={resetText}>{t('email.text_use_standard')}</button>{/if}</Field.Description>{/if}
+            </Field.Field>
+          {/if}
           <Field.Field orientation="horizontal">
             <Switch id="tpl-enabled" bind:checked={draft.enabled} />
             <Field.Label for="tpl-enabled">{t('email.enabled')}</Field.Label>

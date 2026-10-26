@@ -18,7 +18,7 @@ function fakeCtx(found: string | null = null) {
     connection: { id: 'icn_1', settings: {}, account: {} },
     fetch: async (url, init = {}) => {
       const path = url.replace('https://api.hubapi.com', '');
-      sent.push({ method: init.method ?? 'GET', path, body: init.body ? JSON.parse(init.body) : undefined });
+      sent.push({ method: init.method ?? 'GET', path, body: init.body ? JSON.parse(String(init.body)) : undefined });
       const reply = path.endsWith('/search') ? { results: found ? [{ id: found }] : [] } : path.includes('/contacts') ? { id: 'hc-1' } : path.includes('/deals') ? { id: 'hd-1' } : {};
       return { status: 200, ok: true, json: async () => reply, text: async () => JSON.stringify(reply) };
     },
@@ -27,7 +27,7 @@ function fakeCtx(found: string | null = null) {
       set: async (t, id, remote) => void links.set(`${t}:${id}`, remote),
     },
     data: {
-      accounting: { contact: async () => contact, invoice: async () => null, payment: async () => null, entry: async () => null },
+      accounting: { contact: async () => contact, invoice: async () => null, payment: async () => null, entry: async () => null, documentPdf: async () => null },
       contact: async () => contact,
       order: async (id) => (id === 'ord_1' ? order : null),
     },

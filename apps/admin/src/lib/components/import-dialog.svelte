@@ -1,40 +1,72 @@
 <script lang="ts">
   import * as Dialog from '@openrent/ui/dialog';
   import * as Table from '@openrent/ui/table';
-  import * as Alert from '@openrent/ui/alert';
+  import * as Collapsible from '@openrent/ui/collapsible';
+  import { NativeSelect, NativeSelectOption } from '@openrent/ui/native-select';
   import { Button } from '@openrent/ui/button';
-  import { Badge } from '@openrent/ui/badge';
   import { Spinner } from '@openrent/ui/spinner';
-  import { StatusBadge } from '@openrent/ui/openrent';
   import UploadIcon from '@lucide/svelte/icons/upload';
   import DownloadIcon from '@lucide/svelte/icons/download';
-  import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+  import Columns3Icon from '@lucide/svelte/icons/columns-3';
   import FileSpreadsheetIcon from '@lucide/svelte/icons/file-spreadsheet';
   import { api, upload, download, t, toast, notifyError } from '#lib';
+  import ImportReport from './import-report.svelte';
 
-  /** CSV/XLSX import: upload, read the dry-run report, then apply (FR-CAT-8). */
-  let { entity, open = $bindable(false), onapplied }: { entity: 'products' | 'stock_items' | 'prices'; open?: boolean; onapplied?: () => void } = $props();
+  type ImportEntity = 'products' | 'stock_items' | 'prices' | 'customers' | 'orders';
+  /**
+   * CSV/XLSX import: upload, read the dry-run report, map the file's own columns when they have other
+   * names (kept for the next file like it, FR-MIG-2), then apply (FR-CAT-8).
+   */
+  let { entity, open = $bindable(false), onapplied }: { entity: ImportEntity; open?: boolean; onapplied?: () => void } = $props();
   let report = $state<any>(null);
   let busy = $state(false);
   let dragging = $state(false);
   let input: HTMLInputElement | undefined = $state();
+  let columns = $state<{ key: string; required: boolean }[]>([]);
+  let mapping = $state<Record<string, string>>({});
+  let mapOpen = $state(false);
 
   $effect(() => {
     if (!open) report = null;
   });
+
+  /** The column each header goes to now: the shop's choice, else what the import recognised, else none. */
+  function current(r: any) {
+    return Object.fromEntries((r.report.headers ?? []).map((h: string) => [h, r.mapping?.[h] ?? r.report.columns?.[h] ?? '']));
+  }
+
+  async function show(r: any) {
+    report = r;
+    mapping = current(r);
+    if (!columns.length) columns = (await api.get(`/imports/columns/${entity}`)).data;
+    // Columns it could not place, or a required one missing: show the mapping straight away.
+    mapOpen = mapOpen || r.report.unknown_columns.length > 0 || r.report.file_errors.length > 0;
+  }
 
   async function choose(file: File | undefined) {
     if (!file) return;
     busy = true;
     try {
       const f = await upload('/files?purpose=import', file);
-      report = await api.post('/imports', { entity, file_id: f.id });
+      await show(await api.post('/imports', { entity, file_id: f.id }));
     } catch (e) {
       notifyError(e);
     } finally {
       busy = false;
     }
   }
+
+  async function remap() {
+    busy = true;
+    try {
+      await show(await api.patch(`/imports/${report.id}`, { mapping }));
+    } catch (e) {
+      notifyError(e);
+    } finally {
+      busy = false;
+    }
+  }
+  const label = (key: string) => t(`import.column.${key}` as any);
 
   async function apply() {
     busy = true;
@@ -81,42 +113,32 @@
         <Button variant="link" size="sm" class="px-0" onclick={() => download(`/imports/templates/${entity}?format=csv`).catch(notifyError)}><DownloadIcon />{t('import.template_csv')}</Button>
       </div>
     {:else}
-      {@const r = report.report}
-      <div class="flex flex-wrap items-center gap-2 text-sm" data-testid="import-summary">
-        <span class="font-medium">{report.filename}</span>
-        <Badge variant="secondary">{t('import.count.create', { count: r.counts.create })}</Badge>
-        <Badge variant="secondary">{t('import.count.update', { count: r.counts.update })}</Badge>
-        <Badge variant="outline">{t('import.count.unchanged', { count: r.counts.unchanged })}</Badge>
-        {#if r.counts.error}<Badge variant="destructive">{t('import.count.error', { count: r.counts.error })}</Badge>{/if}
-      </div>
-      {#each r.file_errors as fe (fe)}
-        <Alert.Root variant="destructive"><CircleAlertIcon /><Alert.Title>{fe}</Alert.Title></Alert.Root>
-      {/each}
-      {#if r.unknown_columns.length}
-        <p class="text-muted-foreground text-sm">{t('import.ignored_columns', { columns: r.unknown_columns.join(', ') })}</p>
-      {/if}
-      {#if r.rows.length}
-        <div class="max-h-80 overflow-y-auto rounded-lg border">
-          <Table.Root>
-            <Table.Header><Table.Row><Table.Head class="w-16">{t('import.col.row')}</Table.Head><Table.Head>{t('import.col.item')}</Table.Head><Table.Head>{t('import.col.result')}</Table.Head></Table.Row></Table.Header>
-            <Table.Body>
-              {#each r.rows as row (row.row)}
-                <Table.Row>
-                  <Table.Cell class="tabular-nums">{row.row}</Table.Cell>
-                  <Table.Cell class="font-mono text-xs">{row.key}</Table.Cell>
-                  <Table.Cell class="whitespace-normal">
-                    {#if row.errors.length}
-                      <ul class="text-destructive text-xs">{#each row.errors as e, i (i)}<li><span class="font-mono">{e.field}</span>: {e.message}</li>{/each}</ul>
-                    {:else}
-                      <StatusBadge status={row.action === 'create' ? 'available' : 'pending'} label={t(`import.action.${row.action as 'create' | 'update'}`)} />
-                    {/if}
-                  </Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      {/if}
+      <ImportReport {report} title={report.filename} />
+      <Collapsible.Root bind:open={mapOpen}>
+        <Collapsible.Trigger>{#snippet child({ props })}<Button variant="outline" size="sm" {...props}><Columns3Icon />{t('import.map_columns')}</Button>{/snippet}</Collapsible.Trigger>
+        <Collapsible.Content class="mt-3 flex flex-col gap-3" data-testid="import-mapping">
+          <p class="text-muted-foreground text-sm">{t('import.map_hint')}</p>
+          <div class="max-h-72 overflow-y-auto rounded-lg border">
+            <Table.Root>
+              <Table.Header><Table.Row><Table.Head>{t('import.col.file_column')}</Table.Head><Table.Head>{t('import.col.openrent_column')}</Table.Head></Table.Row></Table.Header>
+              <Table.Body>
+                {#each report.report.headers ?? [] as h (h)}
+                  <Table.Row>
+                    <Table.Cell class="font-mono text-xs">{h}</Table.Cell>
+                    <Table.Cell>
+                      <NativeSelect class="w-full" bind:value={mapping[h]} aria-label={t('import.map_column', { column: h })}>
+                        <NativeSelectOption value="">{t('import.skip_column')}</NativeSelectOption>
+                        {#each columns as c (c.key)}<NativeSelectOption value={c.key}>{label(c.key)}{c.required ? ' *' : ''}</NativeSelectOption>{/each}
+                      </NativeSelect>
+                    </Table.Cell>
+                  </Table.Row>
+                {/each}
+              </Table.Body>
+            </Table.Root>
+          </div>
+          <div><Button size="sm" disabled={busy} onclick={remap}>{#if busy}<Spinner />{/if}{t('import.check_again')}</Button></div>
+        </Collapsible.Content>
+      </Collapsible.Root>
       {#if report.error_count}<p class="text-destructive text-sm">{t('import.fix_and_retry')}</p>{/if}
     {/if}
 

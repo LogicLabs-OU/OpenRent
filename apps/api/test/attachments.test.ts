@@ -84,4 +84,16 @@ suite('attachments and unit photos', () => {
     expect((await admin.post(`/api/v1/customers/${customer.id}/actions/anonymize`)).status).toBe(200);
     expect((await admin.get(`/api/v1/customers/${customer.id}/attachments`)).body.data).toEqual([]);
   });
+
+  it('deletes an unused upload but not one that belongs to something (PRD §5.4)', async () => {
+    const pdf = Buffer.from('%PDF-1.4\n%%EOF');
+    const loose = await admin.upload('/api/v1/files?purpose=attachment', 'loose.pdf', 'application/pdf', pdf);
+    expect((await admin.del(`/api/v1/files/${loose.body.id}`)).status).toBe(204);
+    expect((await admin.get(`/api/v1/files/${loose.body.id}`)).status).toBe(404);
+    const kept = await admin.upload('/api/v1/files?purpose=attachment', 'kept.pdf', 'application/pdf', pdf);
+    const other = (await admin.post('/api/v1/customers', { name: 'File Keeper', email: 'keeper@test.dev' })).body;
+    expect((await admin.post(`/api/v1/customers/${other.id}/attachments`, { file_id: kept.body.id })).status).toBe(201);
+    const refused = await admin.del(`/api/v1/files/${kept.body.id}`);
+    expect([refused.status, refused.body.code]).toEqual([409, 'file_in_use']);
+  });
 });

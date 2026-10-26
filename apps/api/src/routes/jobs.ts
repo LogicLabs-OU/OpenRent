@@ -21,6 +21,7 @@ export function registerJobs(r: Router) {
         format: Type.Optional(Type.Union([Type.Literal('csv'), Type.Literal('xlsx')])),
         from: Type.Optional(Type.String()),
         to: Type.Optional(Type.String()),
+        range: Type.Optional(Type.String()),
         group_by: Type.Optional(Type.String()),
         location_id: Type.Optional(Id),
         variant_id: Type.Optional(Id),

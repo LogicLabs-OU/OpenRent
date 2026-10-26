@@ -18,6 +18,7 @@
   import PlusIcon from '@lucide/svelte/icons/plus';
   import EmailSettings from '#lib/components/email-settings.svelte';
   import CalendarFeeds from '#lib/components/calendar-feeds.svelte';
+  import MigrationSettings from '#lib/components/migration-settings.svelte';
   import LanguageSettings from '#lib/components/language-settings.svelte';
   import LanguageTabs from '#lib/components/language-tabs.svelte';
   import LocationsSettings from '#lib/components/locations-settings.svelte';
@@ -31,16 +32,16 @@
   import StringOverrides from '#lib/components/string-overrides.svelte';
   import DocumentTemplates from '#lib/components/document-templates.svelte';
   import ReconciliationIssues from '#lib/components/reconciliation-issues.svelte';
+  import PaymentProviderCard from '#lib/components/payment-provider-card.svelte';
   import { api, session, t, toast, notifyError, fieldErrors, rel, confirmAction, majorFromMinor, minorFromInput } from '#lib';
 
-  const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'webhooks', 'api_keys', 'team', 'sso', 'security'] as const;
+  const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'import', 'webhooks', 'api_keys', 'team', 'sso', 'security'] as const;
   // ?tab=email opens a tab directly (links from the Plugins page and email errors).
   // Old links used ?tab=hours for what is now the locations tab.
   let tab = $state<string>(new URLSearchParams(location.search).get('tab')?.replace(/^hours$/, 'locations') ?? 'general');
   let tenant = $state<any>(null);
   let settings = $state<any>(null);
   let providers = $state<any[]>([]);
-  let stripe = $state({ secret_key: '', publishable_key: '', webhook_secret: '' });
   let endpoints = $state<any[]>([]);
   let deliveries = $state<Record<string, any[]>>({});
   let keys = $state<any[]>([]);
@@ -86,7 +87,6 @@
       if (!Object.keys(termsErrors).length) notifyError(e);
     }
   }
-  const stripeP = $derived(providers.find((p) => p.id === 'stripe'));
   const copy = (v: string) => navigator.clipboard.writeText(v).then(() => toast.success(t('common.copied')));
 </script>
 
@@ -132,33 +132,14 @@
     <Tabs.Content value="documents" class="flex max-w-4xl flex-col gap-6"><DocumentTemplates /></Tabs.Content>
 
     <Tabs.Content value="payments" class="flex max-w-3xl flex-col gap-6">
-      <Card.Root>
-        <Card.Header>
-          <Card.Title>Stripe</Card.Title>
-          <Card.Description>{t('settings.stripe_hint')}</Card.Description>
-          {#if stripeP}<Card.Action><StatusBadge status={stripeP.configured ? 'enabled' : 'pending'} label={stripeP.configured ? t('settings.stripe_connected', { mode: stripeP.mode }) : t('settings.stripe_not_configured')} /></Card.Action>{/if}
-        </Card.Header>
-        {#if stripeP}
-          <Card.Content>
-            <Field.Group>
-              <Field.Field><Field.Label for="sk">{t('settings.secret_key')}</Field.Label><Input id="sk" type="password" placeholder="sk_test_…" bind:value={stripe.secret_key} /><Field.Description>{t('settings.secret_kept')}</Field.Description></Field.Field>
-              <Field.Field><Field.Label for="pk">{t('settings.publishable_key')}</Field.Label><Input id="pk" placeholder={stripeP.public_config?.publishable_key ?? 'pk_test_…'} bind:value={stripe.publishable_key} /></Field.Field>
-              <Field.Field><Field.Label for="whs">{t('settings.webhook_secret')}</Field.Label><Input id="whs" type="password" placeholder="whsec_…" bind:value={stripe.webhook_secret} /></Field.Field>
-              <Field.Field>
-                <Field.Label for="whu">{t('settings.webhook_url')}</Field.Label>
-                <InputGroup.Root><InputGroup.Input id="whu" readonly class="font-mono text-xs" value={stripeP.webhook_url} /><InputGroup.Addon align="inline-end"><InputGroup.Button size="icon-xs" aria-label={t('common.copy')} onclick={() => copy(stripeP.webhook_url)}><CopyIcon /></InputGroup.Button></InputGroup.Addon></InputGroup.Root>
-                <Field.Description>{t('settings.webhook_events')}</Field.Description>
-              </Field.Field>
-            </Field.Group>
-          </Card.Content>
-          <Card.Footer class="gap-2">
-            <Button onclick={() => run(() => api.patch('/payment_providers/stripe', { config: Object.fromEntries(Object.entries(stripe).filter(([, v]) => v)) }), t('settings.stripe_saved'))}>{t('settings.save_keys')}</Button>
-            <Button variant="outline" onclick={() => run(() => api.patch('/payment_providers/stripe', { enabled: !stripeP.enabled }), stripeP.enabled ? t('settings.stripe_disabled') : t('settings.stripe_enabled'))}>{stripeP.enabled ? t('common.disable') : t('common.enable')}</Button>
-          </Card.Footer>
-        {:else}
-          <Card.Content><p class="text-sm text-muted-foreground">{t('settings.stripe_missing')}</p></Card.Content>
-        {/if}
-      </Card.Root>
+      {#each providers as p (p.id)}
+        <PaymentProviderCard provider={p} onchange={() => load().catch(notifyError)} />
+      {:else}
+        <Card.Root><Card.Content><p class="text-sm text-muted-foreground">{t('settings.no_providers')}</p></Card.Content></Card.Root>
+      {/each}
+      {#if providers.filter((p) => p.enabled && p.configured).length > 1}
+        <p class="text-sm text-muted-foreground" data-testid="providers-several">{t('settings.providers_several', { name: providers.find((p) => p.enabled && p.configured)?.display_name ?? '' })}</p>
+      {/if}
       <Card.Root>
         <Card.Header><Card.Title>{t('settings.checkout')}</Card.Title></Card.Header>
         <Card.Content>
@@ -187,6 +168,17 @@
               </NativeSelect.Root>
               <Field.Description>{t('settings.deposit_expiry_hint')}</Field.Description>
             </Field.Field>
+            <Field.Separator />
+            <Field.Field orientation="horizontal">
+              <Switch id="crm" checked={settings.cart_reminders.enabled} onCheckedChange={(v) => saveSettings({ cart_reminders: { enabled: v } })} />
+              <Field.Content><Field.Label for="crm">{t('settings.cart_reminders')}</Field.Label><Field.Description>{t('settings.cart_reminders_hint')}</Field.Description></Field.Content>
+            </Field.Field>
+            {#if settings.cart_reminders.enabled}
+              <Field.Field>
+                <Field.Label for="crh">{t('settings.cart_reminders_after')}</Field.Label>
+                <Input id="crh" type="number" min="1" max="72" class="w-24" value={settings.cart_reminders.after_hours} onchange={(e) => saveSettings({ cart_reminders: { after_hours: Number((e.target as HTMLInputElement).value) } })} />
+              </Field.Field>
+            {/if}
           </Field.Group>
         </Card.Content>
       </Card.Root>
@@ -331,6 +323,7 @@
     </Tabs.Content>
 
     <Tabs.Content value="calendar" class="max-w-4xl"><CalendarFeeds /></Tabs.Content>
+    <Tabs.Content value="import" class="flex max-w-4xl flex-col gap-6"><MigrationSettings /></Tabs.Content>
 
     <Tabs.Content value="api_keys" class="max-w-4xl">
       <Card.Root>

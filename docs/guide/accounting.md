@@ -41,6 +41,7 @@ OpenRent books every invoice, credit note, payment, refund and deposit as an acc
   - **Send again** after fixing a mapping.
   - **Mark as handled by hand** when you booked something yourself.
 - **Sync log:** every attempt with the accounting system's own message.
+- **The invoice PDF** goes onto the invoice in the accounting system (and onto credit notes in Xero and QuickBooks). Turn off **Attach the invoice PDF** in Settings if you do not want this. If an upload fails, the record says so, and **Send again** tries the PDF once more.
 - **Payments recorded in the accounting system** (Settings) come back to their orders every 15 minutes, for example from a bank feed.
 - **If the accounting system asks you to connect again**, use **Sign in again** on Setup. Nothing is lost: the work waits.
 

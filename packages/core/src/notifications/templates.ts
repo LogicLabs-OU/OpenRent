@@ -112,6 +112,16 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     subject: '{{t "email.customer_login.subject" shop=tenant.name}}',
     body: wrap(`${HI}<p>{{t "email.customer_login.body" minutes=minutes}}</p><p><a href="{{link}}">{{t "email.customer_login.link"}}</a></p><p style="color:#6b7280">{{t "email.customer_login.ignore"}}</p>`),
   },
+  cart_reminder: {
+    audience: 'customer',
+    subject: '{{t "email.cart_reminder.subject" shop=tenant.name}}',
+    body: wrap(`${HI}<p>{{t "email.cart_reminder.body" items=items}}</p><p><a href="{{link}}">{{t "email.cart_reminder.link"}}</a></p><p style="color:#6b7280;font-size:12px"><a href="{{stop_link}}" style="color:#6b7280">{{t "email.cart_reminder.stop"}}</a></p>`),
+  },
+  portal_invitation: {
+    audience: 'customer',
+    subject: '{{t "email.portal_invitation.subject" shop=tenant.name}}',
+    body: wrap(`${HI}<p>{{t "email.portal_invitation.body" shop=tenant.name days=days}}</p><p><a href="{{link}}">{{t "email.portal_invitation.link"}}</a></p>`),
+  },
   cancellation_request_received: {
     audience: 'customer',
     subject: '{{t "email.cancellation_request_received.subject" number=order.number}}',
@@ -182,6 +192,11 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     subject: '{{t "email.staff_accounting_issue.subject" count=count name=name}}',
     body: wrap(`<p>{{t "email.staff_accounting_issue.body" name=name}}</p>${ADMIN}`),
   },
+  scheduled_report: {
+    audience: 'staff',
+    subject: '{{t "email.scheduled_report.subject" name=name}}',
+    body: wrap(`<p>{{#if from}}{{t "email.scheduled_report.body" name=name from=(date from) until=(date until)}}{{else}}{{t "email.scheduled_report.body_undated" name=name}}{{/if}}</p><p>{{t "email.scheduled_report.attached" filename=filename}}</p><p><a href="{{url}}">{{t "email.scheduled_report.link"}}</a></p>`),
+  },
   staff_service_due: {
     audience: 'staff',
     subject: '{{t "email.staff_service_due.subject" name=name barcode=barcode}}',
@@ -202,4 +217,21 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     subject: '{{t "email.magic_link.subject"}}',
     body: wrap(`<p>{{t "email.magic_link.body"}}</p><p><a href="{{link}}">{{t "email.magic_link.link"}}</a></p>`),
   },
+};
+
+/**
+ * Text messages (FR-NOT-4): the SMS or WhatsApp version of a customer notification, short enough for
+ * one or two SMS. Events without one are sent by email only. Tenants override them like emails
+ * (channel `sms`, one text for both SMS and WhatsApp).
+ */
+export const DEFAULT_TEXTS: Record<string, string> = {
+  order_confirmed: '{{t "sms.order_confirmed" shop=tenant.name number=order.number pickup=(datetime order.starts_at)}} {{order_url}}',
+  pickup_reminder: '{{t "sms.pickup_reminder" shop=tenant.name number=order.number start=(datetime order.starts_at) location=location.name}}',
+  return_reminder: '{{t "sms.return_reminder" shop=tenant.name number=order.number end=(datetime order.ends_at) location=location.name}}',
+  order_overdue: '{{t "sms.order_overdue" shop=tenant.name number=order.number end=(datetime order.ends_at)}}',
+  payment_request: '{{t "sms.payment_request" shop=tenant.name number=order.number amount=(money request.amount)}} {{#if request.url}}{{request.url}}{{else}}{{order_url}}{{/if}}',
+  order_cancelled: '{{t "sms.order_cancelled" shop=tenant.name number=order.number}}',
+  order_extended: '{{t "sms.order_extended" shop=tenant.name number=order.number end=(datetime order.ends_at)}}',
+  delivery_dispatched: '{{t "sms.delivery_dispatched" shop=tenant.name number=order.number from=(datetime window_start) to=(datetime window_end)}}',
+  collection_dispatched: '{{t "sms.collection_dispatched" shop=tenant.name number=order.number from=(datetime window_start) to=(datetime window_end)}}',
 };

@@ -14,6 +14,7 @@ import {
   type HookName,
   type Logger,
   type NotificationChannel,
+  type MessageChannelKind,
   type PaymentProvider,
   type StorageProvider,
   type TaxProvider,
@@ -229,11 +230,11 @@ export class PluginHost implements PluginRuntime {
     return [...this.payment.values()].map((r) => r.handler);
   }
 
-  notificationChannel(channel: 'email' | 'sms') {
+  notificationChannel(channel: MessageChannelKind) {
     return this.channels.get(channel)?.[0]?.handler;
   }
 
-  notificationChannels(channel: 'email' | 'sms') {
+  notificationChannels(channel: MessageChannelKind) {
     return (this.channels.get(channel) ?? []).map((r) => r.handler);
   }
 

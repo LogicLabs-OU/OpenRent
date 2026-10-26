@@ -113,6 +113,8 @@
 <div class={col}>
   <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
     <div class="flex flex-col gap-6">
+      <!-- What is owed, business account, insurance and signatures (theme API 1.7). -->
+      <rt.components.Slot name="account.extra" />
       <section class="flex flex-col gap-3" aria-labelledby="or-upcoming">
         <h2 id="or-upcoming" class={h3}>{rt.t('account.upcoming')}</h2>
         {#each upcoming as o (o.id)}{@render booking(o)}{:else}

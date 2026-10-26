@@ -71,10 +71,10 @@ async function check(s: Live) {
   const settings: Record<string, unknown> = { mapping: {} as Record<string, string>, invoice_status: s.name === 'Xero' ? 'DRAFT' : 'draft' };
   const ctx: IntegrationContext = {
     tenantId: 'live', config: s.config, logger: console as any, credentials: {}, connection: { id: 'live', settings, account: s.account },
-    fetch: (url, init = {}) => fetch(url, { method: init.method ?? 'GET', body: init.body, headers: { accept: 'application/json', authorization: `${s.prefix} ${token}`, ...(init.headers ?? {}) } }),
+    fetch: (url, init = {}) => fetch(url, { method: init.method ?? 'GET', body: init.body as BodyInit | undefined, headers: { accept: 'application/json', authorization: `${s.prefix} ${token}`, ...(init.headers ?? {}) } }),
     links: { get: async (t, id) => links.get(`${t}:${id}`) ?? null, set: async (t, id, remoteId, extra = {}) => void links.set(`${t}:${id}`, { remoteId, extra }) },
     data: {
-      accounting: { contact: async () => contact, invoice: async () => invoice, payment: async () => null, entry: async () => null },
+      accounting: { contact: async () => contact, invoice: async () => invoice, payment: async () => null, entry: async () => null, documentPdf: async () => null },
       contact: async () => contact, order: async () => null,
     },
   };

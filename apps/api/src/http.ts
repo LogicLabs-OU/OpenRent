@@ -90,7 +90,13 @@ export class Router {
     if (opts.querystring) schema.querystring = opts.querystring;
     if (opts.response) schema.response = opts.response;
     if (opts.permission) (schema as any)['x-permission'] = opts.permission;
-    if (!opts.public) (schema as any).security = url.startsWith('/storefront') ? [{ publishableKey: [] }, { tenantSlug: [] }] : [{ sessionCookie: [] }, { secretKey: [] }];
+    if (!opts.public) {
+      (schema as any).security = url.startsWith('/storefront')
+        ? [{ publishableKey: [] }, { tenantSlug: [] }]
+        : url.startsWith('/portal')
+          ? [{ publishableKey: [], customerSession: [] }, { tenantSlug: [], customerSession: [] }]
+          : [{ sessionCookie: [] }, { secretKey: [] }];
+    }
     this.app.route({
       method,
       url: `${this.prefix}${url}`,

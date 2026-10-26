@@ -88,6 +88,26 @@ export function registerInventory(r: Router) {
     async (ctx, req) => ({ object: 'list', data: await availability.calendar(ctx, { variantId: req.query.variant_id, locationId: await defaultLocation(ctx, req.query.location_id), month: req.query.month }) }),
   );
 
+  // Stock rented in from a supplier for a while (FR-CAT-9).
+  r.get(
+    '/external_stock',
+    { permission: 'inventory:read', tags: I, summary: 'Stock rented in from suppliers, by variant, location, status and dates', querystring: Type.Object({ variant_id: Type.Optional(Id), location_id: Type.Optional(Id), status: Type.Optional(Type.Union([Type.Literal('booked'), Type.Literal('cancelled')])), from: Type.Optional(Type.String({ format: 'date-time' })), to: Type.Optional(Type.String({ format: 'date-time' })) }) },
+    async (ctx, req) => ({ object: 'list', data: await inventory.listExternalStock(ctx, req.query) }),
+  );
+  r.post(
+    '/external_stock',
+    {
+      permission: 'inventory:write', tags: I, summary: 'Rent stock in for some dates: it raises capacity then only, and settles overbookings it covers',
+      body: Type.Object({
+        variant_id: Id, location_id: Id, supplier: Type.String({ maxLength: 200 }), quantity: Type.Integer({ description: '1 or more' }), starts_at: Type.String({ format: 'date-time' }), ends_at: Type.String({ format: 'date-time' }),
+        unit_cost: Type.Optional(Type.Integer({ description: 'What one unit costs for the whole time, minor units' })), reference: Type.Optional(Nullable(Type.String({ maxLength: 100 }))), note: Type.Optional(Type.String({ maxLength: 1000 })),
+      }, { additionalProperties: false }),
+    },
+    async (ctx, req) => inventory.createExternalStock(ctx, req.body),
+  );
+  r.post('/external_stock/:id/actions/cancel', { permission: 'inventory:write', tags: I, summary: 'Cancel rented-in stock; refused while bookings need it unless force', params: IdParams, body: Type.Object({ force: Type.Optional(Type.Boolean()) }), status: 200 }, async (ctx, req) =>
+    inventory.cancelExternalStock(ctx, req.params.id, req.body ?? {}),
+  );
   r.get('/downtimes', { permission: 'inventory:read', tags: A, summary: 'Downtime blocks', querystring: Type.Object({ variant_id: Type.Optional(Id), stock_item_id: Type.Optional(Id), active: Type.Optional(Type.Boolean()), location_id: Type.Optional(Id) }) }, async (ctx, req) => ({
     object: 'list',
     data: await inventory.listDowntimes(ctx, req.query),

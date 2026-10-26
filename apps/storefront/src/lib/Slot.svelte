@@ -6,20 +6,70 @@
   import { NativeSelect, NativeSelectOption } from '@openrent/ui/native-select';
   import { Badge } from '@openrent/ui/badge';
   import { checkoutExtra, type CheckoutFieldDef } from './extensions.svelte.ts';
+  import { t } from './i18n/index.ts';
+  import AccountExtra from './AccountExtra.svelte';
+  import BundlePicker from './BundlePicker.svelte';
+  import Accessories from './Accessories.svelte';
 
   /**
    * Extension points in theme layouts (FR-PLG-6). `header.after` and `footer.before` show the shop's
    * own HTML (Admin → Themes → Custom code), which the API cleans on save. `checkout.extra_fields`
-   * shows plugins' checkout fields and `product.before_add` their product badges (FR-PLG-5).
+   * shows plugins' checkout fields, and booking on account for signed-in business customers (FR-CUS-7);
+   * `product.before_add` shows plugins' product badges (FR-PLG-5).
    */
   let { name, context = {} }: { name: string; context?: Record<string, unknown> } = $props();
   const html = $derived(name === 'header.after' ? page.data.code?.header_html : name === 'footer.before' ? page.data.code?.footer_html : '');
   const fields = $derived<CheckoutFieldDef[]>(name === 'checkout.extra_fields' ? (page.data.extensions?.checkout_fields ?? []) : []);
+  const b2b = $derived(name === 'checkout.extra_fields' && page.data.b2b?.on_account ? page.data.b2b : null);
+  // Booking updates by SMS or WhatsApp, when the shop sends them (FR-NOT-4).
+  const texts = $derived((name === 'checkout.extra_fields' ? (['sms', 'whatsapp'] as const).filter((k) => page.data.messaging?.[k]) : []) as ('sms' | 'whatsapp')[]);
+  const locale = $derived(page.data.shop?.locale);
+  const money = (m: { amount: number; currency: string }) => new Intl.NumberFormat(locale, { style: 'currency', currency: m.currency }).format(m.amount / 100);
   const badges = $derived<{ label: string; tone: string }[]>(name === 'product.before_add' ? ((context.product as any)?.badges ?? []) : []);
   const id = (key: string) => `or-extra-${key.replace(/[^a-z0-9]/gi, '-')}`;
   const TONE: Record<string, string> = { success: 'bg-emerald-700 text-white', warning: 'bg-amber-500 text-black' };
 </script>
 
+{#if name === 'product.before_add' && (context.product as any)?.bundle?.slots?.length}
+  <BundlePicker product={context.product as any} />
+{/if}
+{#if name === 'product.before_add' && ((context.product as any)?.accessories?.length || (context.product as any)?.related?.length)}
+  <Accessories product={context.product as any} />
+{/if}
+{#if name === 'account.extra'}
+  <AccountExtra />
+{:else if b2b}
+  <Field.Set data-testid="checkout-on-account">
+    <Field.Legend variant="label">{t('checkout.b2b.title', {}, locale)}</Field.Legend>
+    <Field.Field orientation="horizontal" data-invalid={!!checkoutExtra.errors['b2b.pay_on_account'] || undefined}>
+      <Checkbox id="or-b2b-pay" checked={checkoutExtra.values['b2b.pay_on_account'] === true} onCheckedChange={(v) => (checkoutExtra.values['b2b.pay_on_account'] = v === true)} aria-invalid={!!checkoutExtra.errors['b2b.pay_on_account']} />
+      <Field.Content>
+        <Field.Label for="or-b2b-pay" class="font-normal">{t('checkout.b2b.pay_on_account', {}, locale)}</Field.Label>
+        <Field.Description>
+          {t('checkout.b2b.hint', { days: b2b.payment_terms_days }, locale)}{#if b2b.available_credit} {t('checkout.b2b.credit_left', { amount: money(b2b.available_credit) }, locale)}{/if}
+        </Field.Description>
+      </Field.Content>
+    </Field.Field>
+    {#if checkoutExtra.errors['b2b.pay_on_account']}<Field.Error>{checkoutExtra.errors['b2b.pay_on_account']}</Field.Error>{/if}
+    <Field.Field data-invalid={!!checkoutExtra.errors['b2b.po_number'] || undefined}>
+      <Field.Label for="or-b2b-po">{t('checkout.b2b.po_number', {}, locale)}</Field.Label>
+      <Input id="or-b2b-po" required={b2b.po_required} maxlength={100} value={String(checkoutExtra.values['b2b.po_number'] ?? '')} oninput={(e) => (checkoutExtra.values['b2b.po_number'] = (e.currentTarget as HTMLInputElement).value)} aria-invalid={!!checkoutExtra.errors['b2b.po_number']} />
+      {#if checkoutExtra.errors['b2b.po_number']}<Field.Error>{checkoutExtra.errors['b2b.po_number']}</Field.Error>{/if}
+    </Field.Field>
+  </Field.Set>
+{/if}
+{#if texts.length}
+  <Field.Set data-testid="checkout-text-updates">
+    <Field.Legend variant="label">{t('checkout.texts.title', {}, locale)}</Field.Legend>
+    {#each texts as k (k)}
+      <Field.Field orientation="horizontal">
+        <Checkbox id={`or-texts-${k}`} checked={checkoutExtra.values[`messages.${k}`] === true} onCheckedChange={(v) => (checkoutExtra.values[`messages.${k}`] = v === true)} />
+        <Field.Label for={`or-texts-${k}`} class="font-normal">{t(`checkout.texts.${k}`, {}, locale)}</Field.Label>
+      </Field.Field>
+    {/each}
+    <Field.Description>{t('checkout.texts.hint', {}, locale)}</Field.Description>
+  </Field.Set>
+{/if}
 {#if html}
   <div class="or-shop-html" data-slot={name}>{@html html}</div>
 {:else if fields.length}
@@ -52,6 +102,6 @@
   <div class="flex flex-wrap gap-1.5" data-slot={name}>
     {#each badges as b, i (i)}<Badge class={TONE[b.tone] ?? ''} variant={b.tone === 'default' ? 'secondary' : 'default'}>{b.label}</Badge>{/each}
   </div>
-{:else}
+{:else if !b2b && !texts.length}
   <span hidden data-slot={name}></span>
 {/if}

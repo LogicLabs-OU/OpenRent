@@ -1,4 +1,4 @@
-import { id, json, round, startFake, type FakeReply, type FakeRequest, type FakeServer } from './common.ts';
+import { id, json, multipart, round, startFake, type FakeReply, type FakeRequest, type FakeServer } from './common.ts';
 
 /**
  * A stateful stand-in for the Zoho Books API (v3), with the rules from Zoho's documentation: a
@@ -10,7 +10,7 @@ import { id, json, round, startFake, type FakeReply, type FakeRequest, type Fake
  * receivables lines.
  */
 export interface ZohoAccount { account_id: string; account_name: string; account_code: string; account_type: string }
-interface ZDoc { id: string; kind: 'invoice' | 'creditnote'; number: string; customer: string; status: string; total: number; balance: number; date: string; lines: any[]; adjustment: number }
+interface ZDoc { id: string; kind: 'invoice' | 'creditnote'; number: string; customer: string; status: string; total: number; balance: number; date: string; lines: any[]; adjustment: number; attachments: { name: string; type: string; size: number }[] }
 interface ZPay { id: string; customer: string; amount: number; links: { id: string; amount: number }[]; deleted: boolean; updated: number }
 
 export interface ZohoOrg {
@@ -160,7 +160,7 @@ export async function startZohoFake(opts: { clientId?: string; clientSecret?: st
       const adjustment = round(Number(b.adjustment ?? 0));
       if (Math.abs(adjustment) > 1) return err(4, 'Adjustment is too large for this test server.');
       total = round(total + adjustment);
-      const d: ZDoc = { id: String(460000002000 + org.docs.length), kind, number: number ?? `${kind}-${org.docs.length + 1}`, customer: b.customer_id, status: kind === 'invoice' ? 'draft' : 'open', total, balance: total, date: b.date, lines: b.line_items, adjustment };
+      const d: ZDoc = { id: String(460000002000 + org.docs.length), kind, number: number ?? `${kind}-${org.docs.length + 1}`, customer: b.customer_id, status: kind === 'invoice' ? 'draft' : 'open', total, balance: total, date: b.date, lines: b.line_items, adjustment, attachments: [] };
       org.docs.push(d);
       return ok({ [kind]: docView(d) }, 201);
     }
@@ -245,7 +245,15 @@ export async function startZohoFake(opts: { clientId?: string; clientSecret?: st
       return ok({ journal: { journal_id: j.id, total: debit } }, 201);
     }
 
-    if (res === 'invoices' && rid && sub === 'attachment') return ok({ message: 'Your file has been attached.' });
+    if (res === 'invoices' && rid && sub === 'attachment' && req.method === 'POST') {
+      // multipart/form-data with the file in the field "attachment".
+      const d = org.docs.find((x) => x.kind === 'invoice' && x.id === rid);
+      if (!d) return err(1002, 'Invoice does not exist.', 404);
+      const file = multipart(req).find((p) => p.name === 'attachment');
+      if (!file || !file.data.length) return err(4, 'Please attach a file.');
+      d.attachments.push({ name: file.filename ?? 'file', type: file.contentType ?? '', size: file.data.length });
+      return ok({ message: 'Your file has been attached.' });
+    }
     return err(5, 'Invalid URL Passed', 404);
   };
 

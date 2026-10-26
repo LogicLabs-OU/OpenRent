@@ -52,24 +52,30 @@ async function cancelOldOrders(api: APIRequestContext) {
 }
 
 /**
- * Specs name the products they create with a timestamp (`Swap bike 1792…`) or an `E2E ` prefix; earlier
- * runs' ones are deleted. A product that still has an open order stays (the API refuses, which is fine).
+ * Specs name the products they create with a number at the end (`Swap bike 1792…`, `Generator 4711`) or
+ * an `E2E ` prefix (no demo product's name ends in a number); earlier runs' ones are deleted. One that has
+ * orders cannot be deleted, so it is archived, which keeps it out of lists and pickers.
  */
 async function deleteTestProducts(api: APIRequestContext) {
   const csrf = (await api.storageState()).cookies.find((c) => c.name === 'or_csrf')?.value ?? '';
-  const made: string[] = [];
+  const made: { id: string; visibility: string }[] = [];
   let cursor: string | null = null;
   do {
     const res = await api.get(`/api/v1/products?limit=200${cursor ? `&cursor=${cursor}` : ''}`);
     if (!res.ok()) throw new Error(`Listing products failed: ${res.status()} ${await res.text()}`);
-    const page = (await res.json()) as { data: { id: string; name: string }[]; has_more: boolean; next_cursor: string | null };
-    made.push(...page.data.filter((p) => /\d{9,}$/.test(p.name) || /^E2E /.test(p.name)).map((p) => p.id));
+    const page = (await res.json()) as { data: { id: string; name: string; visibility: string }[]; has_more: boolean; next_cursor: string | null };
+    made.push(...page.data.filter((p) => / \d+$/.test(p.name) || /^E2E /.test(p.name)));
     cursor = page.has_more ? page.next_cursor : null;
   } while (cursor);
   let deleted = 0;
+  let archived = 0;
   for (let i = 0; i < made.length; i += 8) {
-    const results = await Promise.all(made.slice(i, i + 8).map((id) => api.delete(`/api/v1/products/${id}`, { headers: { 'x-csrf-token': csrf } })));
-    deleted += results.filter((r) => r.ok()).length;
+    await Promise.all(
+      made.slice(i, i + 8).map(async (p) => {
+        if ((await api.delete(`/api/v1/products/${p.id}`, { headers: { 'x-csrf-token': csrf } })).ok()) deleted++;
+        else if (p.visibility !== 'archived' && (await api.post(`/api/v1/products/${p.id}/actions/archive`, { data: {}, headers: { 'x-csrf-token': csrf } })).ok()) archived++;
+      }),
+    );
   }
-  if (deleted) process.stdout.write(`e2e cleanup: deleted ${deleted} products earlier runs made\n`);
+  if (deleted || archived) process.stdout.write(`e2e cleanup: deleted ${deleted} and archived ${archived} products earlier runs made\n`);
 }

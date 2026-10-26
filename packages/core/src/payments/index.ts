@@ -33,7 +33,7 @@ export async function providerContext(ctx: Ctx, providerId: string): Promise<{ p
     provider,
     enabled: pluginOn && (row ? row.enabled : true),
     mode: row?.mode ?? (String(config.secret_key ?? '').startsWith('sk_live') ? 'live' : 'test'),
-    pctx: { tenantId: ctx.tenantId, config, logger: ctx.logger, idempotencyKey: ctx.idempotencyKey },
+    pctx: { tenantId: ctx.tenantId, config, logger: ctx.logger, idempotencyKey: ctx.idempotencyKey, webhookUrl: `${ctx.config.publicUrl.replace(/\/$/, '')}/webhooks/${providerId}/${ctx.tenantId}` },
   };
 }
 
@@ -46,15 +46,27 @@ export async function activeProvider(ctx: Ctx) {
   return null;
 }
 
-export async function listPaymentProviders(ctx: Ctx) {
+/**
+ * Installed providers with their state. With the plugins' settings fields (`installed`), each also lists
+ * its fields, the values of the plain ones and whether each secret is set; secrets never leave the server.
+ */
+export async function listPaymentProviders(ctx: Ctx, installed: { id: string; settings?: { key: string; type: string }[] }[] = []) {
   const out = [];
   for (const p of ctx.plugins.paymentProviders()) {
     const pc = await providerContext(ctx, p.id);
     const row = await one(ctx, `SELECT id FROM payment_providers WHERE plugin_id = $1`, [p.id]);
+    const pluginId = ctx.plugins.pluginIdOf(p.id) ?? p.id;
+    const fields = (installed.find((x) => x.id === pluginId)?.settings ?? []).filter((f) => !/base_url$/.test(f.key));
+    const values: Record<string, unknown> = {};
+    const secrets: Record<string, boolean> = {};
+    for (const f of fields) {
+      if (f.type === 'secret') secrets[f.key] = !!pc.pctx.config[f.key];
+      else values[f.key] = pc.pctx.config[f.key] ?? null;
+    }
     out.push({
-      id: p.id, object: 'payment_provider', record_id: row?.id ?? null, display_name: p.displayName, configured: p.isConfigured(pc.pctx),
+      id: p.id, object: 'payment_provider', plugin_id: pluginId, record_id: row?.id ?? null, display_name: p.displayName, configured: p.isConfigured(pc.pctx),
       enabled: pc.enabled, mode: pc.mode, authorization_window_days: p.authorizationWindowDays, public_config: p.isConfigured(pc.pctx) ? p.publicConfig(pc.pctx) : {},
-      webhook_url: `${ctx.config.publicUrl.replace(/\/$/, '')}/webhooks/${p.id}/${ctx.tenantId}`,
+      webhook_url: `${ctx.config.publicUrl.replace(/\/$/, '')}/webhooks/${p.id}/${ctx.tenantId}`, settings: fields, values, secrets,
     });
   }
   return out;
@@ -182,6 +194,7 @@ export async function createPaymentIntent(ctx: Ctx, orderId: string, input: { am
     savePaymentMethod: Number(o.totals?.deposit ?? 0) > 0,
     description: msg('payment.description.order', { number: o.number }, await tenantLocale(ctx)),
     metadata: { order_id: orderId, tenant_id: ctx.tenantId, purpose: input.purpose ?? 'rental', ...(input.paymentRequestId ? { payment_request_id: input.paymentRequestId } : {}) },
+    returnUrl: `${(await storefrontBase(ctx, customer.locale)).replace(/\/$/, '')}/order/${o.public_token}`,
   });
   if (result.customerRef && customer.provider_refs?.[pc.provider.id] !== result.customerRef) {
     await exec(ctx, `UPDATE customers SET provider_refs = provider_refs || $2 WHERE id = $1`, [customer.id, json({ [pc.provider.id]: result.customerRef })]);
@@ -199,8 +212,29 @@ export async function createPaymentIntent(ctx: Ctx, orderId: string, input: { am
   await emit(ctx, 'payment_intent.created', { type: 'payment_intent', id: row.id }, { id: row.id, object: 'payment_intent', order_id: orderId, amount: money(amount, o.currency), provider: pc.provider.id });
   return {
     id: row.id, object: 'payment_intent', order_id: orderId, provider: pc.provider.id, amount: money(amount, o.currency), status: result.status,
-    client_secret: result.clientSecret, public_config: pc.provider.publicConfig(pc.pctx),
+    client_secret: result.clientSecret, redirect_url: result.redirectUrl ?? null, public_config: pc.provider.publicConfig(pc.pctx),
   };
+}
+
+/**
+ * Cancels a payment that has not settled (PRD §5.4 /payments/{id}/actions/void): a pending online payment
+ * or an authorisation not captured. The provider cancels it too; money that settled is refunded instead.
+ */
+export async function voidPayment(ctx: Ctx, paymentId: string, input: { reason?: string } = {}) {
+  const p = await must<any>(ctx, `SELECT * FROM payments WHERE id = $1 FOR UPDATE`, [paymentId], 'payment', paymentId);
+  const voidable = p.kind !== 'refund' && (p.status === 'pending' || (p.kind === 'authorization' && p.status === 'succeeded'));
+  if (!voidable) throw new AppError('not_voidable', 409, msg('error.payment_not_voidable'));
+  if (p.provider && p.provider !== 'manual' && p.provider_ref) {
+    const pc = await providerContext(ctx, p.provider);
+    await pc.provider.void({ ...pc.pctx, idempotencyKey: `void:${p.id}` }, p.provider_ref);
+  }
+  const note = input.reason?.trim() ? input.reason.trim().slice(0, 500) : p.note;
+  const row = (await many(ctx, `UPDATE payments SET status = 'cancelled', note = $2 WHERE id = $1 RETURNING *`, [p.id, note]))[0];
+  await audit(ctx, { entity_type: 'payment', entity_id: p.id, action: 'void', before: p, after: row });
+  if (p.order_id) await recomputePaymentStatus(ctx, p.order_id);
+  const api = paymentToApi(row);
+  await emit(ctx, 'payment.voided', { type: 'payment', id: p.id }, api);
+  return api;
 }
 
 export async function refundPayment(ctx: Ctx, paymentId: string, input: { amount?: number; reason?: string }) {
@@ -296,6 +330,41 @@ async function latestPaymentMethod(ctx: Ctx, orderId: string, providerId: string
     [orderId, providerId],
   );
   return p?.metadata ?? null;
+}
+
+/**
+ * Charges a card the customer saved on this booking (or an earlier one) without them being there, e.g. a
+ * period of a long rental (FR-OR-11): an authorisation captured at once. Null when there is no saved card;
+ * a refused charge comes back as `{ failed }` so the caller can ask for payment another way.
+ */
+export async function chargeSavedCard(ctx: Ctx, orderId: string, input: { amount: number; purpose: 'rental'; description: string; key: string }): Promise<{ payment: any } | { failed: string } | null> {
+  const pc = await activeProvider(ctx);
+  if (!pc) return null;
+  const o = await orderForPayment(ctx, orderId);
+  const pm =
+    (await latestPaymentMethod(ctx, orderId, pc.provider.id)) ??
+    (o.customer_id
+      ? (await one<any>(ctx, `SELECT p.metadata FROM payments p JOIN orders x ON x.id = p.order_id WHERE x.customer_id = $1 AND p.provider = $2 AND p.status = 'succeeded' AND p.metadata ? 'payment_method' ORDER BY p.created_at DESC LIMIT 1`, [o.customer_id, pc.provider.id]))?.metadata
+      : null);
+  if (!pm?.payment_method || !pm?.customer) return null;
+  const pctx = { ...pc.pctx, idempotencyKey: input.key };
+  const r = await pc.provider.authorize(pctx, { amount: input.amount, currency: o.currency.trim(), orderId, customerRef: pm.customer, paymentMethodRef: pm.payment_method, description: input.description, metadata: { order_id: orderId, tenant_id: ctx.tenantId, purpose: input.purpose } });
+  if (r.status !== 'held') return { failed: r.error ?? r.status };
+  const cap = await pc.provider.capture(pctx, r.ref, input.amount);
+  if (cap.status === 'failed') {
+    await pc.provider.void(pctx, r.ref).catch(() => undefined);
+    return { failed: 'capture_failed' };
+  }
+  const payment = (
+    await many(
+      ctx,
+      `INSERT INTO payments (id, tenant_id, order_id, provider, kind, purpose, method, amount, currency, status, provider_ref, metadata, created_by) VALUES ($1,$2,$3,$4,'charge',$5,'card',$6,$7,'succeeded',$8,$9,$10) RETURNING *`,
+      [newId('pay'), ctx.tenantId, orderId, pc.provider.id, input.purpose, input.amount, o.currency, r.ref, json({ payment_method: pm.payment_method, customer: pm.customer }), ctx.actor.id],
+    )
+  )[0];
+  await recomputePaymentStatus(ctx, orderId);
+  await emit(ctx, 'payment.succeeded', { type: 'payment', id: payment.id }, paymentToApi(payment));
+  return { payment };
 }
 
 /** The provider and saved card for an order's deposit, when the customer paid online before. */
@@ -862,6 +931,7 @@ export async function requestDueBalances(ctx: Ctx) {
     `SELECT o.id, o.starts_at FROM orders o
       WHERE o.status IN ('reserved', 'prepared') AND o.payment_status = 'partially_paid'
         AND o.starts_at <= now() + make_interval(days => $1) AND o.starts_at > now()
+        AND NOT EXISTS (SELECT 1 FROM customers c WHERE c.id = o.customer_id AND c.on_account)
         AND NOT EXISTS (SELECT 1 FROM payment_requests r WHERE r.order_id = o.id AND r.kind = 'balance' AND r.status IN ('open', 'paid'))`,
     [terms.balance_due_days_before],
   );

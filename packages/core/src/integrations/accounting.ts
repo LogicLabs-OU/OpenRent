@@ -1,6 +1,7 @@
-import type { AccountingContact, AccountingInvoice, AccountingLineKind, AccountingPayment, IntegrationOrder } from '@openrent/plugin-sdk';
+import type { AccountingContact, AccountingInvoice, AccountingLineKind, AccountingPayment, DocumentPdf, IntegrationOrder } from '@openrent/plugin-sdk';
 import type { Ctx } from '../context.ts';
 import { many, one } from '../sql.ts';
+import * as documents from '../documents/index.ts';
 
 /**
  * Neutral accounting records (the "accounting" category of integrations): issued invoices and credit
@@ -19,6 +20,13 @@ export async function contact(ctx: Ctx, customerId: string): Promise<AccountingC
   };
 }
 
+/** The issued PDF of an invoice or credit note (plugin API 1.5); null when none can be had. */
+export async function documentPdf(ctx: Ctx, documentId: string): Promise<DocumentPdf | null> {
+  const d = await one<any>(ctx, `SELECT id, type, number, html FROM documents WHERE id = $1 AND type IN ('invoice', 'credit_note') AND issued_at IS NOT NULL`, [documentId]);
+  const pdf = d ? await documents.documentPdf(ctx, d) : null;
+  return pdf ? { filename: pdf.filename, contentType: 'application/pdf', body: new Uint8Array(pdf.body) } : null;
+}
+
 export async function invoice(ctx: Ctx, documentId: string): Promise<AccountingInvoice | null> {
   const d = await one<any>(ctx, `SELECT d.*, o.number AS order_number FROM documents d LEFT JOIN orders o ON o.id = d.order_id WHERE d.id = $1 AND d.type IN ('invoice', 'credit_note')`, [documentId]);
   if (!d || !d.customer_id) return null;
@@ -32,11 +40,13 @@ export async function invoice(ctx: Ctx, documentId: string): Promise<AccountingI
   });
   const net = lines.reduce((s, l) => s + l.net_amount, 0);
   const tax = lines.reduce((s, l) => s + l.tax_amount, 0);
-  const pays = d.order_id
+  // A monthly invoice covers several bookings; payments of each count towards it.
+  const orderIds = d.order_id ? [d.order_id] : ((d.data?.orders ?? []) as { id: string }[]).map((o) => o.id);
+  const pays = orderIds.length
     ? await many<{ id: string; amount: string }>(
         ctx,
-        `SELECT id, amount FROM payments WHERE order_id = $1 AND status = 'succeeded' AND kind IN ('charge', 'manual') AND purpose <> 'deposit' AND method IS DISTINCT FROM 'deposit' ORDER BY created_at`,
-        [d.order_id],
+        `SELECT id, amount FROM payments WHERE order_id = ANY($1) AND status = 'succeeded' AND kind IN ('charge', 'manual') AND purpose <> 'deposit' AND method IS DISTINCT FROM 'deposit' ORDER BY created_at`,
+        [orderIds],
       )
     : [];
   return {
@@ -71,7 +81,11 @@ export async function payment(ctx: Ctx, paymentId: string): Promise<AccountingPa
   if (!p || p.kind === 'authorization') return null;
   // The order's latest invoice that still counts is what the money settles.
   const inv = p.order_id
-    ? await one<{ id: string }>(ctx, `SELECT id FROM documents WHERE order_id = $1 AND type = 'invoice' AND status <> 'voided' ORDER BY issued_at DESC LIMIT 1`, [p.order_id])
+    ? await one<{ id: string }>(
+        ctx,
+        `SELECT id FROM documents WHERE type = 'invoice' AND status <> 'voided' AND (order_id = $1 OR id = (SELECT invoice_id FROM orders WHERE id = $1)) ORDER BY issued_at DESC LIMIT 1`,
+        [p.order_id],
+      )
     : null;
   return {
     id: p.id, kind: p.kind === 'refund' ? 'refund' : 'payment', purpose: p.purpose, amount: Math.abs(Number(p.amount)), currency: String(p.currency).trim(),

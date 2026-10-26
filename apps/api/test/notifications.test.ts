@@ -152,4 +152,12 @@ suite('staff notices, email providers, delivery reports and webhook limits', () 
     while ((await deliverWebhooks(t.deps, quietLogger, slow)) > 0);
     expect((await withSystem(t.deps.db, (c) => c.query(`SELECT count(*)::int AS n FROM webhook_deliveries WHERE endpoint_id = $1 AND status <> 'succeeded'`, [ep.body.id]))).rows[0].n).toBe(0);
   });
+
+  it('reads one message template by id, built-in or the shop’s own', async () => {
+    const builtin = await admin.get('/api/v1/notification_templates/builtin:order_confirmed?locale=de');
+    expect(builtin.body).toMatchObject({ id: 'builtin:order_confirmed', event: 'order_confirmed', locale: 'de' });
+    const own = await admin.patch('/api/v1/notification_templates/order_confirmed', { subject: 'Booked {{order.number}}', body: 'Thanks', locale: 'en' });
+    expect((await admin.get(`/api/v1/notification_templates/${own.body.id}`)).body).toMatchObject({ id: own.body.id, subject: 'Booked {{order.number}}' });
+    expect((await admin.get('/api/v1/notification_templates/builtin:no_such_event')).status).toBe(404);
+  });
 });

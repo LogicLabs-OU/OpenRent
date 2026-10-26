@@ -1,4 +1,6 @@
 <script lang="ts">
+  import UploadIcon from '@lucide/svelte/icons/upload';
+  import ImportDialog from '#lib/components/import-dialog.svelte';
   import { goto } from '$app/navigation';
   import * as Table from '@openrent/ui/table';
   import * as Dialog from '@openrent/ui/dialog';
@@ -8,11 +10,11 @@
   import { Input } from '@openrent/ui/input';
   import { Button } from '@openrent/ui/button';
   import { Badge } from '@openrent/ui/badge';
-  import { StatusBadge, PageHeader } from '@openrent/ui/openrent';
+  import { StatusBadge, PageHeader, formatMoney } from '@openrent/ui/openrent';
   import SearchIcon from '@lucide/svelte/icons/search';
   import UserPlusIcon from '@lucide/svelte/icons/user-plus';
   import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
-  import { api, qs, t, notifyError, fieldErrors, d } from '#lib';
+  import { api, qs, t, notifyError, fieldErrors, d, session } from '#lib';
   import { to } from '#lib/nav.ts';
   import ListExportMenu from '#lib/components/list-export-menu.svelte';
 
@@ -49,13 +51,15 @@
       if (!Object.keys(errors).length) notifyError(err);
     }
   }
+  let importOpen = $state(false);
 </script>
 
 <svelte:head><title>{t('nav.customers')} · OpenRent</title></svelte:head>
 
 <PageHeader title={t('nav.customers')} description={t('customers.description')}>
-  {#snippet actions()}<ListExportMenu path="/customers/export" query={{ q }} /><Button onclick={() => { form = { name: '', email: '', phone: '', company_name: '' }; dupes = []; errors = {}; open = true; }}><UserPlusIcon />{t('customers.new')}</Button>{/snippet}
+  {#snippet actions()}<ListExportMenu path="/customers/export" query={{ q }} />{#if session.can('customers:write')}<Button variant="outline" onclick={() => (importOpen = true)}><UploadIcon />{t('import.import')}</Button>{/if}<Button onclick={() => { form = { name: '', email: '', phone: '', company_name: '' }; dupes = []; errors = {}; open = true; }}><UserPlusIcon />{t('customers.new')}</Button>{/snippet}
 </PageHeader>
+<ImportDialog entity="customers" bind:open={importOpen} onapplied={load} />
 
 <div class="mb-4 flex justify-end">
   <InputGroup.Root class="w-full sm:w-72">
@@ -66,18 +70,19 @@
 
 <div class="overflow-hidden rounded-lg border">
   <Table.Root>
-    <Table.Header class="bg-muted/50"><Table.Row><Table.Head>{t('field.name')}</Table.Head><Table.Head>{t('field.email')}</Table.Head><Table.Head>{t('field.phone')}</Table.Head><Table.Head>{t('customers.flags')}</Table.Head><Table.Head>{t('customers.since')}</Table.Head></Table.Row></Table.Header>
+    <Table.Header class="bg-muted/50"><Table.Row><Table.Head>{t('field.name')}</Table.Head><Table.Head>{t('field.email')}</Table.Head><Table.Head>{t('field.phone')}</Table.Head><Table.Head>{t('customers.flags')}</Table.Head><Table.Head class="text-right">{t('customer.terms.owed')}</Table.Head><Table.Head>{t('customers.since')}</Table.Head></Table.Row></Table.Header>
     <Table.Body>
       {#each rows as c (c.id)}
         <Table.Row class="cursor-pointer" onclick={() => goto(to(`/customers/${c.id}`))}>
           <Table.Cell class="font-medium"><a href={to(`/customers/${c.id}`)} class="hover:underline">{c.name}</a>{#if c.company_name && c.company_name !== c.name}<span class="font-normal text-muted-foreground"> · {c.company_name}</span>{/if}</Table.Cell>
           <Table.Cell>{c.email ?? ''}</Table.Cell>
           <Table.Cell>{c.phone ?? ''}</Table.Cell>
-          <Table.Cell class="space-x-1">{#if c.flags.blocked}<StatusBadge status="blocked" label={t('customer.flag.blocked')} />{/if}{#if c.flags.deposit_waived}<Badge variant="secondary">{t('customer.flag.deposit_waived')}</Badge>{/if}</Table.Cell>
+          <Table.Cell class="space-x-1">{#if c.flags.blocked}<StatusBadge status="blocked" label={t('customer.flag.blocked')} />{/if}{#if c.flags.deposit_waived}<Badge variant="secondary">{t('customer.flag.deposit_waived')}</Badge>{/if}{#if c.b2b?.on_account}<Badge variant="outline">{t('customer.terms.on_account_badge')}</Badge>{/if}</Table.Cell>
+          <Table.Cell class="text-right tabular-nums">{c.open_balance ? formatMoney({ amount: c.open_balance, currency: session.currency }) : ''}</Table.Cell>
           <Table.Cell class="text-muted-foreground">{d(c.created_at)}</Table.Cell>
         </Table.Row>
       {:else}
-        <Table.Row><Table.Cell colspan={5} class="h-24 text-center text-muted-foreground">{t('customers.empty')}</Table.Cell></Table.Row>
+        <Table.Row><Table.Cell colspan={6} class="h-24 text-center text-muted-foreground">{t('customers.empty')}</Table.Cell></Table.Row>
       {/each}
     </Table.Body>
   </Table.Root>

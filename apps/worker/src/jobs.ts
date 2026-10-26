@@ -1,6 +1,6 @@
 import { DeliveryError, type Attachment, type DomainEvent } from '@openrent/plugin-sdk';
-import { webhooks, notifications, orders, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, domains, exportZip, hookContext, serverT, type Ctx } from '@openrent/core';
-import { rowsSheet, writeCsv, writeXlsx } from '@openrent/api/spreadsheets';
+import { webhooks, notifications, orders, customers, storefront, catalog, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, imports, domains, exportZip, hookContext, serverT, type Ctx } from '@openrent/core';
+import { readSheet, rowsSheet, writeCsv, writeXlsx } from '@openrent/api/spreadsheets';
 import { withSystem, withTenant, type PoolClient } from '@openrent/db';
 import type { AppDeps } from '@openrent/api/deps';
 
@@ -19,7 +19,10 @@ function ctxFor(deps: AppDeps, db: PoolClient, tenantId: string, logger: WorkerL
     now: new Date(),
     plugins: deps.plugins,
     secrets: deps.secrets,
-    config: { publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, livemode: deps.config.livemode },
+    config: {
+      publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, livemode: deps.config.livemode,
+      renderPdf: deps.config.pdfRenderer === 'playwright' ? async (html) => (await import('@openrent/api/pdf')).renderPdf(html) : undefined,
+    },
     logger,
   };
 }
@@ -143,8 +146,11 @@ export async function deliverWebhooks(deps: AppDeps, logger: WorkerLogger, fetch
   return n;
 }
 
-/** What each job kind produces; runs in one repeatable-read tenant transaction, so exports are consistent. */
-const JOB_RUNNERS: Record<jobs.JobKind, (ctx: Ctx, job: jobs.JobRow, progress: (pct: number) => void) => Promise<{ filename: string; contentType: string; body: Buffer }>> = {
+/**
+ * What each job kind produces; runs in one repeatable-read tenant transaction, so exports are
+ * consistent and an import batch goes in whole or not at all (FR-MIG-2). Imports make no file.
+ */
+const JOB_RUNNERS: Record<jobs.JobKind, (ctx: Ctx, job: jobs.JobRow, progress: (pct: number) => void) => Promise<{ filename: string; contentType: string; body: Buffer } | null>> = {
   async tenant_export(ctx, _job, progress) {
     const { zip } = await exportZip(ctx, progress);
     return { filename: `openrent-export-${ctx.now.toISOString().slice(0, 10)}.zip`, contentType: 'application/zip', body: zip };
@@ -157,7 +163,24 @@ const JOB_RUNNERS: Record<jobs.JobKind, (ctx: Ctx, job: jobs.JobRow, progress: (
       ? { filename: `${name}-${stamp}.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', body: await writeXlsx(sheet, name) }
       : { filename: `${name}-${stamp}.csv`, contentType: 'text/csv; charset=utf-8', body: Buffer.from(writeCsv(sheet)) };
   },
+  async import_fetch(ctx, job) {
+    await imports.fetchBatch(ctx, job);
+    return null;
+  },
+  async import_apply(ctx, job) {
+    await imports.applyBatch(ctx, job, async (fileId) => {
+      const f = await files.getFile(ctx, fileId);
+      return readSheet(await files.readFile(ctx, f), f.filename);
+    });
+    return null;
+  },
 };
+
+/** An import's failure in words: field errors name their rows. */
+function importError(err: any) {
+  const rows = (err?.errors ?? []).slice(0, 5).map((e: any) => `${e.field}: ${e.message}`);
+  return [String(err?.message ?? err), ...rows].join('; ');
+}
 
 /** Runs queued jobs (exports); progress is written outside the job's transaction so the admin can show it. */
 export async function runJobs(deps: AppDeps, logger: WorkerLogger, batch = 2): Promise<number> {
@@ -176,15 +199,21 @@ export async function runJobs(deps: AppDeps, logger: WorkerLogger, batch = 2): P
         async (c) => {
           const ctx = ctxFor(deps, c, job.tenant_id, logger);
           const out = await JOB_RUNNERS[job.kind](ctx, job, progress);
-          const file = await files.putFile(ctx, { kind: 'export', filename: out.filename, contentType: out.contentType, body: out.body, ownerType: 'job', ownerId: job.id });
+          const file = out ? await files.putFile(ctx, { kind: 'export', filename: out.filename, contentType: out.contentType, body: out.body, ownerType: 'job', ownerId: job.id }) : null;
           await jobs.finishJob(ctx, job, file);
+          if (job.kind === 'report_export' && file) await reports.deliverSavedReport(ctx, job, file);
         },
         { isolation: 'repeatable read', retries: 0 },
       );
       logger.info({ job: job.id, kind: job.kind }, 'job finished');
     } catch (err: any) {
       logger.error({ err, job: job.id }, 'job failed');
-      await withTenant(deps.db, job.tenant_id, (c) => jobs.failJob(ctxFor(deps, c, job.tenant_id, logger), job, String(err?.message ?? err))).catch(() => undefined);
+      await withTenant(deps.db, job.tenant_id, async (c) => {
+        const ctx = ctxFor(deps, c, job.tenant_id, logger);
+        await jobs.failJob(ctx, job, String(err?.message ?? err));
+        await reports.savedReportFailed(ctx, job, String(err?.message ?? err));
+        if (job.kind === 'import_fetch' || job.kind === 'import_apply') await imports.batchFailed(ctx, job, importError(err));
+      }).catch(() => undefined);
     }
   }
   return claimed.length;
@@ -199,13 +228,21 @@ export function formatFrom(from: string | null | undefined, shopName: string): s
   return `"${shopName.replace(/["\\]/g, '')}" <${f}>`;
 }
 
-/** PDFs of the message's documents. A missing renderer never blocks the email; links still work. */
+/**
+ * PDFs of the message's documents, and stored files as they are (scheduled reports). A missing
+ * renderer never blocks the email; links still work.
+ */
 async function attachmentsFor(deps: AppDeps, ctx: Ctx, ids: string[], logger: WorkerLogger): Promise<Attachment[]> {
-  if (!ids.length || deps.config.pdfRenderer !== 'playwright') return [];
-  const { documentPdf } = await import('@openrent/api/pdf');
   const out: Attachment[] = [];
   for (const id of ids) {
     try {
+      if (id.startsWith('fil_')) {
+        const f = await files.getFile(ctx, id);
+        out.push({ filename: f.filename, contentType: f.content_type, content: await files.readFile(ctx, f) });
+        continue;
+      }
+      if (deps.config.pdfRenderer !== 'playwright') continue;
+      const { documentPdf } = await import('@openrent/api/pdf');
       const doc = await documents.getDocument(ctx, id);
       const pdf = await documentPdf(ctx, doc);
       out.push({ filename: pdf.filename, contentType: 'application/pdf', content: pdf.body });
@@ -240,6 +277,10 @@ export async function sendNotifications(deps: AppDeps, logger: WorkerLogger, bat
       const n = (await c.query(`SELECT * FROM notifications WHERE id = $1 AND status = 'queued' FOR UPDATE SKIP LOCKED`, [row.id])).rows[0];
       if (!n) return;
       const ctx = ctxFor(deps, c, row.tenant_id, logger);
+      if (n.channel === 'sms' || n.channel === 'whatsapp') {
+        if (await sendText(ctx, n, logger)) sent++;
+        return;
+      }
       const tenant = (await c.query(`SELECT name, settings FROM tenants WHERE id = $1`, [row.tenant_id])).rows[0];
       // Each shop sends with its chosen email plugin (settings.email_channel).
       const picked = await plugins.emailChannel(ctx);
@@ -272,6 +313,26 @@ export async function sendNotifications(deps: AppDeps, logger: WorkerLogger, bat
     });
   }
   return sent;
+}
+
+/** One SMS or WhatsApp message through the plugin the shop chose for it (FR-NOT-4). */
+async function sendText(ctx: Ctx, n: any, logger: WorkerLogger) {
+  const picked = await plugins.textChannel(ctx, n.channel);
+  if (!picked) {
+    await notifications.recordDeliveryFailure(ctx, n.id, new DeliveryError('not_configured', `no ${n.channel} channel configured`));
+    return false;
+  }
+  try {
+    const pctx = { tenantId: ctx.tenantId, config: picked.config, logger, webhookUrl: notifications.textWebhookUrl(ctx, picked.pluginId) };
+    const res = await picked.channel.send(pctx, { to: n.recipient, subject: '', html: '', text: n.body_text ?? '', template: n.template_key });
+    await ctx.db.query(`UPDATE notifications SET attempts = attempts + 1, error = NULL, next_attempt_at = NULL, provider = $2 WHERE id = $1`, [n.id, picked.pluginId]);
+    await notifications.markNotification(ctx, n.id, 'sent', { ref: res.ref });
+    return true;
+  } catch (err: any) {
+    await notifications.recordDeliveryFailure(ctx, n.id, err);
+    logger.warn({ err: { message: err?.message, code: err?.code }, notification: n.id }, 'text message send failed');
+    return false;
+  }
 }
 
 async function forEachTenant(deps: AppDeps, fn: (ctx: Ctx) => Promise<unknown>, logger: WorkerLogger) {
@@ -319,6 +380,15 @@ export const SCHEDULED = {
   'orders.expire_quotes': { cron: '* * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.expireQuotes(ctx), l) },
   'orders.reminders': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.sendReminders(ctx), l) },
   'payments.balance_requests': { cron: '7 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => payments.requestDueBalances(ctx), l) },
+  // One reminder to carts left with an email and items, when the shop turned them on (FR-SF-9).
+  'storefront.cart_reminders': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => storefront.sendCartReminders(ctx), l) },
+  // "Often rented with" from the last year of bookings (FR-CAT-7).
+  'reports.saved': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => reports.queueDueReports(ctx), l) },
+  'catalog.often_rented_with': { cron: '41 3 * * 1', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => catalog.computeOftenRentedWith(ctx), l) },
+  // Long rentals billed weekly or monthly while out (FR-OR-11).
+  'billing.recurring': { cron: '13 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.billRecurring(ctx), l) },
+  // Customers invoiced monthly get last month's finished bookings on one invoice (FR-CUS-7).
+  'billing.monthly_invoices': { cron: '23 4 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => customers.consolidateMonthly(ctx), l) },
   'deposits.maintenance': { cron: '*/30 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => payments.depositMaintenance(ctx), l) },
   'maintenance.cleanup': {
     cron: '17 3 * * *',

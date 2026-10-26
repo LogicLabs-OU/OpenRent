@@ -1,4 +1,4 @@
-import { customers, orders } from '@openrent/core';
+import { accounts, customers, orders } from '@openrent/core';
 import type { Router } from '../http.ts';
 import { parseList } from '../http.ts';
 import { sendSheet } from '../spreadsheets.ts';
@@ -27,6 +27,12 @@ export function registerCustomers(r: Router) {
   r.get('/customers/:id/export', { permission: 'customers:write', tags: C, summary: 'GDPR export of everything held about a customer', params: IdParams }, async (ctx, req) => customers.exportCustomer(ctx, req.params.id));
   r.post('/customers/:id/actions/merge', { permission: 'customers:write', tags: C, summary: 'Merge another customer into this one', params: IdParams, body: Type.Object({ source_id: Id }), status: 200 }, async (ctx, req) =>
     customers.mergeCustomers(ctx, req.params.id, req.body.source_id),
+  );
+  r.post('/customers/:id/actions/send_portal_link', { permission: 'customers:write', tags: C, summary: 'Email the customer a link to their account, valid for a week (also before the first booking)', params: IdParams, status: 202 }, async (ctx, req) =>
+    accounts.sendPortalLink(ctx, req.params.id),
+  );
+  r.post('/customers/:id/actions/invoice_now', { permission: 'documents:write', tags: C, summary: 'Put every finished booking not invoiced yet on one invoice (customers invoiced monthly)', params: IdParams, status: 201 }, async (ctx, req) =>
+    customers.invoiceNow(ctx, req.params.id),
   );
   r.post('/customers/:id/actions/block', { permission: 'customers:write', tags: C, summary: 'Block online booking', params: IdParams, body: Type.Object({ reason: Type.Optional(Type.String()) }), status: 200 }, async (ctx, req) =>
     customers.setBlocked(ctx, req.params.id, true, req.body?.reason),

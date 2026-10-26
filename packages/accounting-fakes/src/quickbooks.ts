@@ -1,4 +1,4 @@
-import { id, json, round, startFake, type FakeReply, type FakeRequest, type FakeServer } from './common.ts';
+import { id, json, multipart, round, startFake, type FakeReply, type FakeRequest, type FakeServer } from './common.ts';
 
 /**
  * A stateful stand-in for the QuickBooks Online Accounting API (v3) of a non-US company, with the rules
@@ -24,6 +24,8 @@ export interface QboCompany {
   txns: Txn[];
   payments: Pay[];
   journals: { Id: string; SyncToken: string; status: string; lines: any[] }[];
+  /** Files attached to transactions (Attachable). */
+  attachables: { Id: string; entity: { type: string; value: string }; FileName: string; ContentType: string; size: number }[];
 }
 
 const acct = (Id: string, Name: string, AccountType: string, AcctNum?: string): QboAccount => ({ Id, Name, AccountType, AcctNum, Active: true });
@@ -45,7 +47,7 @@ export function qboCompany(name = 'Kayak Hire Ltd', currency = 'EUR'): QboCompan
     taxCodes: [
       { Id: '3', Name: '20.0% S', rate: 20 }, { Id: '4', Name: '5.0% R', rate: 5 }, { Id: '6', Name: '0.0% Z', rate: 0 }, { Id: '9', Name: 'Exempt', rate: 0 },
     ],
-    customers: [], txns: [], payments: [], journals: [],
+    customers: [], txns: [], payments: [], journals: [], attachables: [],
   };
 }
 
@@ -241,7 +243,19 @@ export async function startQuickBooksFake(opts: { clientId?: string; clientSecre
       return json(200, { JournalEntry: { Id: j.Id, SyncToken: j.SyncToken, TotalAmt: debit } });
     }
 
-    if (res === 'upload') return json(200, { AttachableResponse: [{ Attachable: { Id: id() } }] });
+    if (res === 'upload') {
+      // multipart/form-data: file_metadata_N (an Attachable as JSON) and file_content_N (the file).
+      const parts = multipart(req);
+      const meta = parts.find((p) => /^file_metadata_/.test(p.name));
+      const file = parts.find((p) => /^file_content_/.test(p.name));
+      if (!meta || !file || !file.data.length) return fault('Attachment Error', 'file_metadata and file_content are both required.', '2050');
+      const a = JSON.parse(meta.data.toString('utf8'));
+      const ref = a.AttachableRef?.[0]?.EntityRef;
+      if (!ref || !company.txns.some((t) => t.Id === ref.value && t.type === ref.type)) return fault('Invalid Reference Id', 'Invalid Reference Id : EntityRef is invalid.', '2500');
+      const row = { Id: id(), entity: { type: ref.type, value: ref.value }, FileName: a.FileName ?? file.filename ?? 'file', ContentType: a.ContentType ?? file.contentType ?? '', size: file.data.length };
+      company.attachables.push(row);
+      return json(200, { AttachableResponse: [{ Attachable: { Id: row.Id, FileName: row.FileName, ContentType: row.ContentType, Size: row.size, AttachableRef: a.AttachableRef } }] });
+    }
     return json(404, { error: 'not found' });
   };
 

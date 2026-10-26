@@ -34,12 +34,15 @@
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import ListChecksIcon from '@lucide/svelte/icons/list-checks';
   import MessageSquareWarningIcon from '@lucide/svelte/icons/message-square-warning';
-  import { allPages, api, upload, ApiError, dt, rel, toast, notifyError, fieldErrors, session, minorFromInput, majorFromMinor, fromLocalInput, toLocalInput, openHtml, confirmAction, getLocale, t } from '#lib';
+  import { api, upload, ApiError, dt, rel, toast, notifyError, fieldErrors, session, minorFromInput, majorFromMinor, fromLocalInput, toLocalInput, openHtml, confirmAction, getLocale, t } from '#lib';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import { to, setScanHandler } from '#lib/nav.ts';
   import { beep } from '#lib/scanner.ts';
   import PhotoStrip from '#lib/components/photo-strip.svelte';
   import AttachmentsCard from '#lib/components/attachments-card.svelte';
+  import ProductPicker, { type PickedVariant } from '#lib/components/product-picker.svelte';
+  import BundlePicks from '#lib/components/bundle-picks.svelte';
+  import OrderSuggestions from '#lib/components/order-suggestions.svelte';
   import TagInput from '#lib/components/tag-input.svelte';
   import CustomFieldsForm from '#lib/components/custom-fields-form.svelte';
   import PercentIcon from '@lucide/svelte/icons/percent';
@@ -57,8 +60,6 @@
   let busy = $state('');
   let scanInput = $state('');
   let scanMsg = $state<{ ok: boolean; text: string } | null>(null);
-  let products = $state<any[]>([]);
-  let addPick = $state('');
   let sigName = $state('');
   let tab = $state('payments');
 
@@ -143,6 +144,8 @@
   let swapOpen = $state(false);
   // Booking past stock after a reserve was refused (FR-AV-8).
   let overbook = $state<{ message: string; reason: string; error: string } | null>(null);
+  // A required purchase order number missing at reserve, shown next to the PO field (FR-CUS-7).
+  let poError = $state('');
   const endChangeable = $derived(o && ['reserved', 'prepared', 'out'].includes(o.status) && session.can('orders:write'));
   let dates = $state({ starts: '', ends: '' });
 
@@ -164,7 +167,6 @@
   }
   onMount(() => {
     load();
-    allPages('/products?limit=200').then((r) => (products = r));
     return setScanHandler(handleScan);
   });
 
@@ -185,13 +187,16 @@
   const pickupMeters = $derived(allUnits.filter((u: any) => u.meter_unit && !u.checked_out_at && !u.replaced));
   const bulkLines = $derived(o ? o.lines.flatMap((l: any) => (l.components.length ? l.components : [l])).filter((l: any) => l.tracking === 'bulk' && l.type === 'rental') : []);
   const openDeposit = $derived(o?.deposits?.find((x: any) => ['pending', 'held', 'failed', 'expired'].includes(x.status)));
-  const variantOptions = $derived(products.flatMap((p) => p.variants.map((v: any) => ({ id: v.id, label: v.name === p.name ? p.name : `${p.name} – ${v.name}` }))));
   const ifMatch = () => ({ 'If-Match': `W/"${o.version}"` });
   const actionLabel = (a: string) => t(`order.action.${a}` as any);
+
+  // A save still on its way changes the order's version: actions wait for it and its reload.
+  let saving: Promise<unknown> = Promise.resolve();
 
   async function act(action: string, body: any = {}) {
     busy = action;
     try {
+      await saving;
       await api.post(`/orders/${o.id}/actions/${action}`, body, ifMatch());
       await load();
       toast.success(t('order.toast.action_done', { action: actionLabel(action) }));
@@ -200,6 +205,18 @@
       if (e instanceof ApiError && e.status === 412) {
         toast.warning(t('order.toast.changed_elsewhere'));
         await load();
+      } else if (action === 'reserve' && (fieldErrors(e).po_number || fieldErrors(e).customer_id)) {
+        const fe = fieldErrors(e);
+        poError = fe.po_number ?? '';
+        if (poError) document.getElementById('opo')?.focus();
+        // Over the customer's credit limit: staff may book anyway, on purpose.
+        if (!poError && fe.customer_id) {
+          const ok = await confirmAction({ title: t('order.credit_limit.title'), description: fe.customer_id, confirmLabel: t('order.credit_limit.confirm'), destructive: true });
+          if (ok) {
+            busy = '';
+            return act('reserve', { ...body, override_credit_limit: true });
+          }
+        }
       } else if (e instanceof ApiError && action === 'reserve' && e.code === 'exceeds_availability' && session.can('orders:overbook') && !body.overbook) {
         // Staff allowed to may book past stock on purpose, with a reason (FR-AV-8).
         overbook = { message: e.message, reason: '', error: '' };
@@ -244,16 +261,20 @@
     return call(() => api.patch(`/orders/${o.id}`, { options: { ...o.options, ...patch } }), t('order.toast.extras_saved'));
   }
 
-  async function call(fn: () => Promise<unknown>, msg: string) {
-    try {
-      await fn();
-      toast.success(msg);
-      await load();
-      return true;
-    } catch (e) {
-      notifyError(e);
-      return false;
-    }
+  function call(fn: () => Promise<unknown>, msg: string) {
+    const done = (async () => {
+      try {
+        await fn();
+        toast.success(msg);
+        await load();
+        return true;
+      } catch (e) {
+        notifyError(e);
+        return false;
+      }
+    })();
+    saving = done;
+    return done;
   }
 
   /** The refund the shop's cancellation tiers give right now (the cancel action uses the same rule). */
@@ -332,10 +353,8 @@
     if (ok) inspectOpen = false;
   }
 
-  async function addLine() {
-    if (!addPick) return;
-    await call(() => api.post(`/orders/${o.id}/lines`, { variant_id: addPick, quantity: 1 }), t('order.toast.line_added'));
-    addPick = '';
+  async function addLine(v: PickedVariant) {
+    await call(() => api.post(`/orders/${o.id}/lines`, { variant_id: v.id, quantity: 1 }), t('order.toast.line_added'));
   }
 
   async function issuePickList() {
@@ -521,6 +540,7 @@
                     <Table.Cell class="whitespace-normal">
                       <div class="font-medium">{l.description}</div>
                       <div class="text-xs text-muted-foreground">{t(`line.type.${l.type}` as any)}{periods(l.price_snapshot) ? ` · ${periods(l.price_snapshot)}` : ''}{l.type === 'discount' && l.price_snapshot?.percent_bp != null ? ` · ${(l.price_snapshot.percent_bp / 100).toLocaleString(getLocale())} %` : ''}{l.tracking === 'bulk' && l.picked_up_qty ? ` · ${t('order.bulk_progress', { out: l.picked_up_qty - l.returned_qty - l.lost_qty, returned: l.returned_qty })}` : ''}</div>
+                      {#if l.price_snapshot?.picks}<BundlePicks line={l} orderId={o.id} editable={editable && session.can('orders:write')} onchange={load} />{/if}
                       {#each l.components.length ? l.components : [l] as c (c.id)}
                         {#if c.tracking === 'serialized'}
                           <div class="mt-2 flex flex-wrap gap-1.5">
@@ -556,9 +576,8 @@
             </Table.Root>
           </div>
           {#if editable}
-            <div class="flex gap-2">
-              <NativeSelect.Root class="flex-1" bind:value={addPick} aria-label={t('new_order.add_product')}><NativeSelect.Option value="">{t('new_order.add_product')}</NativeSelect.Option>{#each variantOptions as v (v.id)}<NativeSelect.Option value={v.id}>{v.label}</NativeSelect.Option>{/each}</NativeSelect.Root>
-              <Button variant="outline" onclick={addLine} disabled={!addPick}><PlusIcon />{t('common.add')}</Button>
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <div class="flex flex-1 flex-col gap-2"><ProductPicker onpick={addLine} /><OrderSuggestions productIds={o.lines.map((l: any) => l.product_id).filter(Boolean)} onadd={addLine} /></div>
               <Button variant="outline" onclick={() => { discount = { description: '', mode: 'amount', value: '' }; discountErrors = {}; discountOpen = true; }}><PercentIcon />{t('order.add_discount')}</Button>
             </div>
             {#if o.totals.optional_fees.length}
@@ -700,7 +719,7 @@
             <Card.Content class="flex flex-col gap-3">
               {#each o.notifications as n (n.id)}
                 <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0"><p class="truncate text-sm font-medium">{n.subject}</p><p class="text-xs text-muted-foreground">{n.recipient} · {rel(n.created_at)}</p></div>
+                  <div class="min-w-0"><p class="truncate text-sm font-medium">{#if n.channel !== 'email'}<span class="text-muted-foreground">{t(`email.channel.${n.channel}` as any)} · </span>{/if}{n.subject || n.text}</p><p class="text-xs text-muted-foreground">{n.recipient} · {rel(n.created_at)}</p></div>
                   <StatusBadge status={n.status} label={t(`status.${n.status}` as any)} />
                 </div>
               {:else}<p class="text-sm text-muted-foreground">{t('message.none')}</p>{/each}
@@ -825,6 +844,26 @@
             <Textarea id="ni" value={o.notes?.internal ?? ''} onchange={(e) => call(() => api.patch(`/orders/${o.id}`, { notes: { internal: (e.target as HTMLTextAreaElement).value } }), t('order.toast.note_saved'))} />
           </Field.Field>
           {#if o.notes?.customer}<p class="text-sm"><span class="text-xs text-muted-foreground">{t('order.notes_customer')}:</span> {o.notes.customer}</p>{/if}
+          <Field.Field>
+            <Field.Label for="ocycle">{t('order.billing')}</Field.Label>
+            <NativeSelect.Root
+              id="ocycle"
+              class="w-full"
+              value={o.billing_cycle ?? ''}
+              disabled={!['draft', 'quote', 'reserved', 'prepared'].includes(o.status) || !session.can('orders:write')}
+              onchange={(e) => call(() => api.patch(`/orders/${o.id}`, { billing_cycle: (e.target as HTMLSelectElement).value || null }), t('common.saved'))}
+            >
+              <NativeSelect.Option value="">{t('order.billing.once')}</NativeSelect.Option>
+              <NativeSelect.Option value="weekly">{t('order.billing.weekly')}</NativeSelect.Option>
+              <NativeSelect.Option value="monthly">{t('order.billing.monthly')}</NativeSelect.Option>
+            </NativeSelect.Root>
+            {#if o.billed_until}<Field.Description>{t('order.billing.until', { date: dt(o.billed_until) })}</Field.Description>{:else if o.billing_cycle}<Field.Description>{t('order.billing.hint')}</Field.Description>{/if}
+          </Field.Field>
+          <Field.Field data-invalid={!!poError || undefined}>
+            <Field.Label for="opo">{t('order.po_number')}</Field.Label>
+            <Input id="opo" value={o.po_number ?? ''} aria-invalid={!!poError} onchange={(e) => call(() => api.patch(`/orders/${o.id}`, { po_number: (e.target as HTMLInputElement).value }), t('common.saved')).then((ok) => ok && (poError = ''))} />
+            {#if poError}<Field.Error>{poError}</Field.Error>{:else if o.invoice_id}<Field.Description>{t('order.on_monthly_invoice')}</Field.Description>{/if}
+          </Field.Field>
           <Field.Field>
             <Field.Label for="otags">{t('field.tags')}</Field.Label>
             <TagInput id="otags" entity="order" value={o.tags} onchange={(tags) => call(() => api.patch(`/orders/${o.id}`, { tags }), t('common.saved'))} />

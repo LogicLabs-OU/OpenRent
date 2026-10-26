@@ -262,7 +262,7 @@ export async function contextFor(ctx: Ctx, c: any, p: IntegrationProvider): Prom
   const doFetch: IntegrationContext['fetch'] = async (url, init = {}) => {
     const send = () =>
       fetch(url, {
-        method: init.method ?? 'GET', body: init.body,
+        method: init.method ?? 'GET', body: init.body as BodyInit | undefined,
         headers: { accept: 'application/json', ...(p.auth.type === 'oauth2' ? { authorization: `${p.auth.tokenPrefix ?? 'Bearer'} ${creds.access_token}` } : {}), ...(init.headers ?? {}) },
         signal: AbortSignal.timeout(TASK_TIMEOUT_MS),
       });
@@ -295,7 +295,10 @@ export async function contextFor(ctx: Ctx, c: any, p: IntegrationProvider): Prom
       },
     },
     data: {
-      accounting: { contact: (id) => accounting.contact(ctx, id), invoice: (id) => accounting.invoice(ctx, id), payment: (id) => accounting.payment(ctx, id), entry: (id) => neutralEntry(ctx, id) },
+      accounting: {
+        contact: (id) => accounting.contact(ctx, id), invoice: (id) => accounting.invoice(ctx, id), payment: (id) => accounting.payment(ctx, id), entry: (id) => neutralEntry(ctx, id),
+        documentPdf: (id) => accounting.documentPdf(ctx, id),
+      },
       contact: (id) => accounting.contact(ctx, id),
       order: (id) => accounting.order(ctx, id),
     },

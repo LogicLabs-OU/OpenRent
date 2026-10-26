@@ -7,7 +7,7 @@
   import { download, t, notifyError } from '#lib';
   import ImportDialog from './import-dialog.svelte';
 
-  type Entity = 'products' | 'stock_items' | 'prices';
+  type Entity = 'products' | 'stock_items' | 'prices' | 'customers' | 'orders';
   /** Import and export menu for one or more entities (products page: products and prices). */
   let { entities, onimported }: { entities: Entity[]; onimported?: () => void } = $props();
   let importing = $state<Entity | null>(null);

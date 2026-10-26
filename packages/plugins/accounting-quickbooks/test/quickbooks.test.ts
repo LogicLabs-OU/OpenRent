@@ -100,4 +100,27 @@ describe('QuickBooks integration against the QuickBooks fake', () => {
     const id = fake.payInQbo(fake.companies[0]!.realmId, inv.Id, 20);
     expect((await quickbooksIntegration().pullPayments!(ctx, before)).find((p) => p.remoteId === id)).toMatchObject({ invoiceRemoteId: inv.Id, amount: 2000 });
   });
+
+  it('attaches the issued PDF to the invoice and the credit memo, and tries again after a failed upload', async () => {
+    const inv = { ...invoice, id: 'doc_pdf', number: 'INV-2026-00090', order_payments: [] };
+    const cn = { ...credit, id: 'doc_pdf_cn', number: 'CN-2026-00090', credit_for: null };
+    const lines: [string, number, number][] = [['receivable', 8000, 0], ['revenue_rental', 0, 6666], ['tax', 0, 1334]];
+    const e1 = entry('ace_90', 'invoice', { type: 'document', id: 'doc_pdf' }, lines);
+    const e2 = entry('ace_91', 'credit_note', { type: 'document', id: 'doc_pdf_cn' }, lines);
+    const pdf = (name: string, text: string) => ({ filename: name, contentType: 'application/pdf' as const, body: new TextEncoder().encode(text) });
+    const pdfs = { doc_pdf: pdf('invoice.pdf', ''), doc_pdf_cn: pdf('credit.pdf', '%PDF-1.7 credit') };
+    const { ctx, links } = memoryContext(fake, { settings: { mapping, attach_pdf: true }, account: { realm_id: fake.companies[0]!.realmId }, data: { contacts: [contact], invoices: [inv, cn], entries: [e1, e2], pdfs } });
+    const q = quickbooksIntegration();
+    expect((await q.handle(ctx, task('ace_90'))).message).toMatch(/^Invoice INV-2026-00090 sent to QuickBooks; the PDF was not attached \(QuickBooks: file_metadata and file_content/);
+    expect(links.get('document:doc_pdf')!.extra.pdf).toBe('failed');
+    pdfs.doc_pdf = pdf('invoice.pdf', '%PDF-1.7 invoice');
+    expect((await q.handle(ctx, task('ace_90'))).message).toBe('INV-2026-00090 is already in QuickBooks with its PDF');
+    expect((await q.handle(ctx, task('ace_91'))).message).toBe('Credit memo CN-2026-00090 sent to QuickBooks with its PDF');
+    const company = fake.companies[0]!;
+    const id = (n: string) => company.txns.find((t) => t.DocNumber === n)!.Id;
+    expect(company.attachables.map((a) => [a.entity, a.FileName, a.ContentType, a.size])).toEqual([
+      [{ type: 'Invoice', value: id('INV-2026-00090') }, 'invoice.pdf', 'application/pdf', 16],
+      [{ type: 'CreditMemo', value: id('CN-2026-00090') }, 'credit.pdf', 'application/pdf', 15],
+    ]);
+  });
 });

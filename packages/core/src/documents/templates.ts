@@ -32,7 +32,8 @@ const HEADER = `<div class="head">
 
 const PARTIES = `<div class="grid">
   <div class="box"><div class="muted">{{t "doc.customer"}}</div><strong>{{customer.name}}</strong><br>{{#if customer.company_name}}{{customer.company_name}}<br>{{/if}}{{#with customer.billing}}{{#if line1}}{{line1}}<br>{{/if}}{{#if line2}}{{line2}}<br>{{/if}}{{#if city}}{{postal_code}} {{city}}<br>{{/if}}{{#if country}}{{country}}<br>{{/if}}{{/with}}{{customer.email}}<br>{{customer.phone}}{{#if customer.tax_id}}<br>{{t "doc.tax_id" id=customer.tax_id}}{{/if}}</div>
-  <div class="box"><div class="muted">{{t "doc.rental"}}</div>{{t "doc.order"}} <strong>#{{order.number}}</strong><br>{{t "doc.pickup"}} {{datetime order.starts_at}}<br>{{t "doc.return"}} {{datetime order.ends_at}}<br>{{location.name}}{{#if location.phone}}<br>{{location.phone}}{{/if}}</div>
+  {{#if orders}}<div class="box"><div class="muted">{{t "doc.bookings"}}</div>{{#each orders}}<strong>#{{this.number}}</strong>{{#if this.po_number}} · {{t "doc.po_number" number=this.po_number}}{{/if}}<br>{{/each}}{{t "doc.period" from=(date order.starts_at) to=(date order.ends_at)}}</div>
+  {{else}}<div class="box"><div class="muted">{{t "doc.rental"}}</div>{{t "doc.order"}} <strong>#{{order.number}}</strong>{{#if order.po_number}}<br>{{t "doc.po_number" number=order.po_number}}{{/if}}<br>{{t "doc.pickup"}} {{datetime order.starts_at}}<br>{{t "doc.return"}} {{datetime order.ends_at}}<br>{{location.name}}{{#if location.phone}}<br>{{location.phone}}{{/if}}</div>{{/if}}
 </div>`;
 
 const LINES = `<table>
@@ -86,7 +87,7 @@ export const DEFAULT_TEMPLATES: Record<string, { title: string; body: string }> 
   },
   invoice: {
     title: 'doc.title.invoice',
-    body: `${HEADER}${PARTIES}${LINES}${TOTALS}<p class="muted">{{t "doc.invoice_reference" number=document.number}}</p>`,
+    body: `${HEADER}${PARTIES}${LINES}${TOTALS}{{#if document.due_at}}<p><strong>{{t "doc.due_by" date=(date document.due_at)}}</strong></p>{{/if}}<p class="muted">{{t "doc.invoice_reference" number=document.number}}</p>`,
   },
   credit_note: {
     title: 'doc.title.credit_note',

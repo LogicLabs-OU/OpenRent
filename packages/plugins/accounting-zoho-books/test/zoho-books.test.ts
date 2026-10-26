@@ -86,4 +86,20 @@ describe('Zoho Books integration against the Zoho fake', () => {
     const id = fake.payInZoho(fake.orgs[0]!.organization_id, inv.id, 10);
     expect((await zohoBooksIntegration().pullPayments!(ctx, before)).find((p) => p.remoteId === id)).toMatchObject({ invoiceRemoteId: inv.id, amount: 1000 });
   });
+
+  it('attaches the issued PDF to invoices when the shop asks for it, and tries again after a failed upload', async () => {
+    const inv = { ...invoice, id: 'doc_pdf', number: 'INV-2026-00090', order_payments: [] };
+    const e = entry('ace_90', 'invoice', { type: 'document', id: 'doc_pdf' }, [['receivable', 12000, 0], ['revenue_rental', 0, 10000], ['tax', 0, 2000]]);
+    const pdf = { filename: 'invoice-INV-2026-00090.pdf', contentType: 'application/pdf' as const, body: new Uint8Array() };
+    const { ctx, links } = memoryContext(fake, {
+      tokenPrefix: 'Zoho-oauthtoken', config: { api_base_url: `${fake.url}/books/v3` }, settings: { mapping, attach_pdf: true }, account: { organization_id: fake.orgs[0]!.organization_id },
+      data: { contacts: [contact], invoices: [inv], entries: [e], pdfs: { doc_pdf: pdf } },
+    });
+    const z = zohoBooksIntegration();
+    expect((await z.handle(ctx, task('ace_90'))).message).toBe('Invoice INV-2026-00090 sent to Zoho Books; the PDF was not attached (Zoho Books: Please attach a file.)');
+    expect(links.get('document:doc_pdf')!.extra.pdf).toBe('failed');
+    pdf.body = new TextEncoder().encode('%PDF-1.7 test');
+    expect((await z.handle(ctx, task('ace_90'))).message).toBe('INV-2026-00090 is already in Zoho Books with its PDF');
+    expect(fake.orgs[0]!.docs.find((d) => d.number === 'INV-2026-00090')!.attachments).toEqual([{ name: pdf.filename, type: 'application/pdf', size: 13 }]);
+  });
 });

@@ -1,5 +1,5 @@
 import type { Browser } from 'playwright';
-import { AppError, files, serverT, type Ctx } from '@openrent/core';
+import { AppError, documents, serverT, type Ctx } from '@openrent/core';
 
 /**
  * HTML → PDF with headless Chromium (PRD FR-DOC-2). One browser per process, one isolated context per
@@ -46,12 +46,7 @@ export async function closePdfRenderer() {
 
 /** Issued documents never change, so a rendered PDF is stored once and reused. */
 export async function documentPdf(ctx: Ctx, doc: { id: string; type: string; number: string | null; html: string }): Promise<{ filename: string; body: Buffer }> {
-  const existing = await files.findFile(ctx, 'document', doc.id, 'pdf');
-  if (existing) return { filename: existing.filename, body: await files.readFile(ctx, existing) };
-  const body = await renderPdf(doc.html);
-  const filename = `${doc.type}-${(doc.number ?? doc.id).replace(/[^\w.-]+/g, '-')}.pdf`;
-  await files.putFile(ctx, { kind: 'pdf', ownerType: 'document', ownerId: doc.id, filename, contentType: 'application/pdf', body });
-  return { filename, body };
+  return (await documents.documentPdf(ctx, doc, renderPdf))!;
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);

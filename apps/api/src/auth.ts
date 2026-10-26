@@ -70,7 +70,8 @@ export function registerAuth(app: FastifyInstance, deps: AppDeps) {
     req.locale = pickLocale(req.headers['accept-language'], LOCALES) ?? 'en';
     const authz = req.headers.authorization;
     const bearer = authz?.startsWith('Bearer ') ? authz.slice(7).trim() : null;
-    const isStorefront = url.startsWith('/api/v1/storefront/');
+    // The portal names the shop like the storefront does; the customer comes with X-Customer-Session.
+    const isStorefront = url.startsWith('/api/v1/storefront/') || url.startsWith('/api/v1/portal/');
 
     if (bearer) {
       const key = await withSystem(deps.db, (c) => coreAuth.resolveApiKey(c, bearer));

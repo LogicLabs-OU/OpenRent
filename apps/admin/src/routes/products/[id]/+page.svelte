@@ -34,6 +34,9 @@
   import ImageGallery from '#lib/components/image-gallery.svelte';
   import AuditHistory from '#lib/components/audit-history.svelte';
   import ProductTranslations from '#lib/components/product-translations.svelte';
+  import BundleComponents, { type BundleComponent } from '#lib/components/bundle-components.svelte';
+  import ProductRelations from '#lib/components/product-relations.svelte';
+  import ExternalStockCard from '#lib/components/external-stock-card.svelte';
   import * as Sheet from '@openrent/ui/sheet';
   import PencilIcon from '@lucide/svelte/icons/pencil';
 
@@ -87,8 +90,10 @@
   }
   let unitErrors = $state<Record<string, string>>({});
 
+  let bundleComps = $state<BundleComponent[]>([]);
   async function load() {
     p = await api.get(`/products/${id}`);
+    bundleComps = (p.bundle?.components ?? []).map((c: any) => ({ variant_id: c.variant_id, label: c.name, quantity: c.quantity, slot_name: c.slot_name ?? '' }));
     images = p.images ?? [];
     if (!variantTab) variantTab = p.variants[0]?.id ?? '';
     edit = {
@@ -292,7 +297,12 @@
                     <Button size="sm" variant="ghost" onclick={() => openHtml('/labels/batch', { variant_ids: [v.id], format: 'html', layout: 'dymo_99012' }).catch(notifyError)}><PrinterIcon />{t('product.print_label')}</Button>
                   </Field.Field>
                 {:else if p.bundle}
-                  <ul class="flex flex-wrap gap-2">{#each p.bundle.components as c}<Badge variant="secondary">{c.quantity} × {c.name}</Badge>{/each}</ul>
+                  <div class="flex flex-col gap-3">
+                    <BundleComponents bind:components={bundleComps} />
+                    {#if session.can('catalog:write')}
+                      <Button size="sm" class="w-fit" disabled={!bundleComps.length} onclick={() => run(() => api.put(`/bundles/${p.id}/components`, { components: bundleComps.map((c) => ({ variant_id: c.variant_id, quantity: Number(c.quantity), slot_name: c.slot_name.trim() || null })) }), t('bundle.saved'))}>{t('common.save')}</Button>
+                    {/if}
+                  </div>
                 {:else}
                   <p class="text-sm text-muted-foreground">{t('product.no_stock')}</p>
                 {/if}
@@ -401,6 +411,8 @@
   </div>
   <div class="mt-6 grid gap-6 lg:grid-cols-2">
     {#key p.updated_at}<ProductTranslations product={p} {images} onsaved={() => load().catch(notifyError)} />{/key}
+    {#if p.type !== 'bundle'}<ExternalStockCard variants={p.variants} />{/if}
+    <ProductRelations productId={p.id} />
     <AuditHistory entityType="product" entityId={p.id} />
     <PluginSlot slot="product.tab" context={{ product_id: p.id }} />
   </div>

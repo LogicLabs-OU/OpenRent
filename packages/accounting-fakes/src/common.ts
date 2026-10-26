@@ -13,6 +13,8 @@ export interface FakeRequest {
   query: URLSearchParams;
   headers: IncomingMessage['headers'];
   raw: string;
+  /** The request body as sent (uploads are binary). */
+  bytes: Buffer;
   body: any;
 }
 
@@ -120,8 +122,10 @@ export async function startFake(oauth: OAuthOptions, api: (req: FakeRequest) => 
   };
 
   const server: Server = createServer(async (r: IncomingMessage, res: ServerResponse) => {
-    let raw = '';
-    for await (const chunk of r) raw += chunk;
+    const chunks: Buffer[] = [];
+    for await (const chunk of r) chunks.push(chunk as Buffer);
+    const bytes = Buffer.concat(chunks);
+    const raw = bytes.toString('utf8');
     const u = new URL(r.url ?? '/', 'http://fake');
     let body: any = undefined;
     if (raw && String(r.headers['content-type'] ?? '').includes('json')) {
@@ -132,7 +136,7 @@ export async function startFake(oauth: OAuthOptions, api: (req: FakeRequest) => 
         return;
       }
     }
-    const reply = await handle({ method: r.method ?? 'GET', path: u.pathname, query: u.searchParams, headers: r.headers, raw, body }).catch((e: Error) => json(500, { error: e.message }));
+    const reply = await handle({ method: r.method ?? 'GET', path: u.pathname, query: u.searchParams, headers: r.headers, raw, bytes, body }).catch((e: Error) => json(500, { error: e.message }));
     res.writeHead(reply.status, { 'content-type': 'application/json', ...(reply.headers ?? {}) });
     res.end(reply.body === undefined ? '' : JSON.stringify(reply.body));
   });
@@ -156,6 +160,31 @@ export async function startFake(oauth: OAuthOptions, api: (req: FakeRequest) => 
     grant: () => issue().access_token,
   };
   return fake;
+}
+
+/** The parts of a multipart/form-data request (uploads to QuickBooks and Zoho Books). */
+export function multipart(req: FakeRequest): { name: string; filename: string | null; contentType: string | null; data: Buffer }[] {
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(String(req.headers['content-type'] ?? ''));
+  if (!boundary) return [];
+  const sep = Buffer.from(`--${boundary[1] ?? boundary[2]}`);
+  const out = [];
+  let at = req.bytes.indexOf(sep);
+  while (at >= 0) {
+    const next = req.bytes.indexOf(sep, at + sep.length);
+    if (next < 0) break;
+    const part = req.bytes.subarray(at + sep.length + 2, next - 2);
+    const split = part.indexOf('\r\n\r\n');
+    const head = part.subarray(0, split).toString('utf8');
+    const disposition = /content-disposition:[^\r\n]*/i.exec(head)?.[0] ?? '';
+    out.push({
+      name: /name="([^"]*)"/.exec(disposition)?.[1] ?? '',
+      filename: /filename="([^"]*)"/.exec(disposition)?.[1] ?? null,
+      contentType: /content-type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim() ?? null,
+      data: part.subarray(split + 4),
+    });
+    at = next;
+  }
+  return out;
 }
 
 /** Major units with `dp` decimals, rounded half away from zero like the accounting systems do. */

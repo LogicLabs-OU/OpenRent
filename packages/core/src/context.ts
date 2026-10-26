@@ -33,6 +33,8 @@ export interface CoreConfig {
   adminUrl: string;
   storefrontUrl: string;
   livemode: boolean;
+  /** Turns a document's HTML into a PDF, when this process can (headless Chromium in the API and worker). */
+  renderPdf?: (html: string) => Promise<Buffer>;
 }
 
 /** Everything a domain service needs. One Ctx per request transaction. */

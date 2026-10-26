@@ -30,7 +30,13 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Tenant-Slug",
-        "description": "Storefront only: identifies the shop"
+        "description": "Storefront and portal: identifies the shop"
+      },
+      "customerSession": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Customer-Session",
+        "description": "Portal: the customer’s session token from /portal/auth/verify"
       }
     },
     "schemas": {
@@ -1688,6 +1694,38 @@
       }
     },
     "/api/v1/roles/{id}": {
+      "get": {
+        "summary": "One role with its permissions and member count",
+        "tags": [
+          "Roles"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "users:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
       "patch": {
         "summary": "Change a role (owners only)",
         "tags": [
@@ -3172,7 +3210,12 @@
                               "minimum": 1
                             },
                             "slot_name": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "maxLength": 80,
+                              "description": "Components with the same slot name are alternatives: the booking picks one (FR-CAT-6)"
                             }
                           }
                         },
@@ -4244,7 +4287,12 @@
                               "minimum": 1
                             },
                             "slot_name": {
-                              "type": "string"
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "maxLength": 80,
+                              "description": "Components with the same slot name are alternatives: the booking picks one (FR-CAT-6)"
                             }
                           }
                         },
@@ -5332,6 +5380,2400 @@
         }
       }
     },
+    "/api/v1/products/{id}/relations": {
+      "get": {
+        "summary": "Accessories, related products and those often rented with it (FR-CAT-7)",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Set the accessories and related products (often rented with is worked out from bookings)",
+        "tags": [
+          "Products"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessory": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 50
+                  },
+                  "related": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/bundles": {
+      "get": {
+        "summary": "List bundles (products of type bundle) with their components and slots",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "description": "Comma separated; prefix with - for descending"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "description": "Full-text search"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "expand",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:read",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "next_cursor",
+                    "has_more"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object",
+                          "name",
+                          "slug",
+                          "type",
+                          "variants"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "product"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "variants": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "object"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "object": {
+                                  "type": "string",
+                                  "enum": [
+                                    "variant"
+                                  ]
+                                }
+                              },
+                              "additionalProperties": true
+                            }
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "has_more": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a bundle: a product of fixed components and slots of alternatives",
+        "tags": [
+          "Products"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "slug": {
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "visibility": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "public"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "hidden"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "archived"
+                            ]
+                          }
+                        ]
+                      },
+                      "tags": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "category_ids": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 64
+                        }
+                      },
+                      "tax_profile_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "deposit_amount": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "buffer_before_min": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "buffer_after_min": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "min_duration_min": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 1
+                      },
+                      "max_duration_min": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 1
+                      },
+                      "min_notice_min": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "increment_min": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 1
+                      },
+                      "custom_fields": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "translations": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "seo": {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      "tracking": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "serialized"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "bulk"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "none"
+                            ]
+                          }
+                        ]
+                      },
+                      "meter_unit": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 20,
+                        "description": "What the units’ meter counts (hours, km); null for none"
+                      },
+                      "depreciation_months": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 1,
+                        "maximum": 600
+                      },
+                      "residual_bp": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000,
+                        "description": "Value left at the end of the life, in basis points of the price"
+                      },
+                      "price": {
+                        "type": "object",
+                        "required": [
+                          "kind"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "fixed"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "per_period"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "tiered"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "table"
+                                ]
+                              }
+                            ]
+                          },
+                          "period_unit": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "hour"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "day"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "week"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "month"
+                                ]
+                              }
+                            ]
+                          },
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "rounding": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "up"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "nearest"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "down"
+                                ]
+                              }
+                            ]
+                          },
+                          "charge_day_rules": {
+                            "type": "object",
+                            "properties": {
+                              "non_billable_weekdays": {
+                                "type": "array",
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 6
+                                }
+                              },
+                              "free_pickup_day": {
+                                "type": "boolean",
+                                "description": "Do not charge the pickup day (day prices only)."
+                              },
+                              "pickup_after": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                                "description": "The pickup day is free only when pickup is at or after this time (HH:MM, shop time)."
+                              },
+                              "free_return_day": {
+                                "type": "boolean",
+                                "description": "Do not charge the return day (day prices only)."
+                              },
+                              "return_before": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ],
+                                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                                "description": "The return day is free only when the return is at or before this time (HH:MM, shop time)."
+                              }
+                            }
+                          },
+                          "tiers": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "from",
+                                "pct_bp"
+                              ],
+                              "properties": {
+                                "from": {
+                                  "type": "integer",
+                                  "minimum": 1
+                                },
+                                "pct_bp": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              }
+                            }
+                          },
+                          "cap": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "every",
+                              "charge"
+                            ],
+                            "properties": {
+                              "every": {
+                                "type": "integer",
+                                "minimum": 1
+                              },
+                              "charge": {
+                                "type": "number",
+                                "minimum": 0
+                              }
+                            }
+                          },
+                          "price_table": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "periods",
+                                "amount"
+                              ],
+                              "properties": {
+                                "periods": {
+                                  "type": "integer",
+                                  "minimum": 1
+                                },
+                                "amount": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              }
+                            }
+                          },
+                          "extra_per_period": {
+                            "type": "integer",
+                            "minimum": 0
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "sku": {
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "tracking": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "serialized"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "bulk"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "none"
+                                  ]
+                                }
+                              ]
+                            },
+                            "options": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "string"
+                              }
+                            },
+                            "translations": {
+                              "type": "object",
+                              "additionalProperties": {
+                                "type": "object",
+                                "properties": {
+                                  "name": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  }
+                                }
+                              }
+                            },
+                            "price_structure_id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            "price": {
+                              "type": "object",
+                              "required": [
+                                "kind"
+                              ],
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "fixed"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "per_period"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "tiered"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "table"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "period_unit": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "hour"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "day"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "week"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "month"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "amount": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "rounding": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "up"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "nearest"
+                                      ]
+                                    },
+                                    {
+                                      "type": "string",
+                                      "enum": [
+                                        "down"
+                                      ]
+                                    }
+                                  ]
+                                },
+                                "charge_day_rules": {
+                                  "type": "object",
+                                  "properties": {
+                                    "non_billable_weekdays": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "maximum": 6
+                                      }
+                                    },
+                                    "free_pickup_day": {
+                                      "type": "boolean",
+                                      "description": "Do not charge the pickup day (day prices only)."
+                                    },
+                                    "pickup_after": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                                      "description": "The pickup day is free only when pickup is at or after this time (HH:MM, shop time)."
+                                    },
+                                    "free_return_day": {
+                                      "type": "boolean",
+                                      "description": "Do not charge the return day (day prices only)."
+                                    },
+                                    "return_before": {
+                                      "type": [
+                                        "string",
+                                        "null"
+                                      ],
+                                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                                      "description": "The return day is free only when the return is at or before this time (HH:MM, shop time)."
+                                    }
+                                  }
+                                },
+                                "tiers": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "from",
+                                      "pct_bp"
+                                    ],
+                                    "properties": {
+                                      "from": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                      },
+                                      "pct_bp": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    }
+                                  }
+                                },
+                                "cap": {
+                                  "type": [
+                                    "object",
+                                    "null"
+                                  ],
+                                  "required": [
+                                    "every",
+                                    "charge"
+                                  ],
+                                  "properties": {
+                                    "every": {
+                                      "type": "integer",
+                                      "minimum": 1
+                                    },
+                                    "charge": {
+                                      "type": "number",
+                                      "minimum": 0
+                                    }
+                                  }
+                                },
+                                "price_table": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "periods",
+                                      "amount"
+                                    ],
+                                    "properties": {
+                                      "periods": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                      },
+                                      "amount": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                      }
+                                    }
+                                  }
+                                },
+                                "extra_per_period": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            "deposit_amount": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0
+                            },
+                            "position": {
+                              "type": "integer"
+                            },
+                            "low_availability_threshold": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0,
+                              "description": "Tell staff when fewer than this many are free in the coming days; null turns it off."
+                            },
+                            "buffer_before_min": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0,
+                              "description": "Overrides the product; null uses it."
+                            },
+                            "buffer_after_min": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0,
+                              "description": "Overrides the product; null uses it."
+                            },
+                            "min_duration_min": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 1,
+                              "description": "Overrides the product; null uses it."
+                            },
+                            "max_duration_min": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 1,
+                              "description": "Overrides the product; null uses it."
+                            },
+                            "min_notice_min": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0,
+                              "description": "Overrides the product; null uses it."
+                            },
+                            "increment_min": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 1,
+                              "description": "Overrides the product; null uses it."
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "bundle": {
+                        "type": "object",
+                        "required": [
+                          "components"
+                        ],
+                        "properties": {
+                          "pricing_mode": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "sum"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "fixed"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "discount_pct"
+                                ]
+                              }
+                            ]
+                          },
+                          "discount_bp": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "components": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "variant_id",
+                                "quantity"
+                              ],
+                              "properties": {
+                                "variant_id": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                "quantity": {
+                                  "type": "integer",
+                                  "minimum": 1
+                                },
+                                "slot_name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "maxLength": 80,
+                                  "description": "Components with the same slot name are alternatives: the booking picks one (FR-CAT-6)"
+                                }
+                              }
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "bundle": {
+                        "type": "object",
+                        "required": [
+                          "components"
+                        ],
+                        "properties": {
+                          "pricing_mode": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "sum"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "fixed"
+                                ]
+                              },
+                              {
+                                "type": "string",
+                                "enum": [
+                                  "discount_pct"
+                                ]
+                              }
+                            ]
+                          },
+                          "discount_bp": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10000
+                          },
+                          "components": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "variant_id",
+                                "quantity"
+                              ],
+                              "properties": {
+                                "variant_id": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                "quantity": {
+                                  "type": "integer",
+                                  "minimum": 1
+                                },
+                                "slot_name": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "maxLength": 80,
+                                  "description": "Components with the same slot name are alternatives: the booking picks one (FR-CAT-6)"
+                                }
+                              }
+                            },
+                            "minItems": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:write",
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "name",
+                    "slug",
+                    "type",
+                    "variants"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "product"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "variant"
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/bundles/{id}": {
+      "get": {
+        "summary": "Get a bundle",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:read",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "name",
+                    "slug",
+                    "type",
+                    "variants"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "product"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "variant"
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a bundle",
+        "tags": [
+          "Products"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "rental"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "sale"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "service"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "consumable"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "bundle"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "slug": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "public"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "hidden"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "archived"
+                        ]
+                      }
+                    ]
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "category_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    }
+                  },
+                  "tax_profile_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "deposit_amount": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "buffer_before_min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "buffer_after_min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "min_duration_min": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  },
+                  "max_duration_min": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  },
+                  "min_notice_min": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "increment_min": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  },
+                  "custom_fields": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "translations": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "seo": {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  "tracking": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "serialized"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "bulk"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "none"
+                        ]
+                      }
+                    ]
+                  },
+                  "meter_unit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 20,
+                    "description": "What the units’ meter counts (hours, km); null for none"
+                  },
+                  "depreciation_months": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1,
+                    "maximum": 600
+                  },
+                  "residual_bp": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "description": "Value left at the end of the life, in basis points of the price"
+                  },
+                  "price": {
+                    "type": "object",
+                    "required": [
+                      "kind"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "fixed"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "per_period"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "tiered"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "table"
+                            ]
+                          }
+                        ]
+                      },
+                      "period_unit": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "hour"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "day"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "week"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "month"
+                            ]
+                          }
+                        ]
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "rounding": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "up"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "nearest"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "down"
+                            ]
+                          }
+                        ]
+                      },
+                      "charge_day_rules": {
+                        "type": "object",
+                        "properties": {
+                          "non_billable_weekdays": {
+                            "type": "array",
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 6
+                            }
+                          },
+                          "free_pickup_day": {
+                            "type": "boolean",
+                            "description": "Do not charge the pickup day (day prices only)."
+                          },
+                          "pickup_after": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                            "description": "The pickup day is free only when pickup is at or after this time (HH:MM, shop time)."
+                          },
+                          "free_return_day": {
+                            "type": "boolean",
+                            "description": "Do not charge the return day (day prices only)."
+                          },
+                          "return_before": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                            "description": "The return day is free only when the return is at or before this time (HH:MM, shop time)."
+                          }
+                        }
+                      },
+                      "tiers": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "from",
+                            "pct_bp"
+                          ],
+                          "properties": {
+                            "from": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "pct_bp": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          }
+                        }
+                      },
+                      "cap": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "required": [
+                          "every",
+                          "charge"
+                        ],
+                        "properties": {
+                          "every": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "charge": {
+                            "type": "number",
+                            "minimum": 0
+                          }
+                        }
+                      },
+                      "price_table": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "periods",
+                            "amount"
+                          ],
+                          "properties": {
+                            "periods": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          }
+                        }
+                      },
+                      "extra_per_period": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "variants": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "sku": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "tracking": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "serialized"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "bulk"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "none"
+                              ]
+                            }
+                          ]
+                        },
+                        "options": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          }
+                        },
+                        "translations": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "maxLength": 200
+                              }
+                            }
+                          }
+                        },
+                        "price_structure_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "minLength": 1,
+                          "maxLength": 64
+                        },
+                        "price": {
+                          "type": "object",
+                          "required": [
+                            "kind"
+                          ],
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "fixed"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "per_period"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "tiered"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "table"
+                                  ]
+                                }
+                              ]
+                            },
+                            "period_unit": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "hour"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "day"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "week"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "month"
+                                  ]
+                                }
+                              ]
+                            },
+                            "amount": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "rounding": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "up"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "nearest"
+                                  ]
+                                },
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "down"
+                                  ]
+                                }
+                              ]
+                            },
+                            "charge_day_rules": {
+                              "type": "object",
+                              "properties": {
+                                "non_billable_weekdays": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 6
+                                  }
+                                },
+                                "free_pickup_day": {
+                                  "type": "boolean",
+                                  "description": "Do not charge the pickup day (day prices only)."
+                                },
+                                "pickup_after": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                                  "description": "The pickup day is free only when pickup is at or after this time (HH:MM, shop time)."
+                                },
+                                "free_return_day": {
+                                  "type": "boolean",
+                                  "description": "Do not charge the return day (day prices only)."
+                                },
+                                "return_before": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+                                  "description": "The return day is free only when the return is at or before this time (HH:MM, shop time)."
+                                }
+                              }
+                            },
+                            "tiers": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "from",
+                                  "pct_bp"
+                                ],
+                                "properties": {
+                                  "from": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                  },
+                                  "pct_bp": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  }
+                                }
+                              }
+                            },
+                            "cap": {
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "required": [
+                                "every",
+                                "charge"
+                              ],
+                              "properties": {
+                                "every": {
+                                  "type": "integer",
+                                  "minimum": 1
+                                },
+                                "charge": {
+                                  "type": "number",
+                                  "minimum": 0
+                                }
+                              }
+                            },
+                            "price_table": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "periods",
+                                  "amount"
+                                ],
+                                "properties": {
+                                  "periods": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                  },
+                                  "amount": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  }
+                                }
+                              }
+                            },
+                            "extra_per_period": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "deposit_amount": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0
+                        },
+                        "position": {
+                          "type": "integer"
+                        },
+                        "low_availability_threshold": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "description": "Tell staff when fewer than this many are free in the coming days; null turns it off."
+                        },
+                        "buffer_before_min": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "description": "Overrides the product; null uses it."
+                        },
+                        "buffer_after_min": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "description": "Overrides the product; null uses it."
+                        },
+                        "min_duration_min": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "description": "Overrides the product; null uses it."
+                        },
+                        "max_duration_min": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "description": "Overrides the product; null uses it."
+                        },
+                        "min_notice_min": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0,
+                          "description": "Overrides the product; null uses it."
+                        },
+                        "increment_min": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 1,
+                          "description": "Overrides the product; null uses it."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "bundle": {
+                    "type": "object",
+                    "required": [
+                      "components"
+                    ],
+                    "properties": {
+                      "pricing_mode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "sum"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "fixed"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "discount_pct"
+                            ]
+                          }
+                        ]
+                      },
+                      "discount_bp": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10000
+                      },
+                      "components": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": [
+                            "variant_id",
+                            "quantity"
+                          ],
+                          "properties": {
+                            "variant_id": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 64
+                            },
+                            "quantity": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "slot_name": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "maxLength": 80,
+                              "description": "Components with the same slot name are alternatives: the booking picks one (FR-CAT-6)"
+                            }
+                          }
+                        },
+                        "minItems": 1
+                      }
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:write",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "name",
+                    "slug",
+                    "type",
+                    "variants"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "product"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "variant"
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a bundle without open orders",
+        "tags": [
+          "Products"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/bundles/{id}/components": {
       "get": {
         "summary": "Bundle components (id = bundle product id)",
@@ -5424,6 +7866,13 @@
                         "quantity": {
                           "type": "integer",
                           "minimum": 1
+                        },
+                        "slot_name": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 80
                         }
                       }
                     },
@@ -9525,6 +11974,220 @@
         }
       }
     },
+    "/api/v1/external_stock": {
+      "get": {
+        "summary": "Stock rented in from suppliers, by variant, location, status and dates",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "variant_id",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "query",
+            "name": "location_id",
+            "required": false
+          },
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "booked"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "cancelled"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "from",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "to",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Rent stock in for some dates: it raises capacity then only, and settles overbookings it covers",
+        "tags": [
+          "Inventory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "variant_id",
+                  "location_id",
+                  "supplier",
+                  "quantity",
+                  "starts_at",
+                  "ends_at"
+                ],
+                "properties": {
+                  "variant_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "location_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "supplier": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "quantity": {
+                    "type": "integer",
+                    "description": "1 or more"
+                  },
+                  "starts_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "ends_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "unit_cost": {
+                    "type": "integer",
+                    "description": "What one unit costs for the whole time, minor units"
+                  },
+                  "reference": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 100
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/external_stock/{id}/actions/cancel": {
+      "post": {
+        "summary": "Cancel rented-in stock; refused while bookings need it unless force",
+        "tags": [
+          "Inventory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "force": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/downtimes": {
       "get": {
         "summary": "Downtime blocks",
@@ -10425,12 +13088,63 @@
                   "marketing_consent": {
                     "type": "boolean"
                   },
+                  "sms_opt_in": {
+                    "type": "boolean",
+                    "description": "Booking updates by SMS (FR-NOT-4)"
+                  },
+                  "whatsapp_opt_in": {
+                    "type": "boolean",
+                    "description": "Booking updates on WhatsApp (FR-NOT-4)"
+                  },
                   "notes": {
                     "type": "string"
                   },
                   "custom_fields": {
                     "type": "object",
                     "additionalProperties": {}
+                  },
+                  "b2b": {
+                    "type": "object",
+                    "properties": {
+                      "on_account": {
+                        "type": "boolean",
+                        "description": "Books without paying first; invoices are paid within the terms (FR-CUS-7)"
+                      },
+                      "payment_terms_days": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "0 to 365"
+                      },
+                      "credit_limit": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "Minor units, 0 or more; null for no limit"
+                      },
+                      "po_required": {
+                        "type": "boolean"
+                      },
+                      "invoice_schedule": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "per_order"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "monthly"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": false
@@ -10933,12 +13647,63 @@
                   "marketing_consent": {
                     "type": "boolean"
                   },
+                  "sms_opt_in": {
+                    "type": "boolean",
+                    "description": "Booking updates by SMS (FR-NOT-4)"
+                  },
+                  "whatsapp_opt_in": {
+                    "type": "boolean",
+                    "description": "Booking updates on WhatsApp (FR-NOT-4)"
+                  },
                   "notes": {
                     "type": "string"
                   },
                   "custom_fields": {
                     "type": "object",
                     "additionalProperties": {}
+                  },
+                  "b2b": {
+                    "type": "object",
+                    "properties": {
+                      "on_account": {
+                        "type": "boolean",
+                        "description": "Books without paying first; invoices are paid within the terms (FR-CUS-7)"
+                      },
+                      "payment_terms_days": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "0 to 365"
+                      },
+                      "credit_limit": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "description": "Minor units, 0 or more; null for no limit"
+                      },
+                      "po_required": {
+                        "type": "boolean"
+                      },
+                      "invoice_schedule": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "per_order"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "monthly"
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": false
@@ -11255,6 +14020,74 @@
           }
         ],
         "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/actions/send_portal_link": {
+      "post": {
+        "summary": "Email the customer a link to their account, valid for a week (also before the first booking)",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/actions/invoice_now": {
+      "post": {
+        "summary": "Put every finished booking not invoiced yet on one invoice (customers invoiced monthly)",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:write",
         "responses": {
           "200": {
             "description": "Default Response"
@@ -11783,6 +14616,18 @@
                         "buffer_after_min": {
                           "type": "integer",
                           "minimum": 0
+                        },
+                        "picks": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Choice bundles: the variant picked per slot; a slot not named takes its first option",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
                         }
                       },
                       "additionalProperties": false
@@ -12438,6 +15283,18 @@
                         "buffer_after_min": {
                           "type": "integer",
                           "minimum": 0
+                        },
+                        "picks": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Choice bundles: the variant picked per slot; a slot not named takes its first option",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
                         }
                       },
                       "additionalProperties": false
@@ -12547,6 +15404,20 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "po_number": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 100
+                  },
+                  "billing_cycle": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "weekly or monthly: invoice each period while out (FR-OR-11); null bills once"
                   }
                 },
                 "additionalProperties": false
@@ -13059,6 +15930,20 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "po_number": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 100
+                  },
+                  "billing_cycle": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "weekly or monthly, until pickup"
                   }
                 },
                 "additionalProperties": false
@@ -13356,6 +16241,18 @@
                   "buffer_after_min": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "picks": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "description": "Choice bundles: the variant picked per slot; a slot not named takes its first option",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -13555,6 +16452,14 @@
                   "stock_item_ids": {
                     "type": "array",
                     "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    }
+                  },
+                  "picks": {
+                    "type": "object",
+                    "additionalProperties": {
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 64
@@ -13954,6 +16859,10 @@
                         "description": "Why stock is booked past capacity (needs orders:overbook)"
                       }
                     }
+                  },
+                  "override_credit_limit": {
+                    "type": "boolean",
+                    "description": "Book over the customer’s credit limit on purpose (written to the audit log)"
                   }
                 }
               }
@@ -17401,6 +20310,56 @@
                   },
                   "reason": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "payments:refund",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/payments/{id}/actions/void": {
+      "post": {
+        "summary": "Cancel a payment that has not settled: a pending online payment or an authorisation not captured",
+        "tags": [
+          "Payments"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
                   }
                 }
               }
@@ -22936,6 +25895,95 @@
       }
     },
     "/api/v1/document_templates/{id}": {
+      "get": {
+        "summary": "One template (builtin:<type> is the built-in one)",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change a template; changing a built-in one creates the shop’s own",
+        "tags": [
+          "Documents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "locale": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "css": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
       "delete": {
         "summary": "Go back to the built-in template (issued documents keep their HTML)",
         "tags": [
@@ -22962,6 +26010,60 @@
           }
         ],
         "x-permission": "documents:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/document_templates/{id}/preview": {
+      "post": {
+        "summary": "Render a stored template against a real order",
+        "tags": [
+          "Documents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "order_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "locale": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
         "responses": {
           "200": {
             "description": "Default Response"
@@ -23327,6 +26429,64 @@
         }
       }
     },
+    "/api/v1/notifications/actions/test_text": {
+      "post": {
+        "summary": "Send a test SMS or WhatsApp message right away with the chosen plugin and report the response",
+        "tags": [
+          "Notifications"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "to",
+                  "channel"
+                ],
+                "properties": {
+                  "to": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "channel": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "sms"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "whatsapp"
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "plugins:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/notification_templates": {
       "get": {
         "summary": "Message templates in one language (?locale=, default the shop language)",
@@ -23397,6 +26557,83 @@
       }
     },
     "/api/v1/notification_templates/{id}": {
+      "get": {
+        "summary": "One message template (id = builtin:<event> or the shop’s own)",
+        "tags": [
+          "Notifications"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "en"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "de"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "fr"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "es"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "et"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "ja"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "locale",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
       "patch": {
         "summary": "Override a message template (id = event name, e.g. order_confirmed)",
         "tags": [
@@ -23461,6 +26698,13 @@
                   },
                   "enabled": {
                     "type": "boolean"
+                  },
+                  "text": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "The SMS and WhatsApp text; empty sends none, null restores the built-in one"
                   }
                 }
               }
@@ -24104,7 +27348,7 @@
     },
     "/api/v1/reports/{name}": {
       "get": {
-        "summary": "Run a report: revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation. Add format=csv or format=xlsx for a download.",
+        "summary": "Run a report: revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation, customer_value, product_roi, damage_frequency, staff_activity. Add format=csv or format=xlsx for a download.",
         "tags": [
           "Reports"
         ],
@@ -24124,6 +27368,15 @@
             "in": "query",
             "name": "to",
             "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "description": "A relative period instead of from and to: today, last_7_days, last_30_days, this_month, last_month, year_to_date, last_year, all_time, next_7_days, next_14_days"
           },
           {
             "schema": {
@@ -24198,6 +27451,465 @@
           }
         ],
         "x-permission": "reports:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/saved_reports": {
+      "get": {
+        "summary": "List saved reports",
+        "tags": [
+          "Reports"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "description": "Comma separated; prefix with - for descending"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "description": "Full-text search"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "expand",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "reports:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a report with its filters, optionally with a schedule and recipients",
+        "tags": [
+          "Reports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "report"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "report": {
+                    "type": "string",
+                    "description": "revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation, customer_value, product_roi, damage_frequency, staff_activity"
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "range": {
+                        "type": "string"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "group_by": {
+                        "type": "string"
+                      },
+                      "location_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "variant_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "format": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "csv"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "xlsx"
+                        ]
+                      }
+                    ]
+                  },
+                  "schedule": {
+                    "anyOf": [
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "daily"
+                        ]
+                      },
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "weekly"
+                        ]
+                      },
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "monthly"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 254
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "reports:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/saved_reports/{id}": {
+      "get": {
+        "summary": "Get a saved report",
+        "tags": [
+          "Reports"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "reports:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a saved report",
+        "tags": [
+          "Reports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "report": {
+                    "type": "string",
+                    "description": "revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation, customer_value, product_roi, damage_frequency, staff_activity"
+                  },
+                  "params": {
+                    "type": "object",
+                    "properties": {
+                      "range": {
+                        "type": "string"
+                      },
+                      "from": {
+                        "type": "string"
+                      },
+                      "to": {
+                        "type": "string"
+                      },
+                      "group_by": {
+                        "type": "string"
+                      },
+                      "location_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "variant_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "format": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "csv"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "xlsx"
+                        ]
+                      }
+                    ]
+                  },
+                  "schedule": {
+                    "anyOf": [
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "daily"
+                        ]
+                      },
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "weekly"
+                        ]
+                      },
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "monthly"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 254
+                    },
+                    "maxItems": 50
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "reports:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a saved report",
+        "tags": [
+          "Reports"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "reports:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/saved_reports/{id}/actions/send": {
+      "post": {
+        "summary": "Build the report now and email it to its recipients (or to the addresses given); returns the export job",
+        "tags": [
+          "Reports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recipients": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 254
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "reports:write",
         "responses": {
           "200": {
             "description": "Default Response"
@@ -24563,6 +28275,18 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 1000
+                        },
+                        "picks": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Choice bundles: the option picked per slot",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
                         }
                       }
                     },
@@ -24683,6 +28407,18 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 1000
+                        },
+                        "picks": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Choice bundles: the option picked per slot",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
                         }
                       }
                     },
@@ -24852,6 +28588,18 @@
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 1000
+                        },
+                        "picks": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "description": "Choice bundles: the option picked per slot",
+                          "additionalProperties": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 64
+                          }
                         }
                       }
                     },
@@ -24938,6 +28686,88 @@
         }
       }
     },
+    "/api/v1/storefront/checkout_sessions/restore": {
+      "post": {
+        "summary": "A new cart with the items of the cart a reminder email named (FR-SF-9)",
+        "tags": [
+          "Storefront"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/cart_reminders/opt_out": {
+      "post": {
+        "summary": "No more cart reminders to the email a reminder went to",
+        "tags": [
+          "Storefront"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/storefront/checkout_sessions/{id}/actions/complete": {
       "post": {
         "summary": "Place the order. Returns a payment client secret when online payment is enabled, or with return_url a payment page to send the customer to.",
@@ -24978,6 +28808,12 @@
                         "type": "string"
                       },
                       "marketing_consent": {
+                        "type": "boolean"
+                      },
+                      "sms_opt_in": {
+                        "type": "boolean"
+                      },
+                      "whatsapp_opt_in": {
                         "type": "boolean"
                       },
                       "company_name": {
@@ -25030,6 +28866,11 @@
                   "notes": {
                     "type": "string",
                     "maxLength": 2000
+                  },
+                  "extra": {
+                    "type": "object",
+                    "description": "Plugin checkout fields by \"<plugin id>.<key>\"; b2b.pay_on_account and b2b.po_number for customers on account (signed in)",
+                    "additionalProperties": {}
                   },
                   "return_url": {
                     "type": "string",
@@ -25341,7 +29182,7 @@
         }
       },
       "patch": {
-        "summary": "Update name, phone, language and marketing consent",
+        "summary": "Update name, phone, language, marketing consent and text message updates",
         "tags": [
           "Storefront",
           "Accounts"
@@ -25381,12 +29222,40 @@
                   },
                   "marketing_consent": {
                     "type": "boolean"
+                  },
+                  "sms_opt_in": {
+                    "type": "boolean"
+                  },
+                  "whatsapp_opt_in": {
+                    "type": "boolean"
                   }
                 }
               }
             }
           }
         },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/b2b": {
+      "get": {
+        "summary": "Whether the signed-in customer can book on account, with their terms and credit left (FR-CUS-7)",
+        "tags": [
+          "Storefront",
+          "Accounts"
+        ],
         "security": [
           {
             "publishableKey": []
@@ -25979,6 +29848,415 @@
           },
           {
             "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/auth/request_link": {
+      "post": {
+        "summary": "Email a one-time sign-in link to a customer who has bookings. The answer is the same either way.",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 320
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/auth/verify": {
+      "post": {
+        "summary": "Exchange the token from the sign-in link for a session token (send it as X-Customer-Session)",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/auth/logout": {
+      "post": {
+        "summary": "End the session",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/me": {
+      "get": {
+        "summary": "Profile, account terms, what is owed, insurance documents and signatures waiting",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update name, phone, language, marketing consent and text message updates",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "locale": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 10
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "marketing_consent": {
+                    "type": "boolean"
+                  },
+                  "sms_opt_in": {
+                    "type": "boolean"
+                  },
+                  "whatsapp_opt_in": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/orders": {
+      "get": {
+        "summary": "The customer’s bookings with what is left to pay",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/orders/{id}": {
+      "get": {
+        "summary": "One booking: lines, totals, payments and deliveries",
+        "tags": [
+          "Portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/documents/{id}/pdf": {
+      "get": {
+        "summary": "Download a document of one of the customer’s bookings",
+        "tags": [
+          "Portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/orders/{id}/actions/request_extension": {
+      "post": {
+        "summary": "Ask the shop to keep a booking longer",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ends_at"
+                ],
+                "properties": {
+                  "ends_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/orders/{id}/payment_intents": {
+      "post": {
+        "summary": "Pay what is left on a booking online (a payment client secret for the provider’s form)",
+        "tags": [
+          "Portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/insurance": {
+      "post": {
+        "summary": "Upload an insurance certificate as multipart/form-data (field \"file\", optional field \"label\"); it counts for pickup (FR-PAY-8)",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
           }
         ],
         "responses": {
@@ -26949,6 +31227,37 @@
       }
     },
     "/api/v1/files/{id}": {
+      "delete": {
+        "summary": "Delete an upload that nothing uses yet (photos and attachments go with what they belong to)",
+        "tags": [
+          "Files"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
       "get": {
         "summary": "File metadata",
         "tags": [
@@ -27119,6 +31428,40 @@
             },
             "in": "path",
             "name": "name",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/public/theme_previews/{theme}/{index}": {
+      "get": {
+        "summary": "A preview image of an installed code theme",
+        "tags": [
+          "Files"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "in": "path",
+            "name": "theme",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            },
+            "in": "path",
+            "name": "index",
             "required": true
           }
         ],
@@ -27389,7 +31732,7 @@
     },
     "/api/v1/imports": {
       "post": {
-        "summary": "Validate an uploaded CSV or XLSX file (POST /files?purpose=import) and return the dry-run report; nothing is changed yet",
+        "summary": "Validate an uploaded CSV or XLSX file (POST /files?purpose=import) and return the dry-run report; nothing is changed yet. Without a mapping, the one saved for files with the same columns is used.",
         "tags": [
           "Imports"
         ],
@@ -27423,6 +31766,18 @@
                         "enum": [
                           "prices"
                         ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "customers"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "orders"
+                        ]
                       }
                     ]
                   },
@@ -27430,6 +31785,14 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
+                  },
+                  "mapping": {
+                    "type": "object",
+                    "description": "File column → OpenRent column; \"\" skips the column",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 60
+                    }
                   }
                 }
               }
@@ -27472,7 +31835,125 @@
         }
       }
     },
+    "/api/v1/imports/columns/{entity}": {
+      "get": {
+        "summary": "The columns an import can fill, for mapping a file’s columns",
+        "tags": [
+          "Imports"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "products"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "stock_items"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "prices"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "customers"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "orders"
+                  ]
+                }
+              ]
+            },
+            "in": "path",
+            "name": "entity",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/imports/{id}": {
+      "patch": {
+        "summary": "Map the file’s columns and check it again; the mapping is kept for files with the same columns",
+        "tags": [
+          "Imports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mapping"
+                ],
+                "properties": {
+                  "mapping": {
+                    "type": "object",
+                    "description": "File column → OpenRent column; \"\" skips the column",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 60
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "catalog:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
       "get": {
         "summary": "One import with its report",
         "tags": [
@@ -27540,6 +32021,171 @@
         }
       }
     },
+    "/api/v1/import_batches": {
+      "post": {
+        "summary": "Start a move from Shelf.nu (its CSV export as file_id), Booqable (company and API key) or Snipe-IT (base URL and API token). Booqable and Snipe-IT are read by a background job.",
+        "tags": [
+          "Imports"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "source"
+                ],
+                "properties": {
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "shelf"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "booqable"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "snipeit"
+                        ]
+                      }
+                    ]
+                  },
+                  "file_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "company": {
+                    "type": "string",
+                    "maxLength": 63
+                  },
+                  "base_url": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "api_key": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "tenant:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "Recent moves from other systems",
+        "tags": [
+          "Imports"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "tenant:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/import_batches/{id}": {
+      "get": {
+        "summary": "A move with its imports and their reports",
+        "tags": [
+          "Imports"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "tenant:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/import_batches/{id}/actions/apply": {
+      "post": {
+        "summary": "Apply every import of the move in one transaction, in the background",
+        "tags": [
+          "Imports"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "tenant:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/imports/templates/{entity}": {
       "get": {
         "summary": "Empty file with the expected columns",
@@ -27588,6 +32234,18 @@
                   "enum": [
                     "prices"
                   ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "customers"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "orders"
+                  ]
                 }
               ]
             },
@@ -27614,7 +32272,7 @@
     },
     "/api/v1/exports/{entity}": {
       "get": {
-        "summary": "Export products, stock items or prices in the import columns",
+        "summary": "Export products, stock items, prices, customers or bookings in the import columns",
         "tags": [
           "Imports"
         ],
@@ -27659,6 +32317,18 @@
                   "type": "string",
                   "enum": [
                     "prices"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "customers"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "orders"
                   ]
                 }
               ]
@@ -30488,6 +35158,9 @@
                   "to": {
                     "type": "string"
                   },
+                  "range": {
+                    "type": "string"
+                  },
                   "group_by": {
                     "type": "string"
                   },
@@ -31098,6 +35771,9 @@
     },
     {
       "name": "Storefront"
+    },
+    {
+      "name": "Portal"
     },
     {
       "name": "Labels & scanning"

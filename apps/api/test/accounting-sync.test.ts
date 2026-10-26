@@ -104,6 +104,23 @@ suite('accounting sync with Xero', () => {
     expect(records.find((r: any) => r.kind === 'invoice').remote).toMatchObject({ url: expect.stringContaining('go.xero.com'), total: 12000, mismatch: false });
   });
 
+  it('attaches the issued invoice PDF when the shop turns it on', async () => {
+    const settings = (await admin.get('/api/v1/accounting/connection')).body.settings;
+    expect((await admin.patch('/api/v1/accounting/connection', { settings: { ...settings, attach_pdf: true } })).status).toBe(200);
+    try {
+      const o = await order();
+      await admin.post(`/api/v1/orders/${o.id}/actions/reserve`, { notify: false });
+      await work();
+      const inv = org().docs.find((d) => d.reference === `#${o.number}`)!;
+      expect(inv.attachments).toEqual([{ name: expect.stringMatching(/^invoice-.+\.pdf$/), type: 'application/pdf', size: expect.any(Number) }]);
+      expect(inv.attachments[0]!.size).toBeGreaterThan(1000);
+      const task = (await admin.get('/api/v1/accounting/connection/tasks')).body.data.find((x: any) => /with its PDF$/.test(x.message ?? ''));
+      expect(task).toBeTruthy();
+    } finally {
+      await admin.patch('/api/v1/accounting/connection', { settings });
+    }
+  }, 60_000);
+
   it('sends the deposit cycle as bank transactions and a journal', async () => {
     const o = await order(10000);
     await admin.post(`/api/v1/orders/${o.id}/actions/reserve`, { notify: false });

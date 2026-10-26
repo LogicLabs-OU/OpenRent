@@ -9,27 +9,22 @@
   import { Button } from '@openrent/ui/button';
   import { Spinner } from '@openrent/ui/spinner';
   import { PageHeader } from '@openrent/ui/openrent';
-  import PlusIcon from '@lucide/svelte/icons/plus';
-  import TrashIcon from '@lucide/svelte/icons/trash-2';
   import { api, session, t, toast, notifyError, fieldErrors, minorFromInput } from '#lib';
   import { to } from '#lib/nav.ts';
+  import BundleComponents, { type BundleComponent } from '#lib/components/bundle-components.svelte';
 
   let cats = $state<any[]>([]);
-  let variantsAll = $state<any[]>([]);
   let f = $state({
     type: 'rental', name: '', description: '', tracking: 'serialized', kind: 'per_period', period: 'day', amount: '', tier2: '50', capEvery: '', capCharge: '',
     deposit: '', bufferAfter: '0', minDuration: '', category: '', units: '1', bulkQty: '10', visibility: 'public',
   });
-  let components = $state<{ variant_id: string; quantity: number }[]>([]);
+  let components = $state<BundleComponent[]>([]);
   let discount = $state('10');
   let errors = $state<Record<string, string>>({});
   let busy = $state(false);
 
   onMount(async () => {
     cats = (await api.get('/categories?limit=200')).data;
-    variantsAll = (await api.get('/products?limit=200')).data
-      .filter((p: any) => p.type !== 'bundle')
-      .flatMap((p: any) => p.variants.map((v: any) => ({ id: v.id, label: v.name === p.name ? p.name : `${p.name} – ${v.name}` })));
   });
 
   async function submit(e: SubmitEvent) {
@@ -46,7 +41,10 @@
         type: f.type, name: f.name, description: f.description, visibility: f.visibility, category_ids: f.category ? [f.category] : [],
         deposit_amount: f.deposit ? minorFromInput(f.deposit) : 0, buffer_after_min: Number(f.bufferAfter || 0), min_duration_min: f.minDuration ? Number(f.minDuration) * 60 : null,
       };
-      if (f.type === 'bundle') body.bundle = { pricing_mode: Number(discount) > 0 ? 'discount_pct' : 'sum', discount_bp: Math.round(Number(discount) * 100), components };
+      if (f.type === 'bundle') {
+        const comps = components.map((c) => ({ variant_id: c.variant_id, quantity: Number(c.quantity), slot_name: c.slot_name.trim() || null }));
+        body.bundle = { pricing_mode: Number(discount) > 0 ? 'discount_pct' : 'sum', discount_bp: Math.round(Number(discount) * 100), components: comps };
+      }
       else {
         body.price = f.type === 'rental' ? price : { kind: 'fixed', period_unit: 'day', amount };
         body.tracking = f.type === 'service' ? 'none' : f.type === 'rental' ? f.tracking : 'bulk';
@@ -100,14 +98,7 @@
     <Card.Root>
       <Card.Header><Card.Title>{t('product.components')}</Card.Title><Card.Description>{t('product.components_hint')}</Card.Description></Card.Header>
       <Card.Content class="flex flex-col gap-3">
-        {#each components as c, i}
-          <div class="flex gap-2">
-            <NativeSelect.Root class="flex-1" bind:value={c.variant_id} aria-label={t('product.component')}><NativeSelect.Option value="">{t('common.choose')}</NativeSelect.Option>{#each variantsAll as v (v.id)}<NativeSelect.Option value={v.id}>{v.label}</NativeSelect.Option>{/each}</NativeSelect.Root>
-            <Input type="number" min="1" class="w-20" bind:value={c.quantity} aria-label={t('field.quantity')} />
-            <Button type="button" variant="ghost" size="icon" aria-label={t('common.remove')} onclick={() => components.splice(i, 1)}><TrashIcon /></Button>
-          </div>
-        {/each}
-        <Button type="button" variant="outline" size="sm" class="w-fit" onclick={() => components.push({ variant_id: '', quantity: 1 })}><PlusIcon />{t('product.add_component')}</Button>
+        <BundleComponents bind:components {errors} />
         <Field.Field class="max-w-48"><Field.Label for="disc">{t('product.bundle_discount_label')}</Field.Label><Input id="disc" inputmode="decimal" bind:value={discount} /></Field.Field>
       </Card.Content>
     </Card.Root>

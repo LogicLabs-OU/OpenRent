@@ -48,6 +48,15 @@ export function localeQuery(event: RequestEvent, sep: '?' | '&' = '?'): string {
 
 /** Calls the public storefront namespace only (FR-SF-3). Server messages come back in the request's language. */
 export async function sf<T = any>(event: RequestEvent, path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+  return call<T>(event, `/storefront${path}`, init);
+}
+
+/** Calls the customer portal (FR-CUS-6) as the signed-in customer. */
+export async function portal<T = any>(event: RequestEvent, path: string, init: { method?: string; body?: unknown | FormData } = {}): Promise<T> {
+  return call<T>(event, `/portal${path}`, init);
+}
+
+async function call<T>(event: RequestEvent, path: string, init: { method?: string; body?: unknown | FormData }): Promise<T> {
   const slug = tenantSlug(event);
   const headers: Record<string, string> = { Accept: 'application/json', 'X-Forwarded-For': event.getClientAddress(), 'User-Agent': event.request.headers.get('user-agent') ?? 'OpenRent-Storefront' };
   const locale = localeOf(event);
@@ -59,10 +68,12 @@ export async function sf<T = any>(event: RequestEvent, path: string, init: { met
   if (preview) headers['X-Theme-Preview'] = preview;
   const account = event.cookies.get('or_account');
   if (account) headers['X-Customer-Session'] = account;
-  if (init.body !== undefined) headers['Content-Type'] = 'application/json';
+  // A FormData body sets its own multipart content type.
+  const form = init.body instanceof FormData;
+  if (init.body !== undefined && !form) headers['Content-Type'] = 'application/json';
   let res: Response;
   try {
-    res = await fetch(`${API()}/api/v1/storefront${path}`, { method: init.method ?? 'GET', headers, body: init.body !== undefined ? JSON.stringify(init.body) : undefined });
+    res = await fetch(`${API()}/api/v1${path}`, { method: init.method ?? 'GET', headers, body: form ? (init.body as FormData) : init.body !== undefined ? JSON.stringify(init.body) : undefined });
   } catch {
     error(503, t('error.unavailable'));
   }

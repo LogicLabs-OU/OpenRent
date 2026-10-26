@@ -24,6 +24,10 @@ import { ensureDeposit, recomputePaymentStatus, refundPayment, releaseDeposit, p
 import { getLocation } from '../tenancy/index.ts';
 import { resolveSettings, type TenantSettings } from '../tenancy/settings.ts';
 import { customerToApi } from '../customers/index.ts';
+import { checkAccountBooking } from '../customers/b2b.ts';
+import { BILLING_CYCLES, billOnReturn, billOrderNow } from './recurring.ts';
+
+export { billRecurring, nextPeriodStart } from './recurring.ts';
 import { documentToApi } from '../documents/index.ts';
 import { notificationToApi } from '../notifications/index.ts';
 import { priceQuote, type QuoteRequestLine } from './quote.ts';
@@ -99,7 +103,7 @@ function totalsToApi(t: any, currency: string) {
 
 async function loadFacts(ctx: Ctx, o: any): Promise<OrderFacts> {
   const lines = await lineRows(ctx, o.id);
-  const customer = o.customer_id ? await one(ctx, `SELECT flags FROM customers WHERE id = $1`, [o.customer_id]) : null;
+  const customer = o.customer_id ? await one(ctx, `SELECT flags, on_account FROM customers WHERE id = $1`, [o.customer_id]) : null;
   let unassigned = 0;
   let outstanding = 0;
   for (const l of lines) {
@@ -118,6 +122,7 @@ async function loadFacts(ctx: Ctx, o: any): Promise<OrderFacts> {
     hasLines: lines.some((l) => !l.parent_line_id),
     hasCustomer: !!o.customer_id,
     customerBlocked: !!customer?.flags?.blocked,
+    onAccount: !!customer?.on_account,
     unassignedUnits: unassigned,
     outstandingUnits: outstanding,
     balance: Number(o.totals?.balance ?? o.totals?.total ?? 0),
@@ -136,7 +141,8 @@ export async function orderToApi(ctx: Ctx, o: any, expand: string[] = []): Promi
     id: o.id, object: 'order', number: o.number, status: o.status, payment_status: o.payment_status, source: o.source,
     customer_id: o.customer_id, location_id: o.location_id, starts_at: o.starts_at, ends_at: o.ends_at, timezone: o.timezone, currency,
     totals: totalsToApi(o.totals, currency), deposit_policy: o.deposit_policy, coupon_codes: o.coupon_codes, options: o.options ?? {}, terms_acceptance: o.terms_acceptance,
-    quote_expires_at: o.quote_expires_at, notes: o.notes, tags: o.tags, custom_fields: o.custom_fields, public_token: o.public_token, public_url: `${ctx.config.storefrontUrl.replace(/\/$/, '')}/order/${o.public_token}`,
+    quote_expires_at: o.quote_expires_at, notes: o.notes, tags: o.tags, custom_fields: o.custom_fields, po_number: o.po_number ?? null, invoice_id: o.invoice_id ?? null,
+    billing_cycle: o.billing_cycle ?? null, billed_until: o.billed_until ?? null, public_token: o.public_token, public_url: `${ctx.config.storefrontUrl.replace(/\/$/, '')}/order/${o.public_token}`,
     version: o.version, closed_at: o.closed_at, cancelled_at: o.cancelled_at, cancel_reason: o.cancel_reason,
     lines: parents.map((p) => lineToApi(p, currency, lines.filter((c) => c.parent_line_id === p.id))),
     actions: availableActions(facts),
@@ -227,6 +233,10 @@ export interface CreateOrderInput {
   notes?: { internal?: string; customer?: string };
   tags?: string[];
   custom_fields?: Record<string, unknown>;
+  /** The customer's purchase order number (FR-CUS-7). */
+  po_number?: string | null;
+  /** Bill weekly or monthly while out (FR-OR-11); null bills once. */
+  billing_cycle?: 'weekly' | 'monthly' | null;
   source?: 'storefront' | 'admin' | 'api';
   /** Optional fees chosen and the delivery postcode (FR-PR-8). */
   options?: QuoteOptions;
@@ -259,24 +269,29 @@ async function insertLine(ctx: Ctx, order: any, input: OrderLineInput, position:
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       id, ctx.tenantId, order.id, r.engine.type, r.product?.id ?? null, r.variant?.id ?? null, bundleId, qty, before, after, input.description || r.engine.name, input.amount ?? 0, position,
-      // A percentage discount keeps its share; reprice() reads it back.
-      json(r.engine.type === 'discount' && input.percent_bp != null ? { percent_bp: input.percent_bp } : {}),
+      // A percentage discount keeps its share, a choice bundle its picks; reprice() reads them back.
+      json({ ...(r.engine.type === 'discount' && input.percent_bp != null ? { percent_bp: input.percent_bp } : {}), ...(r.picks ? { picks: r.picks } : {}) }),
     ],
   );
-  for (const c of r.bundleComponents) {
-    await exec(
-      ctx,
-      `INSERT INTO order_lines (id, tenant_id, order_id, type, product_id, variant_id, parent_line_id, quantity, buffer_before_min, buffer_after_min, description, position)
-       SELECT $1,$2,$3,'rental',v.product_id,v.id,$4,$5,$6,$7,$8,$9 FROM variants v WHERE v.id = $10`,
-      [newId('oln'), ctx.tenantId, order.id, id, qty * c.quantity, before, after, c.name, position, c.variant_id],
-    );
-  }
+  await insertComponents(ctx, order.id, id, r.bundleComponents, { qty, before, after, position });
   for (const sti of input.stock_item_ids ?? []) {
     if (r.variant?.tracking !== 'serialized') throw invalid(msg('error.only_serialised_lines_can_pin_units'));
     await availability.assertUnitUsable(ctx, sti, r.variant.id, order.location_id);
     await exec(ctx, `INSERT INTO order_line_units (id, tenant_id, order_line_id, stock_item_id) VALUES ($1,$2,$3,$4)`, [newId('olu'), ctx.tenantId, id, sti]);
   }
   return id;
+}
+
+/** The child lines of a bundle line: one per component it brings (for a choice bundle, the picked ones). */
+async function insertComponents(ctx: Ctx, orderId: string, parentId: string, comps: { variant_id: string; quantity: number; name: string }[], at: { qty: number; before: number; after: number; position: number }) {
+  for (const c of comps) {
+    await exec(
+      ctx,
+      `INSERT INTO order_lines (id, tenant_id, order_id, type, product_id, variant_id, parent_line_id, quantity, buffer_before_min, buffer_after_min, description, position)
+       SELECT $1,$2,$3,'rental',v.product_id,v.id,$4,$5,$6,$7,$8,$9 FROM variants v WHERE v.id = $10`,
+      [newId('oln'), ctx.tenantId, orderId, parentId, at.qty * c.quantity, at.before, at.after, c.name, at.position, c.variant_id],
+    );
+  }
 }
 
 /** A damage waiver on the order, or an insurance document on the order or its customer (FR-PAY-8). */
@@ -333,7 +348,7 @@ export async function reprice(ctx: Ctx, orderId: string) {
   // Fee lines added by a fee rule come back from the engine; send only the lines staff added.
   const ruleFees = all.filter((l) => l.price_snapshot?.fee_rule_id);
   const lines = all.filter((l) => !l.price_snapshot?.fee_rule_id);
-  const { breakdown } = await priceQuote(ctx, {
+  const { breakdown, resolved } = await priceQuote(ctx, {
     location_id: o.location_id,
     starts_at: o.starts_at,
     ends_at: o.ends_at,
@@ -349,12 +364,14 @@ export async function reprice(ctx: Ctx, orderId: string) {
       amount: l.type === 'fee' || (l.type === 'discount' && l.price_snapshot?.percent_bp == null) ? Number(l.unit_price) : l.price_snapshot?.override_amount ?? null,
       percent_bp: l.type === 'discount' ? (l.price_snapshot?.percent_bp ?? null) : null,
       description: l.description,
+      picks: l.price_snapshot?.picks ?? null,
     })),
   });
   await syncRuleFees(ctx, o.id, breakdown, ruleFees, all.length);
   for (const b of breakdown.lines) {
     const prev = all.find((l) => l.id === b.key)?.price_snapshot ?? {};
-    const snapshot = { ...b, computed_at: ctx.now.toISOString(), ...(prev.override_amount != null ? { override_amount: prev.override_amount } : {}) };
+    const picks = resolved.find((r) => r.engine.key === b.key)?.picks;
+    const snapshot = { ...b, computed_at: ctx.now.toISOString(), ...(prev.override_amount != null ? { override_amount: prev.override_amount } : {}), ...(picks ? { picks } : {}) };
     await exec(
       ctx,
       `UPDATE order_lines SET price_snapshot = $2, unit_price = $3, subtotal = $4, discount = $5, tax = $6, total = $7, deposit = $8 WHERE id = $1`,
@@ -469,12 +486,13 @@ export async function createOrder(ctx: Ctx, input: CreateOrderInput): Promise<Re
   const number = await nextOrderNumber(ctx);
   await exec(
     ctx,
-    `INSERT INTO orders (id, tenant_id, number, customer_id, location_id, starts_at, ends_at, timezone, currency, deposit_policy, coupon_codes, source, public_token, notes, tags, custom_fields, created_by, options)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+    `INSERT INTO orders (id, tenant_id, number, customer_id, location_id, starts_at, ends_at, timezone, currency, deposit_policy, coupon_codes, source, public_token, notes, tags, custom_fields, created_by, options, po_number)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
     [id, ctx.tenantId, number, input.customer_id ?? null, loc.id, startsAt, endsAt, loc.timezone, tenant.currency, json(input.deposit ?? { mode: 'auto' }),
       input.coupon_codes ?? [], input.source ?? (ctx.actor.type === 'api_key' ? 'api' : 'admin'), randomToken(24), json(input.notes ?? {}), input.tags ?? [],
-      json(input.custom_fields ?? {}), ctx.actor.id, json(cleanOptions(input.options))],
+      json(input.custom_fields ?? {}), ctx.actor.id, json(cleanOptions(input.options)), cleanPo(input.po_number)],
   );
+  if (input.billing_cycle) await setBillingCycle(ctx, { id, status: 'draft' }, input.billing_cycle);
   const order = { id, location_id: loc.id };
   let pos = 0;
   for (const l of input.lines ?? []) await insertLine(ctx, order, l, pos++);
@@ -500,7 +518,17 @@ async function editable<T>(ctx: Ctx, ref: string, fn: (o: any) => Promise<T>, if
   return fresh;
 }
 
-const ALWAYS_EDITABLE = ['notes', 'tags', 'custom_fields'];
+const ALWAYS_EDITABLE = ['notes', 'tags', 'custom_fields', 'po_number', 'billing_cycle'];
+
+/** Recurring billing can be chosen until pickup; then the periods run. */
+async function setBillingCycle(ctx: Ctx, o: { id: string; status: string }, cycle: string | null) {
+  if (cycle !== null && !(BILLING_CYCLES as readonly string[]).includes(cycle)) throw invalid(msg('error.field.billing_cycle'), [{ field: 'billing_cycle', code: 'invalid', message: msg('error.field.billing_cycle') }]);
+  if (!['draft', 'quote', 'reserved', 'prepared'].includes(o.status)) throw new AppError('billing_locked', 409, msg('error.billing_cycle_locked'));
+  await exec(ctx, `UPDATE orders SET billing_cycle = $2 WHERE id = $1`, [o.id, cycle]);
+}
+
+/** A purchase order number as typed, trimmed; empty means none. */
+const cleanPo = (po?: string | null) => (po?.trim() ? po.trim().slice(0, 100) : null);
 
 export async function updateOrder(ctx: Ctx, ref: string, patch: Record<string, any>, ifMatch?: number | null): Promise<Record<string, any>> {
   const before = await orderRow(ctx, ref);
@@ -537,6 +565,8 @@ export async function updateOrder(ctx: Ctx, ref: string, patch: Record<string, a
   if (patch.notes) await exec(ctx, `UPDATE orders SET notes = notes || $2 WHERE id = $1`, [before.id, json(patch.notes)]);
   if (patch.tags) await exec(ctx, `UPDATE orders SET tags = $2 WHERE id = $1`, [before.id, patch.tags]);
   if (patch.custom_fields) await exec(ctx, `UPDATE orders SET custom_fields = custom_fields || $2 WHERE id = $1`, [before.id, json(patch.custom_fields)]);
+  if (patch.po_number !== undefined) await exec(ctx, `UPDATE orders SET po_number = $2 WHERE id = $1`, [before.id, cleanPo(patch.po_number)]);
+  if (patch.billing_cycle !== undefined) await setBillingCycle(ctx, before, patch.billing_cycle);
   const row = await orderRow(ctx, before.id);
   await audit(ctx, { entity_type: 'order', entity_id: before.id, action: 'update', before, after: row });
   const api = await orderToApi(ctx, row);
@@ -556,7 +586,7 @@ export async function addLine(ctx: Ctx, ref: string, input: OrderLineInput): Pro
   return { ...api, availability_check: await availabilityCheck(ctx, o) };
 }
 
-export async function updateLine(ctx: Ctx, ref: string, lineId: string, patch: { quantity?: number; amount?: number | null; description?: string; buffer_before_min?: number; buffer_after_min?: number; stock_item_ids?: string[] }) {
+export async function updateLine(ctx: Ctx, ref: string, lineId: string, patch: { quantity?: number; amount?: number | null; description?: string; buffer_before_min?: number; buffer_after_min?: number; stock_item_ids?: string[]; picks?: Record<string, string> }) {
   const o = await editable(ctx, ref, async (o) => {
     const l = await must<any>(ctx, `SELECT l.*, v.tracking FROM order_lines l LEFT JOIN variants v ON v.id = l.variant_id WHERE l.id = $1 AND l.order_id = $2 AND l.parent_line_id IS NULL`, [lineId, o.id], 'order_line', lineId);
     if (patch.quantity !== undefined) {
@@ -564,6 +594,14 @@ export async function updateLine(ctx: Ctx, ref: string, lineId: string, patch: {
       await exec(ctx, `UPDATE order_lines SET quantity = $2 WHERE id = $1`, [lineId, patch.quantity]);
       const comps = await many(ctx, `SELECT bc.quantity, bc.variant_id FROM bundle_components bc WHERE bc.bundle_id = $1`, [l.bundle_id ?? '']);
       for (const c of comps) await exec(ctx, `UPDATE order_lines SET quantity = $3 WHERE parent_line_id = $1 AND variant_id = $2`, [lineId, c.variant_id, patch.quantity * c.quantity]);
+    }
+    if (patch.picks) {
+      // Another option in a slot of a choice bundle: the bundle's components are made again (FR-CAT-6).
+      const [r] = await (await import('./quote.ts')).resolveLines(ctx, [{ key: lineId, variant_id: l.variant_id, quantity: l.quantity, picks: { ...(l.price_snapshot?.picks ?? {}), ...patch.picks } }], null, o.location_id);
+      if (!r!.picks) throw invalid(msg('error.not_a_choice_bundle'));
+      await exec(ctx, `DELETE FROM order_lines WHERE parent_line_id = $1`, [lineId]);
+      await insertComponents(ctx, o.id, lineId, r!.bundleComponents, { qty: l.quantity, before: l.buffer_before_min, after: l.buffer_after_min, position: l.position });
+      await exec(ctx, `UPDATE order_lines SET price_snapshot = price_snapshot || $2 WHERE id = $1`, [lineId, json({ picks: r!.picks })]);
     }
     if (patch.description !== undefined) await exec(ctx, `UPDATE order_lines SET description = $2 WHERE id = $1`, [lineId, patch.description]);
     if (patch.buffer_before_min !== undefined || patch.buffer_after_min !== undefined) {
@@ -630,6 +668,8 @@ async function autoInvoice(ctx: Ctx, orderId: string, to: OrderStatus) {
   const when = (await settings(ctx)).accounting.invoice_when;
   if (when === 'manual' || INVOICE_AT[when] !== to) return;
   if (await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND status <> 'voided'`, [orderId])) return;
+  // Customers invoiced monthly get their bookings on one invoice at the end of the month; long rentals per period.
+  if (await one(ctx, `SELECT 1 FROM orders o LEFT JOIN customers c ON c.id = o.customer_id WHERE o.id = $1 AND (c.invoice_schedule = 'monthly' OR o.invoice_id IS NOT NULL OR o.billing_cycle IS NOT NULL)`, [orderId])) return;
   await ctx.db.query('SAVEPOINT auto_invoice');
   try {
     await issueDocument(ctx, orderId, 'invoice');
@@ -728,6 +768,9 @@ const HANDLERS: Record<OrderAction, Handler> = {
       }
       if (errs.length) throw invalid(msg('error.these_dates_cannot_be_booked'), errs);
     }
+    // Staff may book over a customer's credit limit on purpose; it is in the audit log.
+    await checkAccountBooking(ctx, o, { override: body?.override_credit_limit === true });
+    if (body?.override_credit_limit === true) await audit(ctx, { entity_type: 'order', entity_id: o.id, action: 'credit_limit_override' });
     const api = await setStatus(ctx, o, 'reserved', 'reserved', {}, { quote_expires_at: null });
     for (const c of (o.totals?.coupons_applied ?? []) as { coupon_id: string; code: string }[]) {
       await exec(ctx, `UPDATE coupons SET uses_count = uses_count + 1 WHERE id = $1`, [c.coupon_id]);
@@ -798,6 +841,8 @@ const HANDLERS: Record<OrderAction, Handler> = {
     }
     const api = await setStatus(ctx, o, 'out', 'checked_out', { partial: missing.length > 0, missing });
     await issueDocument(ctx, o.id, 'contract');
+    // A long rental billed per period gets its first period's invoice now (FR-OR-11).
+    if (o.billing_cycle && (await billOrderNow(ctx, o.id))) return orderToApi(ctx, await orderRow(ctx, o.id));
     return api;
   },
 
@@ -899,7 +944,12 @@ const HANDLERS: Record<OrderAction, Handler> = {
     const done = facts.outstandingUnits === 0;
     if (done && unpicked) await availability.releaseUnassignedHolds(ctx, o.id);
     const to: OrderStatus = done ? 'returned' : 'returned_partial';
-    return setStatus(ctx, o, to, 'checked_in', { partial: !done, barcodes: returned, late_fee: lateFee });
+    const api = await setStatus(ctx, o, to, 'checked_in', { partial: !done, barcodes: returned, late_fee: lateFee });
+    if (done && o.billing_cycle) {
+      await billOnReturn(ctx, o.id);
+      return orderToApi(ctx, await orderRow(ctx, o.id));
+    }
+    return api;
   },
 
   async inspect(ctx, o, body) {
@@ -1231,8 +1281,9 @@ async function changeEnd(ctx: Ctx, ref: string, kind: 'extend' | 'return_early',
       line = { name: description, type: 'fee', quantity: 1, unit_price: credit, discount: 0, tax_rate_bp: rate, tax: creditTax, total: credit + creditTax, units: [] };
     }
     await recalcTotalsFromLines(ctx, o.id);
-    // An invoiced order gets the difference on its own document; issued documents never change.
-    const invoiced = await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND status = 'issued' LIMIT 1`, [o.id]);
+    // An invoiced order gets the difference on its own document; issued documents never change. A long
+    // rental billed per period takes the difference in its next period instead.
+    const invoiced = !o.billing_cycle && (await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND status = 'issued' LIMIT 1`, [o.id]));
     if (invoiced) {
       const amount = Math.abs(net);
       await issueDocument(ctx, o.id, kind === 'extend' ? 'invoice' : 'credit_note', {

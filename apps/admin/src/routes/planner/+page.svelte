@@ -221,4 +221,17 @@
       {/each}
     </ul>
   {/if}
+
+  {#if data.external?.length}
+    <h2 class="mt-8 mb-3 text-base font-semibold">{t('planner.rented_in')}</h2>
+    <ul class="flex flex-col divide-y rounded-lg border border-dashed text-sm" data-testid="planner-external">
+      {#each data.external as x (x.id)}
+        <li class="flex flex-wrap items-center gap-2 px-3 py-2">
+          <Badge variant="outline" class="border-dashed">{t('planner.rented_in_badge')}</Badge>
+          <span class="font-medium">{x.product_name}</span>{#if x.quantity > 1}<Badge variant="secondary">× {x.quantity}</Badge>{/if}
+          <span class="text-muted-foreground">· {x.supplier} · {dt(x.starts_at)} – {dt(x.ends_at)}</span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 {/if}

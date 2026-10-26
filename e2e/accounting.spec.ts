@@ -45,7 +45,11 @@ test('staff connect Xero, map accounts from Xero’s lists, start sending and se
 
     // Back from Xero's sign-in: choose the organisation, then the accounts.
     await expect(page.getByText('Connected. Now choose the accounts.')).toBeVisible();
-    await page.getByLabel('Organisation', { exact: true }).selectOption({ label: 'Kayak Hire Events Ltd' });
+    // The switch reloads the mapping when it is done: wait for it before going on.
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes('/accounting/connection/actions/choose_organisation')),
+      page.getByLabel('Organisation', { exact: true }).selectOption({ label: 'Kayak Hire Events Ltd' }),
+    ]);
     const mapping = page.getByTestId('accounting-mapping');
     await expect(mapping.getByLabel(/Rental revenue/)).toBeVisible();
     await page.getByRole('button', { name: 'Start sending' }).click();
