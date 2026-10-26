@@ -53,6 +53,12 @@ export async function checkTheme(dir: string): Promise<ThemeCheck> {
     if (!files.includes('index.ts') && !files.includes('index.js')) errors.push('missing index.ts (the theme module)');
     for (const f of files.filter((x) => /\.(svelte|ts|js)$/.test(x))) errors.push(...checkThemeSource(f, await readFile(path.join(dir, f), 'utf8')));
   }
+  // Preview images (the thumbnail in Admin → Themes) are image files inside the theme.
+  for (const p of (manifest.preview_images ?? []) as string[]) {
+    if (/^(https?:)?\/\//.test(p)) continue;
+    if (!/\.(png|jpe?g|webp)$/i.test(p)) errors.push(`theme.json: preview image ${p} must be a .png, .jpg or .webp file`);
+    else if (!files.includes(p.replace(/^\.\//, ''))) errors.push(`theme.json: preview image ${p} is not in the theme`);
+  }
   // Every language should have the same texts as English.
   const locales = files.filter((f) => /^locales\/[a-z]{2}\.json$/.test(f));
   const en = locales.includes('locales/en.json') ? Object.keys(JSON.parse(await readFile(path.join(dir, 'locales/en.json'), 'utf8'))).filter((k) => k !== '_meta') : [];

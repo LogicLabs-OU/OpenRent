@@ -11,6 +11,8 @@ import { resolveSettings, type TenantSettings } from '../tenancy/settings.ts';
 /** An installed theme as the API sees it: its JSON parts plus install-time problems. */
 export interface InstalledTheme extends ThemeMeta {
   package: string;
+  /** Folder of a code theme on this server (where its preview images are read from). */
+  dir?: string;
   problems: string[];
   /** Child themes (theme API 1.4): the code theme they build on, their CSS and asset file ids. */
   parent?: string;
@@ -55,7 +57,8 @@ function summary(theme: InstalledTheme, s: TenantSettings) {
     compat: m.compat,
     locales: m.locales,
     sections: m.sections ?? [],
-    preview_images: m.preview_images ?? [],
+    // Files inside a code theme are served by the API; full URLs are used as they are.
+    preview_images: (m.preview_images ?? []).map((p, i) => (/^(https?:)?\/\//.test(p) || p.startsWith('data:') ? p : `/api/v1/public/theme_previews/${encodeURIComponent(m.id)}/${i}`)),
     package: theme.package,
     extends: theme.parent ?? null,
     live: s.theme.id === m.id,

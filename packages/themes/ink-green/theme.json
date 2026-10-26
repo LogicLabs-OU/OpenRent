@@ -7,5 +7,5 @@
   "compat": "^1.4.0",
   "locales": ["en", "de", "fr", "es", "et", "ja"],
   "sections": ["hero", "category-tiles", "product-grid", "rich-text", "image-text", "faq", "cta"],
-  "preview_images": []
+  "preview_images": ["assets/preview.jpg"]
 }

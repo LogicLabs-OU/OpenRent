@@ -23,7 +23,7 @@ export function readTheme(pkgDir: string, pkg: string): themes.InstalledTheme {
     ? readdirSync(sectionsDir).filter((f) => f.endsWith('.json')).sort().map((f) => ({ ...readJson(path.join(sectionsDir, f)), type: f.replace(/\.json$/, '') }))
     : [];
   const meta = { manifest, settingsSchema: config('settings_schema.json', []), settingsData: config('settings_data.json', {}), locales, sectionSchemas, sectionsData: config('sections_data.json', undefined) };
-  return { ...meta, package: pkg, problems: validateThemeMeta(meta) };
+  return { ...meta, package: pkg, dir: pkgDir, problems: validateThemeMeta(meta) };
 }
 
 /**

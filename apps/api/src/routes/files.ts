@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { AppError, assertCan, attachments, can, catalog, files, serverT } from '@openrent/core';
 import { withSystem, withTenant } from '@openrent/db';
 import type { Router } from '../http.ts';
@@ -77,6 +80,22 @@ export function registerFiles(r: Router) {
     });
     return reply.type(file.content_type).header('Cache-Control', 'public, max-age=31536000, immutable').header('Access-Control-Allow-Origin', '*').header('X-Content-Type-Options', 'nosniff').send(body);
   });
+
+  // Preview images of code themes (the thumbnails on Admin → Themes), read from the theme's own folder.
+  const PREVIEW_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
+  r.get(
+    '/public/theme_previews/:theme/:index',
+    { public: true, tx: 'none', tags: F, summary: 'A preview image of an installed code theme', params: Type.Object({ theme: Type.String({ maxLength: 100 }), index: Type.Integer({ minimum: 0, maximum: 20 }) }), raw: true },
+    async (_ctx, req, reply) => {
+      const theme = r.deps.themes.find((x) => x.manifest.id === req.params.theme);
+      const rel = theme?.manifest.preview_images?.[req.params.index];
+      const file = theme?.dir && rel ? path.resolve(theme.dir, rel) : null;
+      const type = file ? PREVIEW_TYPES[path.extname(file).toLowerCase()] : undefined;
+      // Only image files inside the theme's folder.
+      if (!file || !type || !file.startsWith(path.resolve(theme!.dir!) + path.sep) || !existsSync(file)) throw new AppError('not_found', 404, serverT('files.not_found'));
+      return reply.type(type).header('Cache-Control', 'public, max-age=3600').header('X-Content-Type-Options', 'nosniff').send(await readFile(file));
+    },
+  );
 
   const P = ['Products'];
   const ImageParams = Type.Object({ id: Id, image_id: Id });

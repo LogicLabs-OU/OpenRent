@@ -446,6 +446,12 @@ suite('OpenRent API against PostgreSQL', () => {
       expect.objectContaining({ id: 'linen', live: false, status: 'ok' }),
       expect.objectContaining({ id: 'nightfall', live: false, status: 'ok' }),
     ]);
+    // Each code theme's thumbnail is a file in the theme, served by the API.
+    const thumb = list.body.data[0].preview_images[0];
+    expect(thumb).toBe('/api/v1/public/theme_previews/default/0');
+    const img = await new Client(t.app).get(thumb);
+    expect([img.status, img.headers['content-type']]).toEqual([200, 'image/jpeg']);
+    expect((await new Client(t.app).get('/api/v1/public/theme_previews/default/9')).status).toBe(404);
     const bad = await admin.patch('/api/v1/themes/default/settings', { settings: { accent: 'teal', radius: 99, nope: 1 } });
     expect(bad.status).toBe(422);
     expect(bad.body.errors.map((e: any) => e.field).sort()).toEqual(['settings.accent', 'settings.nope', 'settings.radius']);
