@@ -1,0 +1,77 @@
+{
+  "name": "Image with text",
+  "settings": [
+    {
+      "id": "image",
+      "type": "image",
+      "label": "Image URL",
+      "default": ""
+    },
+    {
+      "id": "alt",
+      "type": "text",
+      "label": "Image description",
+      "default": ""
+    },
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "default": "Ready when you are"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Everything is checked and cleaned before each rental."
+    },
+    {
+      "id": "button_label",
+      "type": "text",
+      "label": "Button label",
+      "default": ""
+    },
+    {
+      "id": "button_link",
+      "type": "link",
+      "label": "Button link",
+      "default": ""
+    },
+    {
+      "id": "image_side",
+      "type": "select",
+      "label": "Image side",
+      "default": "left",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "select",
+      "label": "Text panel colour",
+      "default": "paper",
+      "options": [
+        {
+          "value": "paper",
+          "label": "Paper"
+        },
+        {
+          "value": "accent",
+          "label": "Accent"
+        },
+        {
+          "value": "accent_2",
+          "label": "Second accent"
+        }
+      ]
+    }
+  ]
+}

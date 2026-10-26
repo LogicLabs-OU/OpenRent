@@ -1,0 +1,92 @@
+{
+  "name": "Image with text",
+  "settings": [
+    {
+      "id": "image",
+      "type": "image",
+      "label": "Image URL",
+      "default": ""
+    },
+    {
+      "id": "alt",
+      "type": "text",
+      "label": "Image description",
+      "default": ""
+    },
+    {
+      "id": "heading",
+      "type": "textarea",
+      "label": "Heading",
+      "info": "Each line break starts a new line",
+      "default": "Looked after\nbetween rentals"
+    },
+    {
+      "id": "highlight",
+      "type": "text",
+      "label": "Highlighted word",
+      "info": "Shown in the accent colour with an underline; empty marks the last word",
+      "default": "after"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Every item comes back to our workshop, where it is checked, cleaned and charged before it goes out again."
+    },
+    {
+      "id": "checklist",
+      "type": "textarea",
+      "label": "Checklist",
+      "info": "One point per line, shown with a check mark",
+      "default": "Tested before every rental\nSpare batteries and cases included\nHelp on the phone while you use it"
+    },
+    {
+      "id": "button_label",
+      "type": "text",
+      "label": "Button label",
+      "default": ""
+    },
+    {
+      "id": "button_link",
+      "type": "link",
+      "label": "Button link",
+      "default": ""
+    },
+    {
+      "id": "image_side",
+      "type": "select",
+      "label": "Image side",
+      "default": "right",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        }
+      ]
+    },
+    {
+      "id": "tone",
+      "type": "select",
+      "label": "Card colour",
+      "default": "white",
+      "options": [
+        {
+          "value": "white",
+          "label": "White"
+        },
+        {
+          "value": "grey",
+          "label": "Grey"
+        },
+        {
+          "value": "beige",
+          "label": "Beige"
+        }
+      ]
+    }
+  ]
+}

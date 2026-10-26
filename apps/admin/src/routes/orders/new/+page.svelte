@@ -18,7 +18,7 @@
   import PlusIcon from '@lucide/svelte/icons/plus';
   import UserPlusIcon from '@lucide/svelte/icons/user-plus';
   import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
-  import { api, fromLocalInput, session, t, toast, notifyError, fieldErrors, toLocalInput } from '#lib';
+  import { allPages, api, fromLocalInput, session, t, toast, notifyError, fieldErrors, toLocalInput } from '#lib';
   import { to } from '#lib/nav.ts';
   import AvailabilityElsewhere from '#lib/components/availability-elsewhere.svelte';
 
@@ -44,7 +44,7 @@
   let timer: ReturnType<typeof setTimeout>;
 
   onMount(async () => {
-    products = (await api.get('/products?limit=200&filter[visibility]=public,hidden')).data;
+    products = await allPages('/products?limit=200&filter[visibility]=public,hidden');
   });
 
   const variantOptions = $derived(products.flatMap((p) => p.variants.map((v: any) => ({ id: v.id, label: v.name === p.name ? p.name : `${p.name} – ${v.name}`, type: p.type }))));

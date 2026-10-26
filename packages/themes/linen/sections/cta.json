@@ -1,0 +1,36 @@
+{
+  "name": "Closing call to action",
+  "settings": [
+    { "id": "heading", "type": "textarea", "label": "Heading", "info": "Each line break starts a new line", "default": "Out the door\nin minutes" },
+    {
+      "id": "highlight",
+      "type": "text",
+      "label": "Highlighted word",
+      "info": "Shown in the accent colour with an underline; empty marks the last word",
+      "default": "minutes"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Book online, pick up at the counter and bring it back when you are done. We handle the rest."
+    },
+    {
+      "id": "checklist",
+      "type": "textarea",
+      "label": "Checklist",
+      "info": "One point per line, shown with a check mark",
+      "default": "Prices you see before you book\nFree cancellation up to two days ahead\nFriendly help at pickup"
+    },
+    { "id": "button_label", "type": "text", "label": "Button label", "default": "Browse everything" },
+    {
+      "id": "button_link",
+      "type": "link",
+      "label": "Button link",
+      "info": "Empty opens the search page",
+      "default": ""
+    },
+    { "id": "second_label", "type": "text", "label": "Second button label", "default": "" },
+    { "id": "second_link", "type": "link", "label": "Second button link", "default": "" }
+  ]
+}

@@ -2,7 +2,7 @@ import { api } from './api.ts';
 import { browserLocale, devLocale, setLocale } from './i18n/index.svelte.ts';
 
 export interface Me {
-  user: { id: string; email: string; name: string; locale: string; totp_enabled: boolean };
+  user: { id: string; email: string; name: string; locale: string; totp_enabled: boolean; has_password?: boolean };
   tenant: { id: string; slug: string; name: string; currency: string; timezone: string; locale: string; branding: Record<string, any> } | null;
   memberships: { tenant_id: string; tenant_name: string; role: string }[];
   role: string | null;
@@ -21,7 +21,8 @@ class Session {
       this.me = await api.get<Me>('/auth/me');
       await setLocale(devLocale() ?? this.me?.user.locale);
       if (this.me?.tenant) {
-        this.locations = (await api.get('/locations')).data;
+        // A custom role may not see locations; the admin still works, with the shop's time zone.
+        this.locations = this.can('locations:read') ? ((await api.get('/locations').catch(() => ({ data: [] }))).data as any[]) : [];
         this.locationId = this.remembered();
       }
     } catch {

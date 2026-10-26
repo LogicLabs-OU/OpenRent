@@ -1,0 +1,70 @@
+{
+  "name": "Hero",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "textarea",
+      "label": "Heading",
+      "info": "Each line break starts a new line",
+      "default": "Rent the gear.\nSkip the hassle.\nGet out there."
+    },
+    {
+      "id": "highlight",
+      "type": "text",
+      "label": "Highlighted word",
+      "info": "Shown in the accent colour with an underline; empty marks the last word",
+      "default": "there"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Pick your dates first and we only show what is free. Prices update as you go, and everything is ready at the counter when you arrive."
+    },
+    {
+      "id": "button_label",
+      "type": "text",
+      "label": "Button label",
+      "default": "Browse everything"
+    },
+    {
+      "id": "button_link",
+      "type": "link",
+      "label": "Button link",
+      "info": "Empty opens the search page",
+      "default": ""
+    },
+    {
+      "id": "second_label",
+      "type": "text",
+      "label": "Second button label",
+      "default": "How it works"
+    },
+    {
+      "id": "second_link",
+      "type": "link",
+      "label": "Second button link",
+      "default": "",
+      "info": "Empty scrolls to the next section"
+    },
+    {
+      "id": "ticker_label",
+      "type": "text",
+      "label": "Label above the category ticker",
+      "default": "Ready to rent:"
+    },
+    {
+      "id": "image",
+      "type": "image",
+      "label": "Photo URL",
+      "info": "Fills the panel behind the date search",
+      "default": ""
+    },
+    {
+      "id": "alt",
+      "type": "text",
+      "label": "Photo description",
+      "default": ""
+    }
+  ]
+}

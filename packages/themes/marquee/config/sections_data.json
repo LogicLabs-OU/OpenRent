@@ -1,0 +1,7 @@
+[
+  { "id": "hero", "type": "hero", "settings": {}, "blocks": [] },
+  { "id": "ticker", "type": "ticker", "settings": {}, "blocks": [] },
+  { "id": "products", "type": "product-grid", "settings": {}, "blocks": [] },
+  { "id": "categories", "type": "category-tiles", "settings": {}, "blocks": [] },
+  { "id": "closing", "type": "cta", "settings": {}, "blocks": [] }
+]

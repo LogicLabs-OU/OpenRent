@@ -1,0 +1,47 @@
+{
+  "name": "Spotlight (image with text)",
+  "settings": [
+    { "id": "image", "type": "image", "label": "Image URL", "info": "Empty shows a small booking calendar drawn in the theme's colours", "default": "" },
+    { "id": "alt", "type": "text", "label": "Image description", "default": "" },
+    { "id": "label", "type": "text", "label": "Small label", "default": "Delivery and pickup" },
+    { "id": "badge", "type": "text", "label": "Badge", "info": "A small amber pill next to the label; leave empty to hide", "default": "New" },
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "info": "Wrap words in *stars* to write them in the accent font",
+      "default": "Booked in a minute, *ready* at the counter."
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Choose your dates, pay online and walk out with checked, cleaned and charged gear. Need it longer? Ask from your account."
+    },
+    { "id": "button_label", "type": "text", "label": "Button label", "default": "" },
+    { "id": "button_link", "type": "link", "label": "Button link", "default": "" },
+    { "id": "second_label", "type": "text", "label": "Second button label", "default": "" },
+    { "id": "second_link", "type": "link", "label": "Second button link", "default": "" },
+    {
+      "id": "image_side",
+      "type": "select",
+      "label": "Image side",
+      "default": "right",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "right", "label": "Right" }
+      ]
+    },
+    {
+      "id": "glow",
+      "type": "select",
+      "label": "Glow",
+      "default": "cool",
+      "options": [
+        { "value": "cool", "label": "Blue" },
+        { "value": "warm", "label": "Amber" },
+        { "value": "none", "label": "None" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Category picker",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "info": "Wrap words in *stars* to write them in the accent font",
+      "default": "Whatever you are planning, we have the *kit.*"
+    },
+    { "id": "text", "type": "textarea", "label": "Text", "default": "Pick a category to see what people rent for it." }
+  ]
+}

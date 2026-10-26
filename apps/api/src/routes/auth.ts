@@ -78,7 +78,7 @@ export function registerAuthRoutes(r: Router) {
     if (!a || a.kind === 'anonymous' || a.kind === 'slug' || a.kind === 'publishable') throw new AppError('unauthorized', 401, serverT('auth.not_signed_in'));
     if (a.kind === 'secret_key') return { object: 'me', kind: 'api_key', tenant_id: a.tenantId, permissions: permissionsFor(a.actor) };
     const out = await withSystem(deps.db, async (c) => {
-      const user = (await c.query(`SELECT id, email, name, locale, totp_secret IS NOT NULL AS totp_enabled FROM users WHERE id = $1`, [a.userId])).rows[0];
+      const user = (await c.query(`SELECT id, email, name, locale, totp_secret IS NOT NULL AS totp_enabled, password_hash IS NOT NULL AS has_password FROM users WHERE id = $1`, [a.userId])).rows[0];
       const memberships = await coreAuth.membershipsOf(c, a.userId!);
       const tenant = a.tenantId ? (await c.query(`SELECT id, slug, name, currency, timezone, locale, branding FROM tenants WHERE id = $1`, [a.tenantId])).rows[0] : null;
       return { user, memberships, tenant };
@@ -109,6 +109,20 @@ export function registerAuthRoutes(r: Router) {
         return r.rows[0];
       });
       return { object: 'user', ...user };
+    },
+  );
+
+  r.post(
+    '/auth/me/password',
+    {
+      public: true, tx: 'none', tags: ['Auth'], summary: 'Set your own password (the current one is needed if you have one); other sessions end',
+      body: Type.Object({ password: Type.String({ maxLength: 200 }), current_password: Type.Optional(Type.String({ maxLength: 200 })) }, { additionalProperties: false }),
+      rateLimit: { max: 10, timeWindow: '1 minute' }, status: 200,
+    },
+    async (_c, req) => {
+      const a = req.auth;
+      if (a?.kind !== 'session' || !a.userId) throw new AppError('unauthorized', 401, serverT('auth.not_signed_in'));
+      return withSystem(deps.db, (c) => coreAuth.setOwnPassword(c, a.userId!, a.sessionId ?? null, req.body));
     },
   );
 

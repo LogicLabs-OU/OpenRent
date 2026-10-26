@@ -1,6 +1,6 @@
 import { t as msg } from '../i18n/index.ts';
 import { isLocale } from '@openrent/i18n';
-import type { Ctx, Queryable, Role } from '../context.ts';
+import type { Ctx, Queryable } from '../context.ts';
 import { t as tr } from '../i18n/index.ts';
 import { AppError, invalid, type FieldError } from '../errors.ts';
 import { audit, emit } from '../events.ts';
@@ -8,7 +8,7 @@ import { newId, sha256 } from '../ids.ts';
 import { exec, json, many, must, one, updateSql } from '../sql.ts';
 import { generateApiKey, hashPassword } from '../auth/index.ts';
 import { isValidTimeZone } from '../time.ts';
-import { DEFAULT_OPENING_HOURS, deepMerge, resolveSettings, type TenantSettings } from './settings.ts';
+import { ACCOUNT_KEYS, DEFAULT_OPENING_HOURS, deepMerge, resolveSettings, type TenantSettings } from './settings.ts';
 
 export * from './settings.ts';
 
@@ -84,6 +84,12 @@ function validateSettings(s: TenantSettings) {
   if (!Number.isInteger(pt.balance_due_days_before) || pt.balance_due_days_before < 0 || pt.balance_due_days_before > 60) errors.push({ field: 'payment_terms.balance_due_days_before', code: 'out_of_range', message: tr('settings.invalid_days') });
   if (!Number.isInteger(s.damage_waiver_excess) || s.damage_waiver_excess < 0) errors.push({ field: 'damage_waiver_excess', code: 'invalid', message: tr('settings.invalid_amount') });
   if (typeof s.requires_waiver_or_insurance !== 'boolean') errors.push({ field: 'requires_waiver_or_insurance', code: 'invalid', message: tr('settings.invalid') });
+  for (const [k, v] of Object.entries(s.accounting?.accounts ?? {}))
+    if (!(ACCOUNT_KEYS as readonly string[]).includes(k) || typeof v !== 'string' || !v.trim() || v.length > 40) errors.push({ field: `accounting.accounts.${k}`, code: 'invalid', message: tr('error.field.account_code') });
+  const lock = s.accounting.locked_until;
+  if (lock !== null && (typeof lock !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(lock) || Number.isNaN(Date.parse(lock)) || lock > new Date().toISOString().slice(0, 10)))
+    errors.push({ field: 'accounting.locked_until', code: 'invalid', message: tr('error.field.lock_date') });
+  if (!['manual', 'reserved', 'checked_out', 'closed'].includes(s.accounting.invoice_when)) errors.push({ field: 'accounting.invoice_when', code: 'invalid', message: tr('settings.invalid') });
   if (typeof s.require_inspection_on_return !== 'boolean') errors.push({ field: 'require_inspection_on_return', code: 'invalid', message: tr('settings.invalid') });
   if (!['notify', 'reauthorize', 'convert_to_charge'].includes(s.deposit_expiry_policy)) errors.push({ field: 'deposit_expiry_policy', code: 'invalid', message: tr('settings.invalid_deposit_expiry_policy') });
   if (s.email_channel !== null && (typeof s.email_channel !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s.email_channel))) errors.push({ field: 'email_channel', code: 'invalid', message: tr('settings.invalid_email_channel') });
@@ -280,25 +286,35 @@ export async function rotateApiKey(ctx: Ctx, id: string) {
 // ---------------------------------------------------------------------------
 
 export function userToApi(u: any) {
-  return { id: u.id, object: 'user', email: u.email, name: u.name, locale: u.locale, role: u.role, status: u.status, totp_enabled: !!u.totp_secret, created_at: u.created_at };
+  return {
+    id: u.id, object: 'user', email: u.email, name: u.name, locale: u.locale, role: u.role, role_id: u.role_id ?? null, role_name: u.role_name ?? null,
+    status: u.disabled_at ? 'disabled' : u.status, has_password: !!u.password_hash, totp_enabled: !!u.totp_secret, created_at: u.created_at,
+  };
 }
 
+const MEMBER = `SELECT u.*, m.role, m.role_id, m.disabled_at, r.name AS role_name FROM memberships m JOIN users u ON u.id = m.user_id LEFT JOIN roles r ON r.id = m.role_id`;
+
 export async function listUsers(ctx: Ctx) {
-  const rows = await many(
-    ctx,
-    `SELECT u.*, m.role FROM memberships m JOIN users u ON u.id = m.user_id ORDER BY u.created_at`,
-  );
-  return rows.map(userToApi);
+  return (await many(ctx, `${MEMBER} ORDER BY u.created_at`)).map(userToApi);
 }
 
 export async function getUser(ctx: Ctx, id: string) {
-  return userToApi(await must(ctx, `SELECT u.*, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE u.id = $1`, [id], 'user', id));
+  return userToApi(await must(ctx, `${MEMBER} WHERE u.id = $1`, [id], 'user', id));
 }
 
-export async function inviteUser(ctx: Ctx, input: { email: string; name?: string; role: Role; password?: string }) {
+/** At least one owner who can still sign in must remain. */
+async function keepAnOwner(ctx: Ctx, userId: string) {
+  const owners = await one<{ n: number }>(ctx, `SELECT count(*)::int AS n FROM memberships WHERE role = 'owner' AND disabled_at IS NULL AND user_id <> $1`, [userId]);
+  if (!owners?.n) throw new AppError('last_owner', 409, msg('error.a_tenant_needs_at_least_one_owner'));
+}
+
+/** `role` is a system role key or the id of one of the shop's own roles. */
+export async function inviteUser(ctx: Ctx, input: { email: string; name?: string; role: string; password?: string }) {
   if (input.role === 'owner' && ctx.actor.role !== 'owner' && ctx.actor.type !== 'system') {
     throw new AppError('forbidden', 403, msg('error.only_an_owner_can_add_another_owner'));
   }
+  const { resolveRole } = await import('../roles/index.ts');
+  const role = await resolveRole(ctx, input.role);
   let user = await one(ctx, `SELECT * FROM users WHERE lower(email) = lower($1)`, [input.email]);
   if (!user) {
     user = (
@@ -311,22 +327,22 @@ export async function inviteUser(ctx: Ctx, input: { email: string; name?: string
   }
   await exec(
     ctx,
-    `INSERT INTO memberships (id, tenant_id, user_id, role) VALUES ($1, $2, $3, $4)
-     ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role`,
-    [newId('mem'), ctx.tenantId, user.id, input.role],
+    `INSERT INTO memberships (id, tenant_id, user_id, role, role_id) VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id, disabled_at = NULL`,
+    [newId('mem'), ctx.tenantId, user.id, role.role, role.role_id],
   );
   await audit(ctx, { entity_type: 'user', entity_id: user.id, action: 'invite', after: { email: user.email, role: input.role } });
-  return userToApi({ ...user, role: input.role });
+  return getUser(ctx, user.id);
 }
 
-export async function updateMember(ctx: Ctx, userId: string, patch: { role?: Role; name?: string; locale?: string }) {
+export async function updateMember(ctx: Ctx, userId: string, patch: { role?: string; name?: string; locale?: string }) {
   const before = await getUser(ctx, userId);
   if (patch.role) {
-    if (before.role === 'owner' && patch.role !== 'owner') {
-      const owners = await one<{ n: number }>(ctx, `SELECT count(*)::int AS n FROM memberships WHERE role = 'owner'`);
-      if ((owners?.n ?? 0) <= 1) throw new AppError('last_owner', 409, msg('error.a_tenant_needs_at_least_one_owner'));
-    }
-    await exec(ctx, `UPDATE memberships SET role = $2 WHERE user_id = $1`, [userId, patch.role]);
+    if (patch.role === 'owner' && ctx.actor.role !== 'owner' && ctx.actor.type !== 'system') throw new AppError('forbidden', 403, msg('error.only_an_owner_can_add_another_owner'));
+    if (before.role === 'owner' && patch.role !== 'owner') await keepAnOwner(ctx, userId);
+    const { resolveRole } = await import('../roles/index.ts');
+    const role = await resolveRole(ctx, patch.role);
+    await exec(ctx, `UPDATE memberships SET role = $2, role_id = $3 WHERE user_id = $1`, [userId, role.role, role.role_id]);
   }
   if (patch.name !== undefined || patch.locale !== undefined) {
     await exec(ctx, `UPDATE users SET name = coalesce($2, name), locale = coalesce($3, locale) WHERE id = $1`, [userId, patch.name ?? null, patch.locale ?? null]);
@@ -338,13 +354,55 @@ export async function updateMember(ctx: Ctx, userId: string, patch: { role?: Rol
 
 export async function removeMember(ctx: Ctx, userId: string) {
   const u = await getUser(ctx, userId);
-  if (u.role === 'owner') {
-    const owners = await one<{ n: number }>(ctx, `SELECT count(*)::int AS n FROM memberships WHERE role = 'owner'`);
-    if ((owners?.n ?? 0) <= 1) throw new AppError('last_owner', 409, msg('error.a_tenant_needs_at_least_one_owner'));
-  }
+  if (u.role === 'owner') await keepAnOwner(ctx, userId);
   await exec(ctx, `DELETE FROM memberships WHERE user_id = $1`, [userId]);
   await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND tenant_id = $2`, [userId, ctx.tenantId]);
   await audit(ctx, { entity_type: 'user', entity_id: userId, action: 'remove', before: u });
+}
+
+/** The member can no longer use this shop (other shops are not affected); their sessions here end. */
+export async function disableMember(ctx: Ctx, userId: string) {
+  const u = await getUser(ctx, userId);
+  if (ctx.actor.id === userId) throw new AppError('cannot_disable_self', 409, msg('error.cannot_disable_yourself'));
+  if (u.role === 'owner') await keepAnOwner(ctx, userId);
+  await exec(ctx, `UPDATE memberships SET disabled_at = coalesce(disabled_at, now()) WHERE user_id = $1`, [userId]);
+  await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`, [userId, ctx.tenantId]);
+  await audit(ctx, { entity_type: 'user', entity_id: userId, action: 'disable', before: u });
+  return getUser(ctx, userId);
+}
+
+export async function enableMember(ctx: Ctx, userId: string) {
+  const u = await getUser(ctx, userId);
+  await exec(ctx, `UPDATE memberships SET disabled_at = NULL WHERE user_id = $1`, [userId]);
+  await audit(ctx, { entity_type: 'user', entity_id: userId, action: 'enable', before: u });
+  return getUser(ctx, userId);
+}
+
+/** Invitations last three days; a reset link the usual 15 minutes would be too short to find in a mailbox. */
+const INVITE_MINUTES = 72 * 60;
+
+/**
+ * Emails a member a one-time sign-in link: an invitation, or after a reset (the old password stops
+ * working and their sessions end). Once signed in they set a new password from their profile.
+ */
+export async function sendAccessLink(ctx: Ctx, userId: string, kind: 'invite' | 'reset_password') {
+  const u = await getUser(ctx, userId);
+  if (u.status === 'disabled') throw new AppError('member_disabled', 409, msg('error.member_disabled'));
+  if (kind === 'reset_password') {
+    await exec(ctx, `UPDATE users SET password_hash = NULL WHERE id = $1`, [userId]);
+    await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+  }
+  const { createLoginToken } = await import('../auth/index.ts');
+  const link = await createLoginToken(ctx.db, u.email, INVITE_MINUTES);
+  if (!link) throw new AppError('member_disabled', 409, msg('error.member_disabled'));
+  const tenant = await getTenant(ctx);
+  const { queue } = await import('../notifications/index.ts');
+  await queue(ctx, {
+    template: kind === 'invite' ? 'staff_invitation' : 'staff_password_reset', to: u.email, audience: 'staff',
+    data: { link: `${ctx.config.adminUrl}/login?magic=${encodeURIComponent(link.token)}`, shop: tenant.name, name: u.name || u.email },
+  });
+  await audit(ctx, { entity_type: 'user', entity_id: userId, action: kind });
+  return { object: 'result', sent_to: u.email };
 }
 
 // ---------------------------------------------------------------------------

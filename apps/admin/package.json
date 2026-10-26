@@ -41,6 +41,7 @@
     "@tiptap/starter-kit": "^3.32.0",
     "barcode-detector": "^3.2.3",
     "bits-ui": "^2.20.2",
+    "idb": "^8.0.4",
     "mode-watcher": "^1.1.0",
     "svelte-sonner": "^1.2.1",
     "zxing-wasm": "^3.1.6"

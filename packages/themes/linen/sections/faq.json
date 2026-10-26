@@ -1,0 +1,46 @@
+{
+  "name": "Questions and answers",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "textarea",
+      "label": "Heading",
+      "info": "Each line break starts a new line",
+      "default": "Questions,\nanswered"
+    },
+    {
+      "id": "highlight",
+      "type": "text",
+      "label": "Highlighted word",
+      "info": "Shown in the accent colour with an underline; empty marks the last word",
+      "default": ""
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Still unsure? Call or drop by the counter, we are happy to help."
+    }
+  ],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "Question",
+      "settings": [
+        {
+          "id": "question",
+          "type": "text",
+          "label": "Question",
+          "default": "Do I need to pay a deposit?"
+        },
+        {
+          "id": "answer",
+          "type": "textarea",
+          "label": "Answer",
+          "default": "Some items have a refundable deposit. It is shown on the product page and returned after the rental."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 20
+}

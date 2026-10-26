@@ -149,7 +149,8 @@ async function applyTaxProvider(ctx: Ctx, resolved: ResolvedLine[], q: { currenc
   const tax = await enabledProvider(ctx, ctx.plugins.taxProvider());
   if (!tax || !resolved.length) return;
   const loc = await one<any>(ctx, q.locationId ? `SELECT address FROM locations WHERE id = $1` : `SELECT address FROM locations WHERE is_default AND deleted_at IS NULL LIMIT 1`, q.locationId ? [q.locationId] : []);
-  const address = Array.isArray(q.customer?.addresses) ? (q.customer.addresses[0] ?? null) : null;
+  // Where the customer gets the gear (a delivery address), else where they are billed.
+  const address = q.customer?.addresses?.shipping ?? q.customer?.addresses?.billing ?? null;
   try {
     const rates = await tax.provider.rates(tax.pctx, {
       currency: q.currency,

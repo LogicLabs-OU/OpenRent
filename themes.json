@@ -3,6 +3,9 @@
     "@openrent/theme-default",
     "@openrent/theme-retro",
     "@openrent/theme-concept",
-    "@openrent/theme-ink-green"
+    "@openrent/theme-ink-green",
+    "@openrent/theme-marquee",
+    "@openrent/theme-linen",
+    "@openrent/theme-nightfall"
   ]
 }

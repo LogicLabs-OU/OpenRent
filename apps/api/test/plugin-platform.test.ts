@@ -75,13 +75,15 @@ suite('plugin platform: scope, migrations, hooks, providers and schedules', () =
   });
 
   it('gives hooks a guarded database, events and the missing hooks', async () => {
-    const c = await admin.post('/api/v1/customers', { name: 'Loyal One', email: 'loyal@test.dev' });
+    const c = await admin.post('/api/v1/customers', { name: 'Loyal One', email: 'loyal@test.dev', addresses: { billing: { city: 'Tartu', country: 'EE' }, shipping: { line1: '1 Dock St', city: 'Pärnu', country: 'EE' } } });
     const o = await admin.post('/api/v1/orders', { customer_id: c.body.id, starts_at: isoIn(2), ends_at: isoIn(3), lines: [{ variant_id: variant, quantity: 1 }] });
     await admin.post(`/api/v1/orders/${o.body.id}/actions/reserve`, { notify: false });
 
     // The tax plugin set 5 % on every line; the engine priced with it.
     expect(o.body.lines[0].tax.amount).toBe(200);
     expect((seen.tax![0] as any).lines[0]).toMatchObject({ productId: expect.any(String), defaultRateBp: 2000 });
+    // The delivery address goes to the tax service, ahead of the billing one.
+    expect((seen.tax![0] as any).customer).toMatchObject({ country: 'EE', address: { city: 'Pärnu' } });
 
     const veto = await admin.post(`/api/v1/orders/${o.body.id}/payments`, { amount: 2_000_000, method: 'cash' });
     expect(veto.status).toBe(422);

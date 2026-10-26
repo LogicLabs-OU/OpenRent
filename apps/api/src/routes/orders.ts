@@ -160,6 +160,14 @@ export function registerOrders(r: Router) {
     },
     async (ctx, req) => orders.swapUnit(ctx, req.params.id, req.body),
   );
+  r.post(
+    '/orders/:id/actions/reassign_unit',
+    {
+      permission: 'orders:write', tags: O, summary: 'Move a booked unit to another unit of the same item before pickup (the planner, FR-AV-9); 409 when it is not free',
+      params: ActionParams, body: Type.Object({ from_stock_item_id: Id, to_stock_item_id: Id }, { additionalProperties: false }), response: ok(Order), status: 200,
+    },
+    async (ctx, req) => orders.reassignUnit(ctx, req.params.id, req.body),
+  );
   r.post('/orders/:id/actions/duplicate', { permission: 'orders:write', tags: O, summary: 'Copy into a new draft', params: ActionParams, response: ok(Order, 201) }, async (ctx, req) => orders.duplicateOrder(ctx, req.params.id));
   r.post(
     '/orders/:id/actions/send_notification',

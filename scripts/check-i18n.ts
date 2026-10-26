@@ -17,6 +17,9 @@ const FOLDERS = [
   'packages/themes/retro/locales',
   'packages/themes/concept/locales',
   'packages/themes/ink-green/locales',
+  'packages/themes/marquee/locales',
+  'packages/themes/linen/locales',
+  'packages/themes/nightfall/locales',
 ];
 
 type Catalog = Record<string, unknown>;

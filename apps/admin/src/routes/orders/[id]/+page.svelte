@@ -34,7 +34,7 @@
   import PencilIcon from '@lucide/svelte/icons/pencil';
   import ListChecksIcon from '@lucide/svelte/icons/list-checks';
   import MessageSquareWarningIcon from '@lucide/svelte/icons/message-square-warning';
-  import { api, upload, ApiError, dt, rel, toast, notifyError, fieldErrors, session, minorFromInput, majorFromMinor, fromLocalInput, toLocalInput, openHtml, confirmAction, getLocale, t } from '#lib';
+  import { allPages, api, upload, ApiError, dt, rel, toast, notifyError, fieldErrors, session, minorFromInput, majorFromMinor, fromLocalInput, toLocalInput, openHtml, confirmAction, getLocale, t } from '#lib';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import { to, setScanHandler } from '#lib/nav.ts';
   import { beep } from '#lib/scanner.ts';
@@ -48,6 +48,7 @@
   import SwapUnitDialog from '#lib/components/swap-unit-dialog.svelte';
   import DeliveriesCard from '#lib/components/deliveries-card.svelte';
   import InspectionRunner from '#lib/components/inspection-runner.svelte';
+  import DocumentSignature from '#lib/components/document-signature.svelte';
   import ArrowLeftRightIcon from '@lucide/svelte/icons/arrow-left-right';
 
   const id = $derived(page.params.id!);
@@ -163,7 +164,7 @@
   }
   onMount(() => {
     load();
-    api.get('/products?limit=200').then((r) => (products = r.data));
+    allPages('/products?limit=200').then((r) => (products = r));
     return setScanHandler(handleScan);
   });
 
@@ -808,6 +809,7 @@
                 <Button variant="ghost" size="icon-sm" aria-label={t('document.send')} title={t('document.send')} onclick={() => call(() => api.post(`/documents/${doc.id}/actions/send`), t('document.toast.sent', { email: o.customer.email }))}><SendIcon /></Button>
               {/if}
               {#if doc.type === 'invoice' && doc.status !== 'voided'}<Button variant="ghost" size="sm" onclick={() => voidInvoice(doc)}>{t('document.void')}</Button>{/if}
+              <DocumentSignature {doc} />
             </div>
           {:else}<p class="text-sm text-muted-foreground">{t('document.none')}</p>{/each}
         </Card.Content>

@@ -1,0 +1,20 @@
+{
+  "id": "linen",
+  "name": "Linen",
+  "version": "1.0.0",
+  "author": "OpenRent",
+  "license": "MIT",
+  "compat": "^1.4.0",
+  "locales": ["en", "de", "fr", "es", "et", "ja"],
+  "sections": [
+    "hero",
+    "features",
+    "category-tiles",
+    "product-grid",
+    "rich-text",
+    "image-text",
+    "faq",
+    "cta"
+  ],
+  "preview_images": []
+}

@@ -71,3 +71,4 @@ export async function search(ctx: Ctx, q: string) {
   const units = await many(ctx, `SELECT s.id, s.barcode, s.serial, s.status, p.name AS product_name FROM stock_items s JOIN variants v ON v.id = s.variant_id JOIN products p ON p.id = v.product_id WHERE s.barcode ILIKE $1 OR s.serial ILIKE $1 LIMIT 6`, [like]);
   return { object: 'search_result', orders, customers, products, stock_items: units };
 }
+export { replayScans, type ReplayItem } from './replay.ts';

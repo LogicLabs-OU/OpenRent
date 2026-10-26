@@ -1,0 +1,32 @@
+[
+  { "id": "hero", "type": "hero", "settings": {}, "blocks": [] },
+  { "id": "statement", "type": "statement", "settings": {}, "blocks": [] },
+  { "id": "categories", "type": "category-tiles", "settings": {}, "blocks": [] },
+  { "id": "products", "type": "product-grid", "settings": {}, "blocks": [] },
+  { "id": "spotlight", "type": "image-text", "settings": {}, "blocks": [] },
+  {
+    "id": "faq",
+    "type": "faq",
+    "settings": {},
+    "blocks": [
+      { "id": "deposit", "type": "item", "settings": {} },
+      {
+        "id": "late",
+        "type": "item",
+        "settings": {
+          "question": "What if I bring it back late?",
+          "answer": "Ask to extend from your account before the return time. If the item is free, we add the extra days to your booking."
+        }
+      },
+      {
+        "id": "damage",
+        "type": "item",
+        "settings": {
+          "question": "What happens if something breaks?",
+          "answer": "Tell us when you return it. Normal wear is on us; anything more is charged at repair cost and listed on your booking."
+        }
+      }
+    ]
+  },
+  { "id": "closing", "type": "cta", "settings": {}, "blocks": [] }
+]

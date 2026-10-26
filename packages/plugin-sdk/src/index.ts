@@ -3,7 +3,7 @@
  * Licensed Apache-2.0 so plugin authors take on no AGPL obligations.
  */
 
-export const PLUGIN_API_VERSION = '1.1.0';
+export const PLUGIN_API_VERSION = '1.4.0';
 
 export interface Logger {
   info(obj: unknown, msg?: string): void;
@@ -304,6 +304,299 @@ export interface SignatureProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Integrations (plugin API 1.2): connections to other systems
+// ---------------------------------------------------------------------------
+
+/** What kind of system an integration connects to; core supplies data for some kinds (accounting). */
+export type IntegrationCategory = 'accounting' | 'calendar' | 'crm' | 'marketing' | 'messaging' | 'other';
+
+/**
+ * How a shop connects. OAuth 2 runs the authorization code flow with PKCE in core; the client id and
+ * secret come from the plugin's settings (`clientIdSetting`, `clientSecretSetting`). With `fields` the
+ * shop types its credentials (an API key) on the integrations page.
+ */
+/**
+ * How a shop signs in to the other system. In `authorizeUrl` and `tokenUrl`, `{key}` is replaced by the
+ * plugin setting `key` (plugin API 1.3), e.g. `https://accounts.zoho.{data_center}/oauth/v2/auth`.
+ */
+export type IntegrationAuth =
+  | {
+      type: 'oauth2';
+      authorizeUrl: string;
+      tokenUrl: string;
+      scopes: string[];
+      clientIdSetting: string;
+      clientSecretSetting: string;
+      /** Extra query parameters for the authorize URL. */
+      authorizeParams?: Record<string, string>;
+      /** How the token endpoint wants the app's credentials: HTTP Basic (default) or in the form body (1.3). */
+      clientAuth?: 'basic' | 'body';
+      /** The word before the access token in the Authorization header; default `Bearer` (1.3). */
+      tokenPrefix?: string;
+      /**
+       * A plugin setting that, when it holds an http(s) URL, replaces the origin of both OAuth URLs
+       * (plugin API 1.4). For sandboxes and test servers; shops leave it empty.
+       */
+      baseUrlSetting?: string;
+    }
+  | { type: 'fields'; fields: SettingsField[] };
+
+/** A neutral accounting contact (a customer). */
+export interface AccountingContact {
+  id: string;
+  name: string;
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+  tax_id: string | null;
+  address: { line1?: string; line2?: string; postal_code?: string; city?: string; country?: string } | null;
+}
+
+/** What a line is, so it can be booked to the right account. */
+export type AccountingLineKind = 'rental' | 'sale' | 'service' | 'fee' | 'damage' | 'late_fee' | 'discount' | 'other';
+
+export interface AccountingLine {
+  description: string;
+  quantity: number;
+  /** Net amount per unit, in minor units. */
+  unit_amount: number;
+  /** Net total of the line after discounts, in minor units. */
+  net_amount: number;
+  tax_amount: number;
+  tax_rate_bp: number;
+  kind: AccountingLineKind;
+}
+
+/** An issued invoice or credit note, as the books need it. Amounts are in minor units. */
+export interface AccountingInvoice {
+  id: string;
+  type: 'invoice' | 'credit_note';
+  number: string;
+  issued_at: string;
+  due_at: string | null;
+  currency: string;
+  contact: AccountingContact;
+  order_number: number | null;
+  lines: AccountingLine[];
+  net_total: number;
+  tax_total: number;
+  total: number;
+  /** For a credit note: the invoice it reverses. */
+  credit_for: { id: string; number: string } | null;
+  /** Payments on the order (not deposits), oldest first: some may have reached the books before the invoice (plugin API 1.4). */
+  order_payments: { id: string; amount: number }[];
+  status: 'issued' | 'sent' | 'voided';
+}
+
+/** Money received or paid back, against an order's latest invoice. */
+export interface AccountingPayment {
+  id: string;
+  kind: 'payment' | 'refund';
+  /** Deposits are held money, not revenue: most books keep them on a liability account. */
+  purpose: 'rental' | 'deposit' | 'damage' | 'late_fee';
+  amount: number;
+  currency: string;
+  paid_at: string;
+  method: string | null;
+  provider: string | null;
+  /** The invoice it settles, when the order has one. */
+  invoice_id: string | null;
+  order_number: number | null;
+}
+
+/** A booking as other systems need it (plugin API 1.3). Amounts are in minor units. */
+export interface IntegrationOrder {
+  id: string;
+  number: number;
+  status: string;
+  /** Where it was booked: `admin`, `storefront`, `widget` or `api`. */
+  source: string;
+  currency: string;
+  total: number;
+  balance: number;
+  starts_at: string;
+  ends_at: string;
+  created_at: string;
+  contact: AccountingContact | null;
+  location: { id: string; name: string };
+  lines: { description: string; quantity: number; total: number; product_id: string | null }[];
+}
+
+export type AccountingEntryKind =
+  | 'invoice' | 'credit_note' | 'invoice_void' | 'payment' | 'refund'
+  | 'deposit_received' | 'deposit_returned' | 'deposit_applied' | 'damage_revenue';
+
+/**
+ * A booked accounting entry (plugin API 1.4, ADR 0009): balanced, numbered, never changed. Invoices,
+ * credit notes and payments point to their source record; a reversal points to the entry it undoes.
+ * Amounts are in minor units.
+ */
+export interface AccountingEntry {
+  id: string;
+  number: number;
+  kind: AccountingEntryKind;
+  date: string;
+  currency: string;
+  total: number;
+  reference: string;
+  source: { type: 'document' | 'payment' | 'entry'; id: string };
+  /** For a reversal: the entry it undoes, with that entry's own source. */
+  reverses: { id: string; kind: AccountingEntryKind; source: { type: string; id: string } } | null;
+  contact: AccountingContact | null;
+  /** `account_key` is OpenRent's (receivable, cash, deposits, revenue_rental…); providers map it. */
+  lines: { account_key: string; debit: number; credit: number; tax_rate_bp: number | null; description: string }[];
+}
+
+/** Records of the other system a shop maps OpenRent's accounts and taxes to (plugin API 1.4). */
+export interface LookupItem {
+  id: string;
+  name: string;
+  code?: string;
+  /** The other system's account type (REVENUE, BANK, CURRLIAB…). */
+  type?: string;
+  /** For tax rates, in basis points (2000 = 20 %). */
+  rateBp?: number;
+}
+
+export interface IntegrationLookups {
+  accounts?: LookupItem[];
+  taxRates?: LookupItem[];
+  items?: LookupItem[];
+  paymentAccounts?: LookupItem[];
+  /** Currencies the organisation can invoice in. */
+  currencies?: string[];
+}
+
+/**
+ * One choice the shop makes on the mapping screen (plugin API 1.4): which remote account, item or
+ * payment account an OpenRent account key stands for. Stored in the connection's settings under
+ * `mapping[key]`; read it with `mapped(ctx, key)`.
+ */
+export interface MappingSlot {
+  /** `accounts.<account key>`, `items.<line kind>` or `payment_accounts.<account key>`. */
+  key: string;
+  list: 'accounts' | 'items' | 'paymentAccounts';
+  /** Remote types that fit (e.g. REVENUE, SALES); empty means any. */
+  types?: string[];
+  required?: boolean;
+}
+
+/** A payment recorded in the other system against an invoice OpenRent sent (plugin API 1.4). */
+export interface RemotePayment {
+  remoteId: string;
+  invoiceRemoteId: string;
+  /** Minor units. */
+  amount: number;
+  currency: string;
+  date: string;
+  reference?: string;
+}
+
+/** What the other system holds now for a record OpenRent sent, for reconciliation (plugin API 1.4). */
+export interface RemoteRecord {
+  remoteId: string;
+  /** Minor units; null when the record is gone. */
+  total: number | null;
+  status: 'open' | 'paid' | 'voided' | 'deleted' | 'draft' | 'other';
+}
+
+/** Throw to try a task again after the other system's own wait (HTTP 429 Retry-After). */
+export class RetryLater extends Error {
+  readonly retryAfterMs: number;
+  constructor(message: string, retryAfterMs: number) {
+    super(message);
+    this.name = 'RetryLater';
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+/** The remote id the shop mapped to `key` (e.g. `accounts.revenue_rental`), or null. */
+export function mapped(ctx: { connection: { settings: Record<string, unknown> } }, key: string): string | null {
+  const v = (ctx.connection.settings.mapping as Record<string, unknown> | undefined)?.[key];
+  return typeof v === 'string' && v ? v : null;
+}
+
+/** Core data an integration may read, by category. */
+export interface IntegrationData {
+  accounting: {
+    contact(customerId: string): Promise<AccountingContact | null>;
+    invoice(documentId: string): Promise<AccountingInvoice | null>;
+    payment(paymentId: string): Promise<AccountingPayment | null>;
+    /** A booked entry (plugin API 1.4). */
+    entry(entryId: string): Promise<AccountingEntry | null>;
+  };
+  /** A customer as a contact (plugin API 1.3). */
+  contact(customerId: string): Promise<AccountingContact | null>;
+  /** A booking with its customer (plugin API 1.3). */
+  order(orderId: string): Promise<IntegrationOrder | null>;
+}
+
+/** One piece of work: an OpenRent event to bring across, run with retries until it succeeds. */
+export interface IntegrationTask {
+  id: string;
+  /** The event type, e.g. `document.issued`, or `sync.<type>` for a catch-up run. */
+  event: string;
+  object: { type: string; id: string };
+  attempt: number;
+}
+
+export interface IntegrationContext extends ProviderContext {
+  connection: { id: string; settings: Record<string, unknown>; account: Record<string, unknown> };
+  /** What the shop typed for `fields` auth (an API key…); empty for OAuth 2, whose token `fetch` adds. */
+  credentials: Record<string, string>;
+  /** `fetch` with the connection's credentials; an expired OAuth token is refreshed first. */
+  fetch(url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }): Promise<{ status: number; ok: boolean; json(): Promise<any>; text(): Promise<string>; headers?: { get(name: string): string | null } }>;
+  /** Which record in the other system an OpenRent record became. */
+  links: {
+    get(localType: string, localId: string): Promise<{ remoteId: string; extra: Record<string, unknown> } | null>;
+    set(localType: string, localId: string, remoteId: string, extra?: Record<string, unknown>): Promise<void>;
+  };
+  data: IntegrationData;
+}
+
+export interface IntegrationResult {
+  status: 'done' | 'skipped';
+  /** Shown in the sync log, e.g. "Invoice INV-1042 sent". */
+  message?: string;
+}
+
+export interface IntegrationProvider {
+  id: string;
+  name: string;
+  category: IntegrationCategory;
+  auth: IntegrationAuth;
+  /** Event types this integration brings across; each one becomes a task per connected shop. */
+  events: string[];
+  /** Options the shop sets on the connection (account codes, calendars…). */
+  settings?: SettingsField[];
+  /**
+   * Right after connecting: checks the credentials and returns details to keep (the organisation's
+   * name and ids). `params` carries extra values the provider sent back (e.g. QuickBooks' realmId).
+   */
+  onConnected?(ctx: IntegrationContext, params: Record<string, string>): Promise<{ accountName?: string; account?: Record<string, unknown> }>;
+  /** Brings one task across. Throw to retry later; the message goes to the sync log. */
+  handle(ctx: IntegrationContext, task: IntegrationTask): Promise<IntegrationResult>;
+  /**
+   * Accounting systems (plugin API 1.4). `lookups` lists the organisation's accounts, tax rates, items
+   * and payment accounts; `mapping` names the choices the shop must make from them; with `mapsTaxes`
+   * each tax rate the shop uses maps to a remote tax rate (`mapping['taxes.<rate bp>']`).
+   */
+  lookups?(ctx: IntegrationContext): Promise<IntegrationLookups>;
+  mapping?: MappingSlot[];
+  mapsTaxes?: boolean;
+  /** Organisations the sign-in gave access to, when there can be several (plugin API 1.4). */
+  organisations?(ctx: IntegrationContext): Promise<{ id: string; name: string }[]>;
+  /** Switches the connection to one of `organisations`; returns what to keep, like `onConnected`. */
+  useOrganisation?(ctx: IntegrationContext, id: string): Promise<{ accountName?: string; account?: Record<string, unknown> }>;
+  /** Payments recorded in the other system since `since` (ISO), for invoices OpenRent sent (plugin API 1.4). */
+  pullPayments?(ctx: IntegrationContext, since: string): Promise<RemotePayment[]>;
+  /** What the other system holds now for records OpenRent sent (plugin API 1.4). */
+  check?(ctx: IntegrationContext, records: { localType: string; remoteId: string }[]): Promise<RemoteRecord[]>;
+  /** A link to a sent record in the other system's web app, or null (plugin API 1.4). */
+  remoteUrl?(localType: string, remoteId: string, account: Record<string, unknown>): string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Hooks and events
 // ---------------------------------------------------------------------------
 
@@ -470,6 +763,8 @@ export interface PluginSetupApi {
   registerIdentityProvider(p: IdentityProvider): void;
   registerSearchProvider(p: SearchProvider): void;
   registerSignatureProvider(p: SignatureProvider): void;
+  /** A connection to another system (plugin API 1.2), shown on the admin's Integrations page. */
+  registerIntegration(p: IntegrationProvider): void;
   /** Runs `handler` on a cron schedule (UTC) once for every shop that has the plugin turned on. */
   schedule(name: string, cron: string, handler: ScheduleHandler): void;
   before<P = any>(hook: HookName, handler: HookHandler<P>): void;
@@ -530,6 +825,8 @@ export interface PluginRuntime {
   identityProvider(): IdentityProvider | undefined;
   searchProvider(): SearchProvider | undefined;
   signatureProvider(): SignatureProvider | undefined;
+  integrations(): IntegrationProvider[];
+  integration(id: string): IntegrationProvider | undefined;
   runHook(phase: 'before' | 'after', name: HookName, payload: unknown, ctx: HookContext): Promise<void>;
   dispatch(event: DomainEvent, ctx: HookContext): Promise<void>;
   /** Storefront extensions declared by plugins, in load order. */
@@ -551,6 +848,8 @@ export const emptyRuntime: PluginRuntime = {
   identityProvider: () => undefined,
   searchProvider: () => undefined,
   signatureProvider: () => undefined,
+  integrations: () => [],
+  integration: () => undefined,
   runHook: async () => undefined,
   dispatch: async () => undefined,
   storefrontExtensions: () => [],

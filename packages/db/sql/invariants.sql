@@ -58,3 +58,65 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS meter_readings_in_order ON meter_readings;
 CREATE TRIGGER meter_readings_in_order BEFORE INSERT OR UPDATE ON meter_readings FOR EACH ROW EXECUTE FUNCTION openrent_meter_in_order();
+DROP TRIGGER IF EXISTS signatures_append_only ON signatures;
+CREATE TRIGGER signatures_append_only BEFORE UPDATE OR DELETE ON signatures FOR EACH ROW EXECUTE FUNCTION openrent_append_only();
+
+-- Accounting (ADR 0009): every invoice, credit note, void and payment that settles is queued for an
+-- accounting entry in the same transaction, whichever code path wrote it. Core posts the queue.
+-- Movements keep the order they happened in, also inside one transaction or one statement:
+-- clock_timestamp() rather than now(), and ids from a sequence for movements in the same instant.
+CREATE SEQUENCE IF NOT EXISTS accounting_queue_seq;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_app') THEN GRANT USAGE, SELECT ON SEQUENCE accounting_queue_seq TO openrent_app; END IF;
+END $$;
+CREATE OR REPLACE FUNCTION openrent_queue_accounting(t text, s text, id text, ev text) RETURNS void LANGUAGE sql AS $$
+  INSERT INTO accounting_queue (id, tenant_id, source_type, source_id, event, created_at)
+  VALUES ('acq_' || lpad(nextval('accounting_queue_seq')::text, 19, '0'), t, s, id, ev, clock_timestamp())
+  ON CONFLICT (tenant_id, source_type, source_id, event) DO NOTHING;
+$$;
+
+CREATE OR REPLACE FUNCTION openrent_documents_to_books() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.type NOT IN ('invoice', 'credit_note') THEN RETURN NEW; END IF;
+  IF NEW.issued_at IS NOT NULL AND NEW.status <> 'draft' AND (TG_OP = 'INSERT' OR OLD.issued_at IS NULL OR OLD.status = 'draft') THEN
+    PERFORM openrent_queue_accounting(NEW.tenant_id, 'document', NEW.id, 'issued');
+  END IF;
+  IF TG_OP = 'UPDATE' AND NEW.status = 'voided' AND OLD.status <> 'voided' THEN
+    PERFORM openrent_queue_accounting(NEW.tenant_id, 'document', NEW.id, 'voided');
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS documents_to_books ON documents;
+CREATE TRIGGER documents_to_books AFTER INSERT OR UPDATE ON documents FOR EACH ROW EXECUTE FUNCTION openrent_documents_to_books();
+
+CREATE OR REPLACE FUNCTION openrent_payments_to_books() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.kind = 'authorization' THEN RETURN NEW; END IF;
+  IF NEW.status = 'succeeded' AND (TG_OP = 'INSERT' OR OLD.status <> 'succeeded') THEN
+    PERFORM openrent_queue_accounting(NEW.tenant_id, 'payment', NEW.id, 'succeeded');
+  ELSIF TG_OP = 'UPDATE' AND OLD.status = 'succeeded' AND NEW.status <> 'succeeded' THEN
+    PERFORM openrent_queue_accounting(NEW.tenant_id, 'payment', NEW.id, 'reversed');
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS payments_to_books ON payments;
+CREATE TRIGGER payments_to_books AFTER INSERT OR UPDATE OF status ON payments FOR EACH ROW EXECUTE FUNCTION openrent_payments_to_books();
+
+-- Entries are the record of what was booked: never changed or removed, and every entry balances.
+DROP TRIGGER IF EXISTS accounting_entries_append_only ON accounting_entries;
+CREATE TRIGGER accounting_entries_append_only BEFORE UPDATE OR DELETE ON accounting_entries FOR EACH ROW EXECUTE FUNCTION openrent_append_only();
+DROP TRIGGER IF EXISTS accounting_entry_lines_append_only ON accounting_entry_lines;
+CREATE TRIGGER accounting_entry_lines_append_only BEFORE UPDATE OR DELETE ON accounting_entry_lines FOR EACH ROW EXECUTE FUNCTION openrent_append_only();
+
+CREATE OR REPLACE FUNCTION openrent_entry_balances() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE d bigint; c bigint; tot bigint;
+BEGIN
+  SELECT coalesce(sum(debit), 0), coalesce(sum(credit), 0) INTO d, c FROM accounting_entry_lines WHERE entry_id = NEW.entry_id;
+  SELECT total INTO tot FROM accounting_entries WHERE id = NEW.entry_id;
+  IF d <> c OR d <> tot THEN
+    RAISE EXCEPTION 'Accounting entry % does not balance (debit %, credit %, total %)', NEW.entry_id, d, c, tot USING HINT = 'entry_unbalanced';
+  END IF;
+  RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS accounting_entry_lines_balance ON accounting_entry_lines;
+CREATE CONSTRAINT TRIGGER accounting_entry_lines_balance AFTER INSERT ON accounting_entry_lines DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION openrent_entry_balances();

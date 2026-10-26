@@ -2,7 +2,7 @@
   "id": "e2e-extras",
   "name": "E2E extras",
   "version": "1.0.0",
-  "compat": "^1.1.0",
-  "permissions": ["admin:ui"],
+  "compat": "^1.2.0",
+  "permissions": ["admin:ui", "integrations"],
   "admin": [{ "slot": "dashboard.widget", "file": "admin/widget.js" }]
 }

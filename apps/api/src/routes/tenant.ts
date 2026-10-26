@@ -1,10 +1,11 @@
-import { tenancy, payments, exportTenant, listAudit, resolveSettings, AppError } from '@openrent/core';
+import { tenancy, payments, roles, exportTenant, listAudit, resolveSettings, AppError, PERMISSIONS } from '@openrent/core';
 import type { Router } from '../http.ts';
 import { parseList } from '../http.ts';
 import { Id, IdParams, Json, ListQuery, Nullable, Type } from '../schemas.ts';
 import { sendSheet } from '../spreadsheets.ts';
 
-const RoleT = Type.Union([Type.Literal('owner'), Type.Literal('admin'), Type.Literal('staff'), Type.Literal('warehouse'), Type.Literal('read_only')]);
+/** A built-in role (owner, admin, staff, warehouse, read_only) or the id of one of the shop's roles. */
+const RoleT = Type.String({ minLength: 1, maxLength: 64, description: 'owner, admin, staff, warehouse, read_only, or a role id' });
 const OpeningHours = Type.Record(Type.String(), Type.Array(Type.Array(Type.String({ pattern: '^\\d{2}:\\d{2}$' }), { minItems: 2, maxItems: 2 })));
 
 export function registerTenant(r: Router) {
@@ -73,6 +74,27 @@ export function registerTenant(r: Router) {
     tenancy.updateMember(ctx, req.params.id, req.body),
   );
   r.delete('/users/:id', { permission: 'users:write', tags: U, summary: 'Remove a member', params: IdParams }, async (ctx, req) => tenancy.removeMember(ctx, req.params.id));
+  r.post('/users/:id/actions/invite', { permission: 'users:write', tags: U, summary: 'Email the member a sign-in link (valid three days)', params: IdParams, status: 200 }, async (ctx, req) =>
+    tenancy.sendAccessLink(ctx, req.params.id, 'invite'),
+  );
+  r.post('/users/:id/actions/reset_password', { permission: 'users:write', tags: U, summary: 'Clear the password, end their sessions and email a sign-in link', params: IdParams, status: 200 }, async (ctx, req) =>
+    tenancy.sendAccessLink(ctx, req.params.id, 'reset_password'),
+  );
+  r.post('/users/:id/actions/disable', { permission: 'users:write', tags: U, summary: 'Turn off the member’s access to this shop', params: IdParams, status: 200 }, async (ctx, req) => tenancy.disableMember(ctx, req.params.id));
+  r.post('/users/:id/actions/enable', { permission: 'users:write', tags: U, summary: 'Turn the member’s access back on', params: IdParams, status: 200 }, async (ctx, req) => tenancy.enableMember(ctx, req.params.id));
+
+  const RL = ['Roles'];
+  const RoleBody = { name: Type.String({ maxLength: 100 }), description: Type.Optional(Type.String({ maxLength: 500 })), permissions: Type.Array(Type.String({ maxLength: 64 }), { maxItems: 100 }) };
+  r.get('/roles', { permission: 'users:read', tags: RL, summary: 'Built-in roles and the shop’s own, with member counts' }, async (ctx) => ({
+    object: 'list',
+    data: await roles.listRoles(ctx),
+    permissions: PERMISSIONS,
+  }));
+  r.post('/roles', { permission: 'users:write', tags: RL, summary: 'Create a role (owners only)', body: Type.Object(RoleBody, { additionalProperties: false }) }, async (ctx, req) => roles.createRole(ctx, req.body));
+  r.patch('/roles/:id', { permission: 'users:write', tags: RL, summary: 'Change a role (owners only)', params: IdParams, body: Type.Partial(Type.Object(RoleBody, { additionalProperties: false })) }, async (ctx, req) =>
+    roles.updateRole(ctx, req.params.id, req.body),
+  );
+  r.delete('/roles/:id', { permission: 'users:write', tags: RL, summary: 'Delete a role nobody has (owners only)', params: IdParams }, async (ctx, req) => roles.deleteRole(ctx, req.params.id));
 
   const K = ['API keys'];
   r.get('/api_keys', { permission: 'api_keys:manage', tags: K, summary: 'List API keys' }, async (ctx) => ({ object: 'list', data: await tenancy.listApiKeys(ctx) }));

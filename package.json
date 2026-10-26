@@ -25,12 +25,17 @@
     "db:generate": "pnpm --filter @openrent/db generate",
     "check:i18n": "node scripts/check-i18n.ts",
     "check:hardcoded": "node scripts/check-hardcoded.ts",
-    "check:themes": "pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/default && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/retro && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/concept && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/ink-green",
-    "test:scripts": "vitest run scripts"
+    "check:themes": "pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/default && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/retro && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/concept && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/ink-green && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/marquee && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/linen && pnpm --silent --filter @openrent/cli dev theme check ../../packages/themes/nightfall",
+    "test:scripts": "vitest run scripts",
+    "test:accounting-live": "tsx scripts/accounting-live.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
     "@eslint/js": "^10.0.1",
+    "@openrent/plugin-accounting-quickbooks": "workspace:*",
+    "@openrent/plugin-accounting-xero": "workspace:*",
+    "@openrent/plugin-accounting-zoho-books": "workspace:*",
+    "@openrent/plugin-sdk": "workspace:*",
     "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "eslint": "^10.13.0",

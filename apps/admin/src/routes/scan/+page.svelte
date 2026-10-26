@@ -29,6 +29,8 @@
   import ScannerSetup from '#lib/components/scanner-setup.svelte';
   import PluginSlot from '#lib/components/plugin-slot.svelte';
   import InspectionRunner from '#lib/components/inspection-runner.svelte';
+  import { queueScan, queuedScans, queuedCount, dropScans, isOffline, QUEUEABLE, type QueuedScan } from '#lib/offline-scans.ts';
+  import WifiOffIcon from '@lucide/svelte/icons/wifi-off';
 
   type Mode = 'lookup' | 'prepare' | 'check_out' | 'check_in' | 'swap' | 'stock_take' | 'inspect' | 'receive';
   // Receiving transfers (FR-LOC-2) only makes sense with more than one location.
@@ -67,6 +69,42 @@
   let incoming = $state<any[]>([]);
 
   const add = (e: Omit<Entry, 'id'>) => (log = [{ id: ++n, ...e }, ...log].slice(0, 100));
+
+  // Offline (FR-SCAN-5): scans that need the server wait in the browser and are sent when it is back.
+  let online = $state(typeof navigator === 'undefined' ? true : navigator.onLine);
+  let pending = $state(0);
+  let sending = $state(false);
+  const queueable = (m: Mode): m is QueuedScan['mode'] => (QUEUEABLE as string[]).includes(m);
+
+  async function keepOffline(c: string) {
+    if (!queueable(mode)) return false;
+    await queueScan({ mode, code: c, order_id: order?.id ?? null, stock_take_id: take?.id ?? null });
+    pending = await queuedCount();
+    beep(true);
+    add({ code: c, tone: 'warn', text: t('scan.offline.saved') });
+    return true;
+  }
+
+  async function flush() {
+    if (sending || !navigator.onLine) return;
+    sending = true;
+    try {
+      for (let items = await queuedScans(); items.length; items = await queuedScans()) {
+        const r = await api.post('/scans/replay', { items });
+        await dropScans(items.map((i) => i.client_id));
+        for (const x of r.results) add({ code: x.code, tone: x.status === 'applied' ? 'ok' : x.status === 'ignored' ? 'warn' : 'error', text: x.message });
+        toast.success(t('scan.offline.sent', { applied: r.applied, conflicts: r.conflicts + r.errors }));
+      }
+      if (order) await loadOrder(order.id);
+      if (take) take = await api.get(`/stock_takes/${take.id}`);
+      if (mode === 'receive') await loadIncoming();
+    } catch (e) {
+      if (!isOffline(e)) notifyError(e);
+    } finally {
+      pending = await queuedCount();
+      sending = false;
+    }
+  }
 
   async function loadIncoming() {
     const list = (await api.get(`/transfers?${qs({ status: 'in_transit', location_id: session.locationId || undefined })}`)).data;
@@ -113,6 +151,7 @@
   const remaining = $derived(pick ? pick.items.reduce((a: number, i: any) => a + (i.missing ?? 0), 0) : 0);
 
   async function handle(c: string): Promise<boolean> {
+    if (!navigator.onLine && (await keepOffline(c))) return true;
     try {
       if (mode === 'stock_take') return await stockTakeScan(c);
       if (mode === 'swap') return await swapScan(c);
@@ -144,6 +183,7 @@
       }
       beep(true);
     } catch (e) {
+      if (isOffline(e) && (await keepOffline(c))) return true;
       beep(false);
       add({ code: c, tone: 'error', text: (e as Error).message });
     }
@@ -238,7 +278,20 @@
 
   onMount(() => {
     const off = setScanHandler(handle);
+    const up = () => {
+      online = true;
+      flush();
+    };
+    const down = () => (online = false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    queuedCount().then((c) => {
+      pending = c;
+      if (c) flush();
+    }, () => undefined);
     return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
       off();
       stream?.getTracks().forEach((tr) => tr.stop());
     };
@@ -285,6 +338,14 @@
   {#snippet actions()}<ScannerSetup />{/snippet}
 </PageHeader>
 <PluginSlot slot="scan.mode" />
+{#if !online || pending}
+  <Card.Root class="mb-6 border-amber-300 dark:border-amber-800" data-testid="scan-offline">
+    <Card.Content class="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <span class="flex items-center gap-2"><WifiOffIcon class="size-4" aria-hidden="true" />{online ? t('scan.offline.waiting', { count: pending }) : t('scan.offline.now', { count: pending })}</span>
+      {#if online && pending}<Button size="sm" disabled={sending} onclick={flush}>{#if sending}<Spinner />{/if}{t('scan.offline.send')}</Button>{/if}
+    </Card.Content>
+  </Card.Root>
+{/if}
 
 <div class="grid gap-6 lg:grid-cols-[400px_1fr]">
   <Card.Root class="h-fit">

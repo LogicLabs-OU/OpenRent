@@ -20,6 +20,13 @@ export interface PaymentTerms {
   balance_due_days_before: number;
 }
 
+/** Accounts the shop's entries book to (ADR 0009). */
+export const ACCOUNT_KEYS = [
+  'receivable', 'bank', 'cash', 'card_clearing', 'deposits', 'tax',
+  'revenue_rental', 'revenue_sale', 'revenue_fees', 'revenue_damage', 'revenue_other', 'discounts', 'rounding',
+] as const;
+export type AccountKey = (typeof ACCOUNT_KEYS)[number];
+
 export interface TenantSettings {
   display_prices_including_tax: boolean;
   quote_ttl_hours: number;
@@ -74,6 +81,12 @@ export interface TenantSettings {
   theme_sections: Record<string, unknown[]>;
   /** Shop texts of a theme per storefront language: theme id → locale → overlay path → text. */
   theme_content_translations: Record<string, Record<string, Record<string, string>>>;
+  /**
+   * Accounting (FR-INT-3, ADR 0009): account codes for the shop's entries; the lock date (nothing is
+   * booked on or before it); when OpenRent issues the invoice by itself (without one, the books show
+   * payments but no revenue).
+   */
+  accounting: { accounts: Record<AccountKey, string>; locked_until: string | null; invoice_when: 'manual' | 'reserved' | 'checked_out' | 'closed' };
   /** The shop's own CSS and header/footer HTML, cleaned on save (FR-SF-4). */
   storefront_code: { css: string; header_html: string; footer_html: string; translations?: Record<string, { header_html?: string; footer_html?: string }> };
 }
@@ -91,6 +104,14 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   late_grace_minutes: 60,
   late_fees_enabled: true,
   damage_waiver_excess: 0,
+  accounting: {
+    accounts: {
+      receivable: '1200', bank: '1000', cash: '1010', card_clearing: '1150', deposits: '2300', tax: '2200',
+      revenue_rental: '4000', revenue_sale: '4010', revenue_fees: '4020', revenue_damage: '4030', revenue_other: '4090', discounts: '4900', rounding: '8990',
+    },
+    locked_until: null,
+    invoice_when: 'manual',
+  },
   requires_waiver_or_insurance: false,
   require_inspection_on_return: false,
   cancellation_policy: [

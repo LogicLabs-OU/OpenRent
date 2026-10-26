@@ -1,4 +1,6 @@
-import { loadDotEnv } from '@openrent/db';
+import { accounting } from '@openrent/core';
+import { loadDotEnv, withSystem, withTenant } from '@openrent/db';
+import { systemCtx } from './context.ts';
 import { ConfigError, loadConfig } from './config.ts';
 import { bootstrap } from './bootstrap.ts';
 import { buildApp } from './app.ts';
@@ -32,3 +34,15 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 await app.listen({ port: config.port, host: config.host });
 app.log.info(`OpenRent API on ${config.publicUrl} (docs at /docs)`);
+
+// Invoices and payments from before the accounting triggers are booked once, in the background
+// (ADR 0009). Safe to repeat; the worker does the same when it starts.
+void (async () => {
+  const tenants = await withSystem(deps.db, (c) => c.query<{ id: string }>(`SELECT id FROM tenants`));
+  for (const t of tenants.rows) {
+    await withTenant(deps.db, t.id, async (c) => {
+      const ctx = systemCtx(deps, c, t.id, app.log);
+      if (await accounting.backfill(ctx)) while ((await accounting.postPending(ctx)) > 0);
+    }).catch((err) => app.log.error({ err, tenant: t.id }, 'accounting backfill failed'));
+  }
+})();

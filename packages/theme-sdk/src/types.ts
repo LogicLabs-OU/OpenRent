@@ -327,6 +327,19 @@ export interface AccountLoginData {
   token?: string;
   email?: string;
 }
+/** Signing a document with an emailed code (theme API 1.6). `document_url` shows the document in a frame. */
+export interface SignData {
+  token: string;
+  status: 'pending' | 'signed' | 'cancelled' | 'expired';
+  signer_name: string;
+  /** Partly hidden, e.g. "a•••@example.com". */
+  signer_email: string;
+  code_sent: boolean;
+  expires_at: string;
+  signed_at: string | null;
+  document: { id: string; type: string; title: string; number: string | null; issued_at: string | null };
+  document_url: string;
+}
 /** Catalogue search (theme API 1.3). */
 export interface SearchData {
   query: string;
@@ -336,4 +349,4 @@ export interface SearchData {
   products: Product[];
 }
 
-export type TemplateName = 'index' | 'collection' | 'product' | 'cart' | 'checkout' | 'order-confirmation' | 'page' | '404' | 'account' | 'account-login' | 'search';
+export type TemplateName = 'index' | 'collection' | 'product' | 'cart' | 'checkout' | 'order-confirmation' | 'page' | '404' | 'account' | 'account-login' | 'search' | 'sign';

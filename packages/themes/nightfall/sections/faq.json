@@ -1,0 +1,29 @@
+{
+  "name": "Questions and answers",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "info": "Wrap words in *stars* to write them in the accent font",
+      "default": "Questions, *answered.*"
+    },
+    { "id": "text", "type": "textarea", "label": "Text", "default": "Anything else? Ask us at the counter or reply to your booking email." }
+  ],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "Question",
+      "settings": [
+        { "id": "question", "type": "text", "label": "Question", "default": "Do I need to pay a deposit?" },
+        {
+          "id": "answer",
+          "type": "textarea",
+          "label": "Answer",
+          "default": "Some items have a refundable deposit. It is shown on the product page and returned after the rental."
+        }
+      ]
+    }
+  ],
+  "max_blocks": 20
+}

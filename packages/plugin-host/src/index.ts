@@ -20,6 +20,7 @@ import {
   type IdentityProvider,
   type SearchProvider,
   type SignatureProvider,
+  type IntegrationProvider,
   type ScheduleHandler,
   type StorefrontExtensions,
   type PluginMigration,
@@ -64,6 +65,8 @@ export class PluginHost implements PluginRuntime {
   private identity: Registered<IdentityProvider> | null = null;
   private search: Registered<SearchProvider> | null = null;
   private signature: Registered<SignatureProvider> | null = null;
+  /** Integrations by id (plugin API 1.2); a shop connects each on the Integrations page. */
+  private readonly integrationList = new Map<string, Registered<IntegrationProvider>>();
   /** Plugin cron jobs; the worker runs each for every shop that has the plugin on (FR-PLG-8). */
   readonly schedules: { pluginId: string; name: string; cron: string; handler: ScheduleHandler }[] = [];
   readonly migrations: { pluginId: string; migrations: PluginMigration[] }[] = [];
@@ -147,6 +150,11 @@ export class PluginHost implements PluginRuntime {
           this.signature = { pluginId, handler: p };
           this.owners.set(p.id, pluginId);
           status.provides.push(`signature:${p.id}`);
+        },
+        registerIntegration: (p) => {
+          this.integrationList.set(p.id, { pluginId, handler: p });
+          this.owners.set(p.id, pluginId);
+          status.provides.push(`integration:${p.id}`);
         },
         schedule: (name, cron, handler) => {
           this.schedules.push({ pluginId, name, cron, handler });
@@ -251,6 +259,14 @@ export class PluginHost implements PluginRuntime {
 
   signatureProvider() {
     return this.signature?.handler;
+  }
+
+  integrations() {
+    return [...this.integrationList.values()].map((r) => r.handler);
+  }
+
+  integration(id: string) {
+    return this.integrationList.get(id)?.handler;
   }
 
   defaultConfig(pluginId: string) {

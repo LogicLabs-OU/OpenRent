@@ -1,0 +1,264 @@
+/* Linen's display sans and mono, served from the shop's own domain (the storefront CSP allows fonts from 'self' only). */
+@import '@fontsource-variable/instrument-sans';
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/500.css';
+
+/* Every class here starts with ln- so it only touches Linen's own markup. */
+.ln-display {
+  font-family: 'Instrument Sans Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  font-weight: 400;
+  font-stretch: 100%;
+}
+.ln-mono {
+  font-family: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one highlighted word of a heading: bronze with a thin underline. */
+.ln-mark {
+  color: var(--ln-accent);
+  background: linear-gradient(currentColor, currentColor) 0 100% / 100% 1px no-repeat;
+  padding-bottom: 0.02em;
+}
+
+/* Heading lines that slide up out of a clip mask. */
+.ln-line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.12em;
+  margin-bottom: -0.12em;
+}
+.ln-line > span {
+  display: block;
+}
+
+/* Pill buttons: a fill slides across from the left on hover. */
+.ln-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: color 0.2s linear, border-color 0.2s linear;
+}
+.ln-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--ln-fill, var(--ln-accent));
+  transform: translateX(-105%);
+  transition: transform 0.45s cubic-bezier(0.645, 0.045, 0.355, 1);
+}
+.ln-btn:hover::before,
+.ln-btn:focus-visible::before {
+  transform: translateX(0);
+}
+.ln-btn-line {
+  --ln-fill: var(--ln-ink);
+}
+.ln-btn-line:hover,
+.ln-btn-line:focus-visible {
+  color: #fff;
+}
+.ln-btn-light {
+  --ln-fill: #fff;
+}
+.ln-btn-light:hover,
+.ln-btn-light:focus-visible {
+  color: var(--ln-ink);
+}
+
+/* "Learn more ›": the chevron bounces while hovered. */
+.ln-more svg {
+  color: var(--ln-accent);
+  transition: transform 0.2s;
+}
+.ln-more:hover svg,
+.ln-more:focus-visible svg,
+.group:hover .ln-more svg {
+  animation: ln-bounce 0.9s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+}
+@keyframes ln-bounce {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+}
+
+/* Small orange square bullet. */
+.ln-square {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  flex-shrink: 0;
+  background: var(--ln-signal);
+}
+
+/* Reveal on scroll (lib/motion.ts sets data-ln only on elements still below the fold). */
+[data-ln='up'] {
+  opacity: 0;
+  transform: translateY(20px);
+}
+[data-ln='up'].ln-in {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.25s linear var(--ln-delay, 0s),
+    transform 0.9s cubic-bezier(0.075, 0.82, 0.165, 1) var(--ln-delay, 0s);
+}
+[data-ln='lines'] .ln-line > span {
+  transform: translateY(110%);
+}
+[data-ln='lines'].ln-in .ln-line > span {
+  transform: none;
+  transition: transform 1.2s cubic-bezier(0.55, 0.21, 0.07, 0.87) calc(var(--i, 0) * 0.08s);
+}
+[data-ln='clip'] {
+  clip-path: inset(100% 0 0 0 round 20px);
+}
+[data-ln='clip'].ln-in {
+  clip-path: inset(0 0 0 0 round 20px);
+  transition: clip-path 1.2s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+/*
+ * Home intro, once per session (Hero.svelte drops .ln-intro on later visits). It never hides text: the heading
+ * lines rise from a faint state, the underline draws itself and the media panel opens from a slight inset.
+ */
+.ln-intro .ln-line > span {
+  animation: ln-rise 1s cubic-bezier(0.075, 0.82, 0.165, 1) calc(var(--i, 0) * 0.09s) both;
+}
+.ln-intro .ln-mark {
+  animation: ln-draw 0.9s cubic-bezier(0.55, 0.21, 0.07, 0.87) 0.3s both;
+}
+.ln-intro .ln-intro-clip {
+  animation: ln-open 1.2s cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+.ln-intro .ln-intro-up {
+  animation: ln-rise 0.9s cubic-bezier(0.075, 0.82, 0.165, 1) calc(0.2s + var(--ln-delay, 0s)) both;
+}
+@keyframes ln-rise {
+  from {
+    opacity: 0.25;
+    transform: translateY(0.4em);
+  }
+}
+@keyframes ln-draw {
+  from {
+    background-size: 0% 1px;
+  }
+}
+@keyframes ln-open {
+  from {
+    clip-path: inset(5% 4% 5% 4% round 20px);
+  }
+  to {
+    clip-path: inset(0 0 0 0 round 20px);
+  }
+}
+
+/* Category ticker. */
+.ln-ticker {
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.ln-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ln-ticker var(--ln-ticker-time, 30s) linear infinite;
+}
+.ln-ticker:hover .ln-ticker-track,
+.ln-ticker:focus-within .ln-ticker-track {
+  animation-play-state: paused;
+}
+@keyframes ln-ticker {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Stacking panels (lib/motion.ts turns them on and drives the tilt). */
+.ln-stack[data-stack='on'] > .ln-stack-item {
+  position: sticky;
+}
+.ln-stack-item > * {
+  transform-origin: 50% 100%;
+  will-change: transform;
+  position: relative;
+}
+.ln-stack-item > *::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #202020;
+  opacity: var(--ln-shade, 0);
+  pointer-events: none;
+}
+
+/* Floating icon tiles around the closing call to action. */
+.ln-float {
+  translate: 0 var(--ln-py, 0);
+}
+.ln-float > * {
+  animation: ln-float 7s ease-in-out var(--ln-delay, 0s) infinite alternate;
+}
+@keyframes ln-float {
+  from {
+    transform: translateY(-8px) rotate(-2deg);
+  }
+  to {
+    transform: translateY(10px) rotate(2deg);
+  }
+}
+
+/* Cards lift softly on hover. */
+.ln-lift {
+  transition:
+    transform 0.45s cubic-bezier(0.215, 0.61, 0.355, 1),
+    box-shadow 0.45s cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.ln-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 40px -18px rgba(32, 32, 32, 0.25);
+}
+
+/* Beige placeholder for products without photos: a faint grid behind the initial. */
+.ln-grid {
+  background-color: var(--ln-beige);
+  background-image:
+    linear-gradient(rgba(32, 32, 32, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(32, 32, 32, 0.045) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: -1px -1px;
+}
+
+[data-ln-motion='off'] :is(.ln-ticker-track, .ln-float > *, .ln-intro .ln-line > span, .ln-intro .ln-mark, .ln-intro .ln-intro-clip, .ln-intro .ln-intro-up) {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ln-ticker-track,
+  .ln-float > *,
+  .ln-intro .ln-line > span,
+  .ln-intro .ln-mark,
+  .ln-intro .ln-intro-clip,
+  .ln-intro .ln-intro-up,
+  .ln-more svg {
+    animation: none !important;
+  }
+  .ln-lift:hover {
+    transform: none;
+  }
+  .ln-ticker-track {
+    width: auto;
+    flex-wrap: wrap;
+  }
+  .ln-ticker-dup {
+    display: none !important;
+  }
+  .ln-btn::before {
+    transition: none;
+  }
+}

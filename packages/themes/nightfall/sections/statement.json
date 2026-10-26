@@ -1,0 +1,13 @@
+{
+  "name": "Scroll-lit statement",
+  "settings": [
+    { "id": "label", "type": "text", "label": "Small label above", "default": "" },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Sentence",
+      "info": "Words light up one by one as visitors scroll. Wrap the last words in *stars* for the accent font and the drawn underline",
+      "default": "Every item is checked, cleaned and charged before it leaves the shelf, so the only thing left to plan is *where you take it.*"
+    }
+  ]
+}

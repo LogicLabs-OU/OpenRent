@@ -1,0 +1,76 @@
+[
+  {
+    "name": "Style",
+    "settings": [
+      {
+        "id": "accent",
+        "type": "color",
+        "label": "Accent colour",
+        "info": "Links, highlighted words and check marks; keep it dark enough to read on grey",
+        "default": "#816729"
+      },
+      {
+        "id": "signal",
+        "type": "color",
+        "label": "Signal colour",
+        "info": "Small square bullets, the notice and the footer curve",
+        "default": "#ff682c"
+      },
+      {
+        "id": "page",
+        "type": "color",
+        "label": "Page colour",
+        "info": "Keep it light; panels are drawn a shade darker",
+        "default": "#f5f5f5"
+      },
+      {
+        "id": "stacking",
+        "type": "checkbox",
+        "label": "Stack feature panels while scrolling",
+        "default": true
+      },
+      {
+        "id": "motion",
+        "type": "checkbox",
+        "label": "Animate content as it scrolls into view",
+        "info": "Visitors who ask their device for less motion never see animations",
+        "default": true
+      }
+    ]
+  },
+  {
+    "name": "Notice",
+    "settings": [
+      {
+        "id": "announcement",
+        "type": "text",
+        "label": "Notice above the menu",
+        "info": "Leave empty to hide the notice",
+        "default": ""
+      },
+      { "id": "announcement_text", "type": "textarea", "label": "Notice text", "default": "" },
+      { "id": "announcement_link", "type": "link", "label": "Notice link", "info": "Adds a “Read more” link", "default": "" }
+    ]
+  },
+  {
+    "name": "Footer",
+    "settings": [
+      { "id": "show_powered_by", "type": "checkbox", "label": "Show “Powered by OpenRent”", "default": true }
+    ]
+  },
+  {
+    "name": "Checkout",
+    "settings": [
+      {
+        "id": "checkout_fields",
+        "type": "select",
+        "label": "Customer details at checkout",
+        "default": "minimal",
+        "options": [
+          { "value": "minimal", "label": "Name, email and phone" },
+          { "value": "address", "label": "Also company and billing address" }
+        ]
+      }
+    ]
+  }
+]

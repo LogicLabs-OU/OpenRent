@@ -1,0 +1,4 @@
+{
+  "name": "Category tiles",
+  "settings": [{ "id": "heading", "type": "text", "label": "Heading", "default": "On the programme" }]
+}

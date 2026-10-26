@@ -12,7 +12,7 @@ async function problems(page: Page) {
     .map((v) => `${v.id} (${v.impact}): ${v.help}\n    ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')} ${n.html.slice(0, 200)}`).join('\n    ')}`);
 }
 
-const ADMIN_PAGES = ['/', '/orders', '/orders/new', '/products', '/pricing', '/pricing?tab=coupons', '/inventory', '/customers', '/scan', '/maintenance', '/reports', '/themes', '/plugins', '/settings', '/settings?tab=email', '/audit'];
+const ADMIN_PAGES = ['/', '/orders', '/orders/new', '/products', '/pricing', '/pricing?tab=coupons', '/inventory', '/customers', '/scan', '/maintenance', '/reports', '/themes', '/plugins', '/integrations', '/accounting', '/accounting?tab=records', '/settings', '/settings?tab=email', '/audit'];
 
 test('back office pages have no serious accessibility problems', async ({ page }) => {
   test.setTimeout(180_000);
@@ -33,6 +33,34 @@ test('storefront pages have no serious accessibility problems', async ({ page })
     await page.goto(`${STORE}${path}`);
     await hydrated(page);
     for (const p of await problems(page)) found.push(`${path}: ${p}`);
+  }
+  expect(found, found.join('\n')).toEqual([]);
+});
+
+test('the Marquee, Linen and Nightfall themes have no serious accessibility problems', async ({ page }) => {
+  test.setTimeout(240_000);
+  await signIn(page);
+  const csrf = (await page.context().cookies()).find((c) => c.name === 'or_csrf')?.value ?? '';
+  const found: string[] = [];
+  for (const theme of ['marquee', 'linen', 'nightfall']) {
+    // A preview link shows the theme in this browser only; the shop keeps its live theme.
+    const res = await page.request.post(`${new URL(ADMIN).origin}/api/v1/themes/${theme}/actions/preview`, { headers: { 'x-csrf-token': csrf }, data: {} });
+    expect(res.ok(), await res.text()).toBe(true);
+    await page.goto((await res.json()).url);
+    for (const path of ['/', '/search', '/p/sea-kayak', '/cart', '/account/login']) {
+      await page.goto(`${STORE}${path}`);
+      await hydrated(page);
+      // Let scroll reveals and entrance motion finish, so contrast is measured on the settled page.
+      await page.evaluate(async () => {
+        for (let y = 0; y < document.body.scrollHeight; y += 400) {
+          window.scrollTo(0, y);
+          await new Promise((r) => setTimeout(r, 80));
+        }
+        window.scrollTo(0, 0);
+      });
+      await page.waitForTimeout(1500);
+      for (const p of await problems(page)) found.push(`${theme} ${path}: ${p}`);
+    }
   }
   expect(found, found.join('\n')).toEqual([]);
 });

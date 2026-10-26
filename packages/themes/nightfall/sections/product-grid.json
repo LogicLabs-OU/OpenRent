@@ -1,0 +1,30 @@
+{
+  "name": "Products",
+  "settings": [
+    { "id": "label", "type": "text", "label": "Small label above", "default": "The shelf" },
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "info": "Wrap words in *stars* to write them in the accent font",
+      "default": "Everything on *one shelf.*"
+    },
+    { "id": "text", "type": "textarea", "label": "Text", "default": "" },
+    {
+      "id": "category",
+      "type": "collection",
+      "label": "Category",
+      "info": "Category slug; leave empty for all products",
+      "default": ""
+    },
+    { "id": "limit", "type": "range", "label": "Most products shown", "min": 4, "max": 100, "step": 4, "default": 100 },
+    {
+      "id": "tilt",
+      "type": "checkbox",
+      "label": "Tilted entrance",
+      "info": "The grid lies back in 3D and flattens as visitors scroll to it",
+      "default": true
+    },
+    { "id": "button_label", "type": "text", "label": "Button label below", "default": "Search all gear" }
+  ]
+}

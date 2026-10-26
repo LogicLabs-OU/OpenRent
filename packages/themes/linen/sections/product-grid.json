@@ -1,0 +1,41 @@
+{
+  "name": "Products",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "textarea",
+      "label": "Heading",
+      "info": "Each line break starts a new line",
+      "default": "Popular\nthis season"
+    },
+    {
+      "id": "highlight",
+      "type": "text",
+      "label": "Highlighted word",
+      "info": "Shown in the accent colour with an underline; empty marks the last word",
+      "default": "season"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": ""
+    },
+    {
+      "id": "category",
+      "type": "collection",
+      "label": "Category",
+      "info": "Category slug; leave empty for all products",
+      "default": ""
+    },
+    {
+      "id": "limit",
+      "type": "range",
+      "label": "Most products shown",
+      "min": 4,
+      "max": 100,
+      "step": 4,
+      "default": 100
+    }
+  ]
+}

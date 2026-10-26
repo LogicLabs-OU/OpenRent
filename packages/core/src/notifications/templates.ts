@@ -127,6 +127,21 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     subject: '{{t "email.staff_cancellation_requested.subject" number=order.number customer=customer.name}}',
     body: wrap(`<p>{{t "email.staff_cancellation_requested.body" customer=customer.name number=order.number start=(datetime order.starts_at)}}</p>{{#if reason}}<p>{{t "email.reason" reason=reason}}</p>{{/if}}${ORDER_SUMMARY}<p><a href="{{admin_url}}">{{t "email.staff_cancellation_requested.link"}}</a></p>`),
   },
+  signature_requested: {
+    audience: 'customer',
+    subject: '{{t "email.signature_requested.subject" title=document_title number=order.number}}',
+    body: wrap(`<p>{{t "email.greeting" name=signer}}</p><p>{{t "email.signature_requested.body" title=document_title number=order.number}}</p><p><a href="{{link}}">{{t "email.signature_requested.link"}}</a></p>`),
+  },
+  signature_code: {
+    audience: 'customer',
+    subject: '{{t "email.signature_code.subject" code=code}}',
+    body: wrap(`<p>{{t "email.signature_code.body" minutes=minutes}}</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">{{code}}</p><p>{{t "email.signature_code.ignore"}}</p>`),
+  },
+  document_signed: {
+    audience: 'customer',
+    subject: '{{t "email.document_signed.subject" title=document_title number=order.number}}',
+    body: wrap(`${HI}<p>{{t "email.document_signed.body" title=document_title number=order.number}}</p>${VIEW}`),
+  },
   order_extended: {
     audience: 'customer',
     subject: '{{t "email.order_extended.subject" number=order.number}}',
@@ -162,10 +177,25 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     subject: '{{t "email.staff_delivery_failed.subject" number=order.number customer=customer.name}}',
     body: wrap(`<p>{{t "email.staff_delivery_failed.body" number=order.number customer=customer.name}}</p>{{#if reason}}<p>{{t "email.reason" reason=reason}}</p>{{/if}}${ORDER_SUMMARY}`),
   },
+  staff_accounting_issue: {
+    audience: 'staff',
+    subject: '{{t "email.staff_accounting_issue.subject" count=count name=name}}',
+    body: wrap(`<p>{{t "email.staff_accounting_issue.body" name=name}}</p>${ADMIN}`),
+  },
   staff_service_due: {
     audience: 'staff',
     subject: '{{t "email.staff_service_due.subject" name=name barcode=barcode}}',
     body: wrap(`<p>{{t "email.staff_service_due.body" name=name barcode=barcode product=product}}</p>`),
+  },
+  staff_invitation: {
+    audience: 'staff',
+    subject: '{{t "email.staff_invitation.subject" shop=shop}}',
+    body: wrap(`<p>{{t "email.greeting" name=name}}</p><p>{{t "email.staff_invitation.body" shop=shop}}</p><p><a href="{{link}}">{{t "email.staff_invitation.link"}}</a></p><p>{{t "email.staff_access.expires"}}</p>`),
+  },
+  staff_password_reset: {
+    audience: 'staff',
+    subject: '{{t "email.staff_password_reset.subject" shop=shop}}',
+    body: wrap(`<p>{{t "email.greeting" name=name}}</p><p>{{t "email.staff_password_reset.body" shop=shop}}</p><p><a href="{{link}}">{{t "email.staff_password_reset.link"}}</a></p><p>{{t "email.staff_access.expires"}}</p>`),
   },
   magic_link: {
     audience: 'staff',

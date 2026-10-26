@@ -20,6 +20,21 @@
   let errors = $state<Record<string, string>>({});
   let info = $state('');
   let busy = $state(false);
+  // Single sign-on (FR-USR-4): providers that vouch for the email's domain offer a button.
+  let providers = $state<{ id: string; name: string; tenant_name: string }[]>([]);
+  let lookup: ReturnType<typeof setTimeout> | undefined;
+  const SSO_ERRORS = ['sso_required', 'sso_email_unverified', 'sso_domain_not_allowed', 'sso_user_disabled', 'sso_unknown_provider'];
+
+  function findProviders() {
+    clearTimeout(lookup);
+    const e = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return void (providers = []);
+    lookup = setTimeout(async () => {
+      providers = (await api.get(`/auth/sso?email=${encodeURIComponent(e)}`).catch(() => ({ data: [] }))).data;
+    }, 300);
+  }
+  /** Where the provider sends the person back to, inside the admin. */
+  const ssoStart = (id: string) => `/api/v1/auth/oidc/${id}/start?next=${encodeURIComponent(next().replace(/^\/admin/, '') || '/')}`;
 
   const next = () => {
     const n = page.url.searchParams.get('next');
@@ -27,6 +42,8 @@
   };
 
   onMount(async () => {
+    const ssoError = page.url.searchParams.get('sso_error');
+    if (ssoError) error = SSO_ERRORS.includes(ssoError) ? t(`login.${ssoError}` as any) : t('login.sso_failed');
     const magic = page.url.searchParams.get('magic');
     if (magic) {
       try {
@@ -53,6 +70,7 @@
       goto(next());
     } catch (err) {
       if (err instanceof ApiError && err.code === 'totp_required') needTotp = true;
+      else if (err instanceof ApiError && err.code === 'sso_required') error = t('login.sso_required');
       else {
         errors = fieldErrors(err);
         error = (err as Error).message;
@@ -90,7 +108,7 @@
             {#if info}<Alert.Root><Alert.Title>{info}</Alert.Title></Alert.Root>{/if}
             <Field.Field data-invalid={!!errors.email || undefined}>
               <Field.Label for="email">{t('field.email')}</Field.Label>
-              <Input id="email" type="email" autocomplete="username" required bind:value={email} aria-invalid={!!errors.email || undefined} />
+              <Input id="email" type="email" autocomplete="username" required bind:value={email} oninput={findProviders} aria-invalid={!!errors.email || undefined} />
               {#if errors.email}<Field.Error>{errors.email}</Field.Error>{/if}
             </Field.Field>
             <Field.Field data-invalid={!!errors.password || undefined}>
@@ -105,6 +123,9 @@
                 <Field.Description>{t('login.totp_hint')}</Field.Description>
               </Field.Field>
             {/if}
+            {#each providers as p (p.id)}
+              <Button variant="outline" href={ssoStart(p.id)} data-testid="sso-button">{t('login.sso_with', { name: p.name })}</Button>
+            {/each}
             <Field.Field>
               <Button type="submit" disabled={busy}>{#if busy}<Spinner />{/if}{t('login.submit')}</Button>
               <Button type="button" variant="link" onclick={magicLink}>{t('login.magic')}</Button>

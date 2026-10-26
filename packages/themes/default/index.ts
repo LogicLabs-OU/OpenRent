@@ -27,6 +27,7 @@ import notFound from './templates/404.svelte';
 import account from './templates/account.svelte';
 import accountLogin from './templates/account-login.svelte';
 import search from './templates/search.svelte';
+import sign from './templates/sign.svelte';
 
 /** The default storefront theme, built only on @openrent/theme-sdk like any third-party theme. */
 const theme: ThemeModule = {
@@ -46,6 +47,7 @@ const theme: ThemeModule = {
     account,
     'account-login': accountLogin,
     search,
+    sign,
   },
   locales: themeCatalogs({ en, de, fr, es, et, ja }),
   // The file name is the section type, as the API reads sections/<type>.json.

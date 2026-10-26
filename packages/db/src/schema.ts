@@ -227,6 +227,10 @@ export const memberships = pgTable(
     tenantId: text('tenant_id').notNull(),
     userId: text('user_id').notNull(),
     role: text().notNull(),
+    /** With role 'custom': the shop's own role whose permissions apply (FR-USR-3). */
+    roleId: text('role_id'),
+    /** Set while the member may not use this shop (the user keeps other shops). */
+    disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'string' }),
     /** Per kind of staff notice: { in_app: bool, email: bool } (FR-NOT-3). */
     notificationPrefs: jsonb('notification_prefs').default({}).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -253,8 +257,10 @@ export const memberships = pgTable(
     }),
     check(
       'memberships_role_check',
-      sql`role = ANY (ARRAY['owner'::text, 'admin'::text, 'staff'::text, 'warehouse'::text, 'read_only'::text])`,
+      sql`role = ANY (ARRAY['owner'::text, 'admin'::text, 'staff'::text, 'warehouse'::text, 'read_only'::text, 'custom'::text])`,
     ),
+    check('memberships_custom_role_check', sql`(role = 'custom') = (role_id IS NOT NULL)`),
+    foreignKey({ columns: [table.roleId], foreignColumns: [roles.id], name: 'memberships_role_id_fkey' }),
   ],
 );
 
@@ -3151,6 +3157,315 @@ export const serviceEvents = pgTable(
     foreignKey({ columns: [table.stockItemId], foreignColumns: [stockItems.id], name: 'service_events_stock_item_id_fkey' }).onDelete('cascade'),
     foreignKey({ columns: [table.intervalId], foreignColumns: [serviceIntervals.id], name: 'service_events_interval_id_fkey' }),
     index('service_events_unit').on(table.stockItemId, table.intervalId, table.performedAt),
+    tenantPolicy(),
+  ],
+);
+
+/** Scans made offline and sent later (FR-SCAN-5); the client id makes a resent batch harmless. */
+export const scanReplays = pgTable(
+  'scan_replays',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    clientId: text('client_id').notNull(),
+    mode: text().notNull(),
+    code: text().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, mode: 'string' }).notNull(),
+    result: jsonb().notNull(),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'scan_replays_tenant_id_fkey' }),
+    uniqueIndex('scan_replays_client').on(table.tenantId, table.clientId),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * A request for a customer to sign an issued document (FR-DOC-5). The link token and the emailed code
+ * are stored hashed; five wrong codes lock the request.
+ */
+export const signatureRequests = pgTable(
+  'signature_requests',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    documentId: text('document_id').notNull(),
+    orderId: text('order_id'),
+    signerName: text('signer_name').notNull(),
+    signerEmail: text('signer_email').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    codeHash: text('code_hash'),
+    codeExpiresAt: timestamp('code_expires_at', { withTimezone: true, mode: 'string' }),
+    codeSends: integer('code_sends').default(0).notNull(),
+    attempts: integer().default(0).notNull(),
+    status: text().default('pending').notNull(),
+    /** 'builtin', or the id of a signature plugin that handles the signing. */
+    provider: text().default('builtin').notNull(),
+    providerRef: text('provider_ref'),
+    providerUrl: text('provider_url'),
+    viewedAt: timestamp('viewed_at', { withTimezone: true, mode: 'string' }),
+    signedAt: timestamp('signed_at', { withTimezone: true, mode: 'string' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'signature_requests_tenant_id_fkey' }),
+    foreignKey({ columns: [table.documentId], foreignColumns: [documents.id], name: 'signature_requests_document_id_fkey' }),
+    foreignKey({ columns: [table.orderId], foreignColumns: [orders.id], name: 'signature_requests_order_id_fkey' }),
+    uniqueIndex('signature_requests_token').on(table.tokenHash),
+    uniqueIndex('signature_requests_one_pending').on(table.documentId).where(sql`status = 'pending'`),
+    check('signature_requests_status_check', sql`status = ANY (ARRAY['pending'::text, 'signed'::text, 'cancelled'::text, 'expired'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** A signed document: who, how, and hashes of exactly what was signed. Never changed afterwards. */
+export const signatures = pgTable(
+  'signatures',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    requestId: text('request_id').notNull(),
+    documentId: text('document_id').notNull(),
+    signerName: text('signer_name').notNull(),
+    signerEmail: text('signer_email').notNull(),
+    method: text().notNull(),
+    imageFileId: text('image_file_id'),
+    ip: text(),
+    userAgent: text('user_agent'),
+    htmlSha256: text('html_sha256').notNull(),
+    pdfSha256: text('pdf_sha256'),
+    pdfFileId: text('pdf_file_id'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'signatures_tenant_id_fkey' }),
+    foreignKey({ columns: [table.requestId], foreignColumns: [signatureRequests.id], name: 'signatures_request_id_fkey' }),
+    foreignKey({ columns: [table.documentId], foreignColumns: [documents.id], name: 'signatures_document_id_fkey' }),
+    index('signatures_document').on(table.documentId),
+    check('signatures_method_check', sql`method = ANY (ARRAY['typed'::text, 'drawn'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** A shop's own role: a name and a set of permissions (FR-USR-3). The five fixed roles stay in code. */
+export const roles = pgTable(
+  'roles',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    name: text().notNull(),
+    description: text().default('').notNull(),
+    permissions: text().array().default(sql`'{}'::text[]`).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'roles_tenant_id_fkey' }),
+    uniqueIndex('roles_name').on(table.tenantId, sql`lower(name)`).where(sql`deleted_at IS NULL`),
+    tenantPolicy(),
+  ],
+);
+
+/** OpenID Connect single sign-on for staff (FR-USR-4). The client secret is sealed. */
+export const ssoProviders = pgTable(
+  'sso_providers',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    /** Shown on the sign-in button: "Sign in with {name}". */
+    name: text().notNull(),
+    issuer: text().notNull(),
+    clientId: text('client_id').notNull(),
+    clientSecretEncrypted: text('client_secret_encrypted'),
+    /** Email domains whose people may sign in this way (and join the shop). */
+    allowedDomains: text('allowed_domains').array().default(sql`'{}'::text[]`).notNull(),
+    /** Role for someone who signs in for the first time: a built-in role key or a role id. */
+    defaultRole: text('default_role').default('read_only').notNull(),
+    /** People of these domains may only sign in this way. */
+    enforceSso: boolean('enforce_sso').default(false).notNull(),
+    active: boolean().default(true).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'sso_providers_tenant_id_fkey' }),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * A shop's connection to another system through an integration plugin (accounting, calendars, CRM…).
+ * Credentials are sealed. One live connection per integration and shop.
+ */
+export const integrationConnections = pgTable(
+  'integration_connections',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    providerId: text('provider_id').notNull(),
+    /** pending (OAuth under way), connected, error (needs attention), disconnected. */
+    status: text().default('pending').notNull(),
+    accountName: text('account_name'),
+    /** What the integration keeps about the other side (organisation ids…). */
+    account: jsonb().default({}).notNull(),
+    credentialsEncrypted: text('credentials_encrypted'),
+    settings: jsonb().default({}).notNull(),
+    oauthStateHash: text('oauth_state_hash'),
+    oauthVerifierEncrypted: text('oauth_verifier_encrypted'),
+    /** Only events from this moment on are brought across, unless staff run a catch-up. */
+    syncFrom: timestamp('sync_from', { withTimezone: true, mode: 'string' }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true, mode: 'string' }),
+    lastError: text('last_error'),
+    connectedBy: text('connected_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'integration_connections_tenant_id_fkey' }),
+    uniqueIndex('integration_connections_live').on(table.tenantId, table.providerId).where(sql`status <> 'disconnected'`),
+    uniqueIndex('integration_connections_state').on(table.oauthStateHash).where(sql`oauth_state_hash IS NOT NULL`),
+    check('integration_connections_status_check', sql`status = ANY (ARRAY['pending'::text, 'connected'::text, 'error'::text, 'disconnected'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** One event to bring across one connection, retried with backoff until it succeeds or gives up. */
+export const integrationTasks = pgTable(
+  'integration_tasks',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    connectionId: text('connection_id').notNull(),
+    /** The outbox event, or a catch-up key; the same one is never queued twice. */
+    sourceKey: text('source_key').notNull(),
+    event: text().notNull(),
+    objectType: text('object_type').notNull(),
+    objectId: text('object_id').notNull(),
+    status: text().default('pending').notNull(),
+    attempts: integer().default(0).notNull(),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    message: text(),
+    finishedAt: timestamp('finished_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'integration_tasks_tenant_id_fkey' }),
+    foreignKey({ columns: [table.connectionId], foreignColumns: [integrationConnections.id], name: 'integration_tasks_connection_id_fkey' }).onDelete('cascade'),
+    uniqueIndex('integration_tasks_source').on(table.connectionId, table.sourceKey),
+    index('integration_tasks_due').on(table.status, table.nextAttemptAt),
+    check('integration_tasks_status_check', sql`status = ANY (ARRAY['pending'::text, 'running'::text, 'done'::text, 'skipped'::text, 'failed'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** Which record in the other system an OpenRent record became, per connection. */
+export const integrationLinks = pgTable(
+  'integration_links',
+  {
+    tenantId: text('tenant_id').notNull(),
+    connectionId: text('connection_id').notNull(),
+    localType: text('local_type').notNull(),
+    localId: text('local_id').notNull(),
+    remoteId: text('remote_id').notNull(),
+    extra: jsonb().default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.connectionId, table.localType, table.localId], name: 'integration_links_pkey' }),
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'integration_links_tenant_id_fkey' }),
+    foreignKey({ columns: [table.connectionId], foreignColumns: [integrationConnections.id], name: 'integration_links_connection_id_fkey' }).onDelete('cascade'),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * Money movements waiting to become accounting entries. Database triggers add a row in the same
+ * transaction as the invoice, credit note, void or payment, so no code path can skip the books.
+ */
+export const accountingQueue = pgTable(
+  'accounting_queue',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    sourceType: text('source_type').notNull(),
+    sourceId: text('source_id').notNull(),
+    event: text().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'accounting_queue_tenant_id_fkey' }),
+    uniqueIndex('accounting_queue_source').on(table.tenantId, table.sourceType, table.sourceId, table.event),
+    check('accounting_queue_source_type_check', sql`source_type = ANY (ARRAY['document'::text, 'payment'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** A balanced, numbered accounting entry. Never changed: a correction is a new entry that reverses it. */
+export const accountingEntries = pgTable(
+  'accounting_entries',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    number: integer().notNull(),
+    kind: text().notNull(),
+    sourceType: text('source_type').notNull(),
+    sourceId: text('source_id').notNull(),
+    entryDate: date('entry_date', { mode: 'string' }).notNull(),
+    /** The date the movement happened, when a lock date moved the entry later. */
+    originalDate: date('original_date', { mode: 'string' }),
+    currency: char({ length: 3 }).notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    total: bigint({ mode: 'number' }).notNull(),
+    reference: text().notNull(),
+    orderId: text('order_id'),
+    customerId: text('customer_id'),
+    reversalOf: text('reversal_of'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'accounting_entries_tenant_id_fkey' }),
+    uniqueIndex('accounting_entries_number').on(table.tenantId, table.number),
+    uniqueIndex('accounting_entries_source').on(table.tenantId, table.kind, table.sourceType, table.sourceId),
+    index('accounting_entries_date').on(table.tenantId, table.entryDate),
+    check(
+      'accounting_entries_kind_check',
+      sql`kind = ANY (ARRAY['invoice'::text, 'credit_note'::text, 'invoice_void'::text, 'payment'::text, 'refund'::text, 'deposit_received'::text, 'deposit_returned'::text, 'deposit_applied'::text, 'damage_revenue'::text])`,
+    ),
+    tenantPolicy(),
+  ],
+);
+
+export const accountingEntryLines = pgTable(
+  'accounting_entry_lines',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    entryId: text('entry_id').notNull(),
+    position: integer().notNull(),
+    accountKey: text('account_key').notNull(),
+    /** The shop's account code when the entry was posted; later changes apply to new entries only. */
+    accountCode: text('account_code').notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    debit: bigint({ mode: 'number' }).default(0).notNull(),
+    // You can use { mode: "bigint" } if numbers are exceeding js number limitations
+    credit: bigint({ mode: 'number' }).default(0).notNull(),
+    taxRateBp: integer('tax_rate_bp'),
+    description: text().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'accounting_entry_lines_tenant_id_fkey' }),
+    foreignKey({ columns: [table.entryId], foreignColumns: [accountingEntries.id], name: 'accounting_entry_lines_entry_id_fkey' }),
+    index('accounting_entry_lines_entry').on(table.entryId),
+    check('accounting_entry_lines_amounts_check', sql`debit >= 0 AND credit >= 0 AND (debit = 0 OR credit = 0)`),
     tenantPolicy(),
   ],
 );

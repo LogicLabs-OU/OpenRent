@@ -1,0 +1,95 @@
+[
+  {
+    "name": "Style",
+    "settings": [
+      {
+        "id": "accent",
+        "type": "color",
+        "label": "Accent colour",
+        "info": "Buttons, links, the drawn underline and the active category",
+        "default": "#5351f3"
+      },
+      {
+        "id": "page",
+        "type": "color",
+        "label": "Page colour",
+        "info": "Keep it black or very dark",
+        "default": "#000000"
+      },
+      {
+        "id": "glow_warm",
+        "type": "color",
+        "label": "Warm glow",
+        "info": "The light behind the hero and the product grid",
+        "default": "#a8601a"
+      },
+      {
+        "id": "glow_cool",
+        "type": "color",
+        "label": "Cool glow",
+        "info": "The light behind the category picker and the spotlight",
+        "default": "#1d3bd1"
+      },
+      {
+        "id": "accent_font",
+        "type": "select",
+        "label": "Accent words in headlines",
+        "default": "script",
+        "options": [
+          { "value": "script", "label": "Handwritten" },
+          { "value": "serif", "label": "Serif italic" }
+        ]
+      },
+      { "id": "glows", "type": "checkbox", "label": "Soft background glows", "default": true },
+      { "id": "dotted_grids", "type": "checkbox", "label": "Dotted grid backgrounds", "default": true },
+      {
+        "id": "scroll_effects",
+        "type": "checkbox",
+        "label": "Scroll effects",
+        "info": "Reveals, lit sentences, the tilted grid and the category carousel's autoplay. Visitors who ask for reduced motion never see them",
+        "default": true
+      },
+      {
+        "id": "floating_button",
+        "type": "select",
+        "label": "Floating button",
+        "default": "cart",
+        "options": [
+          { "value": "cart", "label": "Book now (opens the cart)" },
+          { "value": "questions", "label": "Questions (opens the link below)" },
+          { "value": "none", "label": "Hidden" }
+        ]
+      },
+      {
+        "id": "floating_link",
+        "type": "link",
+        "label": "Questions link",
+        "info": "Empty jumps to the questions on the home page",
+        "default": ""
+      },
+      {
+        "id": "announcement",
+        "type": "text",
+        "label": "Notice above the menu",
+        "info": "Leave empty to hide the strip",
+        "default": ""
+      },
+      { "id": "show_powered_by", "type": "checkbox", "label": "Show “Powered by OpenRent”", "default": true }
+    ]
+  },
+  {
+    "name": "Checkout",
+    "settings": [
+      {
+        "id": "checkout_fields",
+        "type": "select",
+        "label": "Customer details at checkout",
+        "default": "minimal",
+        "options": [
+          { "value": "minimal", "label": "Name, email and phone" },
+          { "value": "address", "label": "Also company and billing address" }
+        ]
+      }
+    ]
+  }
+]

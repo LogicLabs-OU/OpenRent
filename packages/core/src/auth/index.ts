@@ -1,6 +1,6 @@
 import { t as msg } from '../i18n/index.ts';
 import type { Queryable, Role } from '../context.ts';
-import { AppError } from '../errors.ts';
+import { AppError, invalid } from '../errors.ts';
 import { newId, randomToken, sha256 } from '../ids.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
 import { newTotpSecret, totpUri, verifyTotp } from './totp.ts';
@@ -27,6 +27,10 @@ export interface SessionInfo {
 export interface Membership {
   tenant_id: string;
   role: Role;
+  /** The custom role's id, name and permissions (role 'custom'). */
+  role_id: string | null;
+  role_name: string | null;
+  permissions: string[] | null;
   tenant_name: string;
   tenant_slug: string;
 }
@@ -38,9 +42,9 @@ export async function findUserByEmail(db: Queryable, email: string) {
 
 export async function membershipsOf(db: Queryable, userId: string): Promise<Membership[]> {
   const r = await db.query<Membership>(
-    `SELECT m.tenant_id, m.role, t.name AS tenant_name, t.slug AS tenant_slug
-       FROM memberships m JOIN tenants t ON t.id = m.tenant_id
-      WHERE m.user_id = $1 ORDER BY m.created_at`,
+    `SELECT m.tenant_id, m.role, m.role_id, r.name AS role_name, r.permissions, t.name AS tenant_name, t.slug AS tenant_slug
+       FROM memberships m JOIN tenants t ON t.id = m.tenant_id LEFT JOIN roles r ON r.id = m.role_id
+      WHERE m.user_id = $1 AND m.disabled_at IS NULL ORDER BY m.created_at`,
     [userId],
   );
   return r.rows;
@@ -61,6 +65,8 @@ export async function login(db: Queryable, input: LoginInput): Promise<{ token: 
   if (!user || !ok || user.status !== 'active') {
     throw new AppError('invalid_credentials', 401, msg('error.email_or_password_is_incorrect'));
   }
+  const { assertNoSsoRequired } = await import('../sso/index.ts');
+  await assertNoSsoRequired(db, user.email);
   if (user.totp_secret) {
     if (!input.totp) throw new AppError('totp_required', 401, msg('error.enter_the_code_from_your_authenticator_app'));
     if (!verifyTotp(user.totp_secret, input.totp)) throw new AppError('invalid_totp', 401, msg('error.the_authenticator_code_is_incorrect'));
@@ -72,11 +78,13 @@ export async function createSession(
   db: Queryable,
   user: { id: string; email: string; name: string; locale: string },
   meta: { ip?: string; userAgent?: string },
+  /** The shop to open (single sign-on); otherwise the first the user belongs to. */
+  preferTenantId?: string | null,
 ): Promise<{ token: string; session: SessionInfo }> {
   const memberships = await membershipsOf(db, user.id);
   const token = randomToken(32);
   const id = newId('ses');
-  const tenantId = memberships[0]?.tenant_id ?? null;
+  const tenantId = (preferTenantId && memberships.find((m) => m.tenant_id === preferTenantId)?.tenant_id) ?? memberships[0]?.tenant_id ?? null;
   await db.query(
     `INSERT INTO sessions (id, user_id, tenant_id, token_hash, expires_at, ip, user_agent)
      VALUES ($1, $2, $3, $4, now() + make_interval(days => $5), $6, $7)`,
@@ -107,13 +115,17 @@ export async function switchSessionTenant(db: Queryable, sessionId: string, tena
 
 // --- Magic links -----------------------------------------------------------
 
-export async function createLoginToken(db: Queryable, email: string): Promise<{ token: string; user: any } | null> {
+/** A one-time sign-in link: 15 minutes when asked for at the login page, longer for an invitation. */
+export async function createLoginToken(db: Queryable, email: string, ttlMinutes = 15): Promise<{ token: string; user: any } | null> {
   const user = await findUserByEmail(db, email);
   if (!user || user.status !== 'active') return null;
+  // People who must use single sign-on get no emailed link either.
+  const { assertNoSsoRequired } = await import('../sso/index.ts');
+  if (await assertNoSsoRequired(db, user.email).then(() => false, () => true)) return null;
   const token = randomToken(24);
   await db.query(
-    `INSERT INTO login_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, now() + interval '15 minutes')`,
-    [newId('ltk'), user.id, sha256(token)],
+    `INSERT INTO login_tokens (id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, now() + make_interval(mins => $4))`,
+    [newId('ltk'), user.id, sha256(token), ttlMinutes],
   );
   return { token, user };
 }
@@ -159,3 +171,20 @@ export async function resolveApiKey(db: Queryable, key: string): Promise<ApiKeyI
 }
 
 export const API_KEY_SCOPES = ['*', ...PERMISSIONS] as const;
+
+/**
+ * Sets the signed-in user's password. With a password already set the current one is needed; after an
+ * invitation or a reset (no password) the sign-in link was the proof. Other sessions end.
+ */
+export async function setOwnPassword(db: Queryable, userId: string, sessionId: string | null, input: { password: string; current_password?: string }) {
+  const user = (await db.query(`SELECT id, password_hash FROM users WHERE id = $1`, [userId])).rows[0];
+  if (!user) throw new AppError('unauthorized', 401, msg('auth.not_signed_in'));
+  const errors = [];
+  if (user.password_hash && !(await verifyPassword(user.password_hash, input.current_password ?? '')))
+    errors.push({ field: 'current_password', code: 'invalid', message: msg('error.field.wrong_password') });
+  if ((input.password ?? '').length < 8) errors.push({ field: 'password', code: 'too_short', message: msg('error.field.use_at_least_8_characters') });
+  if (errors.length) throw invalid(msg('error.check_the_password'), errors);
+  await db.query(`UPDATE users SET password_hash = $2 WHERE id = $1`, [userId, await hashPassword(input.password)]);
+  await db.query(`UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND id IS DISTINCT FROM $2 AND revoked_at IS NULL`, [userId, sessionId]);
+  return { object: 'result', password_set: true };
+}

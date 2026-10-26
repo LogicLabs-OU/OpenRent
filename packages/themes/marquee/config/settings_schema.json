@@ -1,0 +1,75 @@
+[
+  {
+    "name": "Style",
+    "settings": [
+      {
+        "id": "accent",
+        "type": "color",
+        "label": "Accent colour",
+        "info": "The notice strip, active chips, buttons and the ticker; keep it strong",
+        "default": "#1b1bff"
+      },
+      {
+        "id": "accent_2",
+        "type": "color",
+        "label": "Second accent",
+        "info": "The closing band, sold-out tags and some poster stand-ins",
+        "default": "#e3530f"
+      },
+      {
+        "id": "paper",
+        "type": "color",
+        "label": "Page colour",
+        "info": "The paper behind everything; keep it light",
+        "default": "#f5f5f3"
+      },
+      {
+        "id": "show_notice",
+        "type": "checkbox",
+        "label": "Show the notice strip above the header",
+        "default": true
+      },
+      {
+        "id": "announcement",
+        "type": "text",
+        "label": "Notice text",
+        "info": "Leave empty for the built-in line about booking online",
+        "default": ""
+      },
+      { "id": "show_powered_by", "type": "checkbox", "label": "Show “Powered by OpenRent”", "default": true }
+    ]
+  },
+  {
+    "name": "Motion",
+    "settings": [
+      {
+        "id": "intro",
+        "type": "checkbox",
+        "label": "Opening count on the home page",
+        "info": "Once per visit, about a second; skipped for visitors who ask for less motion",
+        "default": true
+      },
+      {
+        "id": "reveal",
+        "type": "checkbox",
+        "label": "Slide cards in while scrolling",
+        "default": true
+      }
+    ]
+  },
+  {
+    "name": "Checkout",
+    "settings": [
+      {
+        "id": "checkout_fields",
+        "type": "select",
+        "label": "Customer details at checkout",
+        "default": "minimal",
+        "options": [
+          { "value": "minimal", "label": "Name, email and phone" },
+          { "value": "address", "label": "Also company and billing address" }
+        ]
+      }
+    ]
+  }
+]

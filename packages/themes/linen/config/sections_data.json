@@ -1,0 +1,59 @@
+[
+  { "id": "hero", "type": "hero", "settings": {}, "blocks": [] },
+  {
+    "id": "features",
+    "type": "features",
+    "settings": { "heading": "Renting, without\nthe paperwork", "highlight": "paperwork" },
+    "blocks": [
+      { "id": "dates", "type": "panel", "settings": { "visual": "calendar" } },
+      {
+        "id": "prices",
+        "type": "panel",
+        "settings": {
+          "title": "Clear prices",
+          "subtitle": "Per day, per week, no surprises",
+          "text": "Longer rentals get cheaper automatically. Deposits and extras are shown before you book, never after.",
+          "visual": "prices"
+        }
+      },
+      {
+        "id": "pickup",
+        "type": "panel",
+        "settings": {
+          "title": "Ready at pickup",
+          "subtitle": "Checked, cleaned and charged",
+          "text": "Show the code from your confirmation at the counter and you are on your way. Returning is just as quick.",
+          "visual": "booking"
+        }
+      }
+    ]
+  },
+  { "id": "categories", "type": "category-tiles", "settings": {}, "blocks": [] },
+  { "id": "products", "type": "product-grid", "settings": {}, "blocks": [] },
+  { "id": "care", "type": "image-text", "settings": {}, "blocks": [] },
+  {
+    "id": "faq",
+    "type": "faq",
+    "settings": {},
+    "blocks": [
+      { "id": "q1", "type": "item", "settings": {} },
+      {
+        "id": "q2",
+        "type": "item",
+        "settings": {
+          "question": "Can I change my dates?",
+          "answer": "Yes. Ask from your booking page and we confirm the new dates by email if the items are still free."
+        }
+      },
+      {
+        "id": "q3",
+        "type": "item",
+        "settings": {
+          "question": "What if something breaks?",
+          "answer": "Tell us when you return it. Normal wear is on us; damage is charged at repair cost, with photos."
+        }
+      }
+    ]
+  },
+  { "id": "closing", "type": "cta", "settings": {}, "blocks": [] }
+]

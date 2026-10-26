@@ -62,6 +62,11 @@ export interface Runtime {
     requestExtension?(order: { id: string; token?: string }, endsAt: string, reason: string): Promise<void>;
     withdrawExtension?(order: { id: string; token?: string }): Promise<void>;
   };
+  /** Signing a document with an emailed code (theme API 1.6). A wrong code is a RuntimeError with `fields.code`. */
+  signature?: {
+    sendCode(token: string): Promise<{ sent_to: string; expires_in_minutes: number }>;
+    sign(token: string, input: { code: string; name: string; image?: string | null; consent: boolean }): Promise<void>;
+  };
   t(key: string, params?: Record<string, string | number>): string;
   format: {
     money(m: Money | null | undefined): string;

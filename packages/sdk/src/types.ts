@@ -397,6 +397,47 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/v1/auth/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set your own password (the current one is needed if you have one); other sessions end */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        password: string;
+                        current_password?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/switch_tenant": {
         parameters: {
             query?: never;
@@ -1164,7 +1205,8 @@ export interface paths {
                         /** Format: email */
                         email: string;
                         name?: string;
-                        role: "owner" | "admin" | "staff" | "warehouse" | "read_only";
+                        /** @description owner, admin, staff, warehouse, read_only, or a role id */
+                        role: string;
                         password?: string;
                     };
                 };
@@ -1251,9 +1293,278 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        role?: "owner" | "admin" | "staff" | "warehouse" | "read_only";
+                        /** @description owner, admin, staff, warehouse, read_only, or a role id */
+                        role?: string;
                         name?: string;
                         locale?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/users/{id}/actions/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email the member a sign-in link (valid three days) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}/actions/reset_password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Clear the password, end their sessions and email a sign-in link */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}/actions/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn off the member’s access to this shop */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/users/{id}/actions/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Turn the member’s access back on */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Built-in roles and the shop’s own, with member counts */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Create a role (owners only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        description?: string;
+                        permissions: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/roles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a role nobody has (owners only) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change a role (owners only) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        description?: string;
+                        permissions?: string[];
                     };
                 };
             };
@@ -1715,6 +2026,11 @@ export interface paths {
                             [key: string]: unknown;
                         };
                         tracking?: "serialized" | "bulk" | "none";
+                        /** @description What the units’ meter counts (hours, km); null for none */
+                        meter_unit?: string | null;
+                        depreciation_months?: number | null;
+                        /** @description Value left at the end of the life, in basis points of the price */
+                        residual_bp?: number;
                         price?: {
                             name?: string;
                             kind: "fixed" | "per_period" | "tiered" | "table";
@@ -1725,9 +2041,11 @@ export interface paths {
                                 non_billable_weekdays?: number[];
                                 /** @description Do not charge the pickup day (day prices only). */
                                 free_pickup_day?: boolean;
+                                /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                                 pickup_after?: string | null;
                                 /** @description Do not charge the return day (day prices only). */
                                 free_return_day?: boolean;
+                                /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                                 return_before?: string | null;
                             };
                             tiers?: {
@@ -1767,9 +2085,11 @@ export interface paths {
                                     non_billable_weekdays?: number[];
                                     /** @description Do not charge the pickup day (day prices only). */
                                     free_pickup_day?: boolean;
+                                    /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                                     pickup_after?: string | null;
                                     /** @description Do not charge the return day (day prices only). */
                                     free_return_day?: boolean;
+                                    /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                                     return_before?: string | null;
                                 };
                                 tiers?: {
@@ -1788,12 +2108,19 @@ export interface paths {
                             };
                             deposit_amount?: number | null;
                             position?: number;
+                            /** @description Tell staff when fewer than this many are free in the coming days; null turns it off. */
                             low_availability_threshold?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             buffer_before_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             buffer_after_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             min_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             max_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             min_notice_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             increment_min?: number | null;
                         }[];
                         bundle?: {
@@ -1997,6 +2324,11 @@ export interface paths {
                             [key: string]: unknown;
                         };
                         tracking?: "serialized" | "bulk" | "none";
+                        /** @description What the units’ meter counts (hours, km); null for none */
+                        meter_unit?: string | null;
+                        depreciation_months?: number | null;
+                        /** @description Value left at the end of the life, in basis points of the price */
+                        residual_bp?: number;
                         price?: {
                             name?: string;
                             kind: "fixed" | "per_period" | "tiered" | "table";
@@ -2007,9 +2339,11 @@ export interface paths {
                                 non_billable_weekdays?: number[];
                                 /** @description Do not charge the pickup day (day prices only). */
                                 free_pickup_day?: boolean;
+                                /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                                 pickup_after?: string | null;
                                 /** @description Do not charge the return day (day prices only). */
                                 free_return_day?: boolean;
+                                /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                                 return_before?: string | null;
                             };
                             tiers?: {
@@ -2049,9 +2383,11 @@ export interface paths {
                                     non_billable_weekdays?: number[];
                                     /** @description Do not charge the pickup day (day prices only). */
                                     free_pickup_day?: boolean;
+                                    /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                                     pickup_after?: string | null;
                                     /** @description Do not charge the return day (day prices only). */
                                     free_return_day?: boolean;
+                                    /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                                     return_before?: string | null;
                                 };
                                 tiers?: {
@@ -2070,12 +2406,19 @@ export interface paths {
                             };
                             deposit_amount?: number | null;
                             position?: number;
+                            /** @description Tell staff when fewer than this many are free in the coming days; null turns it off. */
                             low_availability_threshold?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             buffer_before_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             buffer_after_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             min_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             max_duration_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             min_notice_min?: number | null;
+                            /** @description Overrides the product; null uses it. */
                             increment_min?: number | null;
                         }[];
                         bundle?: {
@@ -2279,9 +2622,11 @@ export interface paths {
                                 non_billable_weekdays?: number[];
                                 /** @description Do not charge the pickup day (day prices only). */
                                 free_pickup_day?: boolean;
+                                /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                                 pickup_after?: string | null;
                                 /** @description Do not charge the return day (day prices only). */
                                 free_return_day?: boolean;
+                                /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                                 return_before?: string | null;
                             };
                             tiers?: {
@@ -2300,12 +2645,19 @@ export interface paths {
                         };
                         deposit_amount?: number | null;
                         position?: number;
+                        /** @description Tell staff when fewer than this many are free in the coming days; null turns it off. */
                         low_availability_threshold?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         buffer_before_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         buffer_after_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         min_duration_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         max_duration_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         min_notice_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         increment_min?: number | null;
                     };
                 };
@@ -2414,9 +2766,11 @@ export interface paths {
                                 non_billable_weekdays?: number[];
                                 /** @description Do not charge the pickup day (day prices only). */
                                 free_pickup_day?: boolean;
+                                /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                                 pickup_after?: string | null;
                                 /** @description Do not charge the return day (day prices only). */
                                 free_return_day?: boolean;
+                                /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                                 return_before?: string | null;
                             };
                             tiers?: {
@@ -2435,12 +2789,19 @@ export interface paths {
                         };
                         deposit_amount?: number | null;
                         position?: number;
+                        /** @description Tell staff when fewer than this many are free in the coming days; null turns it off. */
                         low_availability_threshold?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         buffer_before_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         buffer_after_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         min_duration_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         max_duration_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         min_notice_min?: number | null;
+                        /** @description Overrides the product; null uses it. */
                         increment_min?: number | null;
                     };
                 };
@@ -2739,9 +3100,11 @@ export interface paths {
                             non_billable_weekdays?: number[];
                             /** @description Do not charge the pickup day (day prices only). */
                             free_pickup_day?: boolean;
+                            /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                             pickup_after?: string | null;
                             /** @description Do not charge the return day (day prices only). */
                             free_return_day?: boolean;
+                            /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                             return_before?: string | null;
                         };
                         tiers?: {
@@ -2851,9 +3214,11 @@ export interface paths {
                             non_billable_weekdays?: number[];
                             /** @description Do not charge the pickup day (day prices only). */
                             free_pickup_day?: boolean;
+                            /** @description The pickup day is free only when pickup is at or after this time (HH:MM, shop time). */
                             pickup_after?: string | null;
                             /** @description Do not charge the return day (day prices only). */
                             free_return_day?: boolean;
+                            /** @description The return day is free only when the return is at or before this time (HH:MM, shop time). */
                             return_before?: string | null;
                         };
                         tiers?: {
@@ -3096,7 +3461,9 @@ export interface paths {
                             type: "order" | "category" | "product";
                             ids?: string[];
                         };
+                        /** Format: date-time */
                         valid_from?: string | null;
+                        /** Format: date-time */
                         valid_until?: string | null;
                         max_uses?: number | null;
                         max_uses_per_customer?: number | null;
@@ -3196,7 +3563,9 @@ export interface paths {
                             type: "order" | "category" | "product";
                             ids?: string[];
                         };
+                        /** Format: date-time */
                         valid_from?: string | null;
+                        /** Format: date-time */
                         valid_until?: string | null;
                         max_uses?: number | null;
                         max_uses_per_customer?: number | null;
@@ -3276,7 +3645,15 @@ export interface paths {
                         /** @description Empty: every rental product */
                         product_ids?: string[];
                         category_ids?: string[];
+                        /**
+                         * Format: date
+                         * @description season, holiday: first day (shop time zone)
+                         */
                         starts_on?: string | null;
+                        /**
+                         * Format: date
+                         * @description season, holiday: last day, inclusive
+                         */
                         ends_on?: string | null;
                         /** @description weekday: 0 = Sunday … 6 = Saturday */
                         weekdays?: number[];
@@ -3381,7 +3758,15 @@ export interface paths {
                         /** @description Empty: every rental product */
                         product_ids?: string[];
                         category_ids?: string[];
+                        /**
+                         * Format: date
+                         * @description season, holiday: first day (shop time zone)
+                         */
                         starts_on?: string | null;
+                        /**
+                         * Format: date
+                         * @description season, holiday: last day, inclusive
+                         */
                         ends_on?: string | null;
                         /** @description weekday: 0 = Sunday … 6 = Saturday */
                         weekdays?: number[];
@@ -3455,7 +3840,7 @@ export interface paths {
                         calculation: "flat" | "per_unit" | "percent" | "per_period" | "zone";
                         /** @description Minor units; basis points for percent (1000 = 10%) */
                         amount?: number;
-                        period_unit?: ("hour" | "day" | "week" | "month") | null;
+                        period_unit?: ("hour" | null) | ("day" | null) | ("week" | null) | ("month" | null) | null;
                         zones?: {
                             postcodes: string[];
                             amount: number;
@@ -3561,7 +3946,7 @@ export interface paths {
                         calculation?: "flat" | "per_unit" | "percent" | "per_period" | "zone";
                         /** @description Minor units; basis points for percent (1000 = 10%) */
                         amount?: number;
-                        period_unit?: ("hour" | "day" | "week" | "month") | null;
+                        period_unit?: ("hour" | null) | ("day" | null) | ("week" | null) | ("month" | null) | null;
                         zones?: {
                             postcodes: string[];
                             amount: number;
@@ -3716,6 +4101,7 @@ export interface paths {
                         barcode?: string;
                         serial?: string | null;
                         condition?: string;
+                        /** Format: date */
                         purchase_date?: string | null;
                         purchase_price?: number | null;
                         notes?: string;
@@ -3801,6 +4187,7 @@ export interface paths {
                             barcode?: string;
                             serial?: string | null;
                             condition?: string;
+                            /** Format: date */
                             purchase_date?: string | null;
                             purchase_price?: number | null;
                             notes?: string;
@@ -3938,6 +4325,7 @@ export interface paths {
                         barcode?: string;
                         serial?: string | null;
                         condition?: string;
+                        /** Format: date */
                         purchase_date?: string | null;
                         purchase_price?: number | null;
                         notes?: string;
@@ -4429,6 +4817,7 @@ export interface paths {
                         quantity?: number;
                         /** Format: date-time */
                         starts_at: string;
+                        /** Format: date-time */
                         ends_at?: string | null;
                         reason?: string;
                     };
@@ -4572,6 +4961,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/scans/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send scans made offline (up to 100); each is applied on its own, with the time it happened */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        items: {
+                            client_id: string;
+                            mode: "lookup" | "prepare" | "check_out" | "check_in" | "stock_take" | "receive";
+                            code: string;
+                            /** Format: date-time */
+                            occurred_at: string;
+                            order_id?: string | null;
+                            stock_take_id?: string | null;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/planner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Units of a location with their bookings over at most 31 days (at most 200 units) */
+        get: {
+            parameters: {
+                query: {
+                    from: string;
+                    days?: number;
+                    location_id?: string;
+                    product_id?: string;
+                    category_id?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -4692,6 +5169,7 @@ export interface paths {
                     "application/json": {
                         type?: "person" | "company";
                         name: string;
+                        /** Format: email */
                         email?: string | null;
                         phone?: string | null;
                         company_name?: string | null;
@@ -4955,6 +5433,7 @@ export interface paths {
                     "application/json": {
                         type?: "person" | "company";
                         name?: string;
+                        /** Format: email */
                         email?: string | null;
                         phone?: string | null;
                         company_name?: string | null;
@@ -5446,7 +5925,9 @@ export interface paths {
                             variant_id?: string | null;
                             product_id?: string | null;
                             quantity?: number;
+                            /** @description Fee lines: the price. Discount lines: the amount taken off. */
                             amount?: number | null;
+                            /** @description Discount lines: share of the rental, sale and service lines in basis points (instead of amount). */
                             percent_bp?: number | null;
                             description?: string;
                             stock_item_ids?: string[];
@@ -5653,7 +6134,9 @@ export interface paths {
                             variant_id?: string | null;
                             product_id?: string | null;
                             quantity?: number;
+                            /** @description Fee lines: the price. Discount lines: the amount taken off. */
                             amount?: number | null;
+                            /** @description Discount lines: share of the rental, sale and service lines in basis points (instead of amount). */
                             percent_bp?: number | null;
                             description?: string;
                             stock_item_ids?: string[];
@@ -6003,7 +6486,9 @@ export interface paths {
                         variant_id?: string | null;
                         product_id?: string | null;
                         quantity?: number;
+                        /** @description Fee lines: the price. Discount lines: the amount taken off. */
                         amount?: number | null;
+                        /** @description Discount lines: share of the rental, sale and service lines in basis points (instead of amount). */
                         percent_bp?: number | null;
                         description?: string;
                         stock_item_ids?: string[];
@@ -6544,6 +7029,11 @@ export interface paths {
                             method?: "click" | "typed" | "drawn";
                             file_id?: string;
                         };
+                        meter_readings?: {
+                            stock_item_id?: string;
+                            barcode?: string;
+                            value: number;
+                        }[];
                     };
                 };
             };
@@ -6629,6 +7119,11 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
+                        meter_readings?: {
+                            stock_item_id?: string;
+                            barcode?: string;
+                            value: number;
+                        }[];
                         /** @description Return everything that is out as ok */
                         all?: boolean;
                         units?: {
@@ -7366,6 +7861,93 @@ export interface paths {
                         to_barcode?: string;
                         old_status?: "needs_inspection" | "soft_down" | "hard_down";
                         reason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "order";
+                            number: number;
+                            status: string;
+                            payment_status: string;
+                            totals: {
+                                [key: string]: unknown;
+                            };
+                            lines: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "order_line";
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/actions/reassign_unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a booked unit to another unit of the same item before pickup (the planner, FR-AV-9); 409 when it is not free */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        from_stock_item_id: string;
+                        to_stock_item_id: string;
                     };
                 };
             };
@@ -9331,6 +9913,7 @@ export interface paths {
                         to_location_id: string;
                         /** Format: date-time */
                         ships_at?: string;
+                        /** Format: date-time */
                         eta?: string | null;
                         notes?: string;
                         lines: {
@@ -9405,6 +9988,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         notes?: string;
+                        /** Format: date-time */
                         eta?: string | null;
                     };
                 };
@@ -9563,6 +10147,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         to_location_id: string;
+                        /** Format: date-time */
                         eta?: string | null;
                         received?: boolean;
                         notes?: string;
@@ -9579,6 +10164,2252 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inspection_templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Checklist templates */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Create a checklist template */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        items: {
+                            key?: string;
+                            label: {
+                                [key: string]: string;
+                            };
+                            /** @description check, number or text */
+                            kind: string;
+                            required?: boolean;
+                            min?: number | null;
+                            max?: number | null;
+                            /** @description needs_inspection, soft_down (default) or hard_down */
+                            fail_status?: string;
+                        }[];
+                        category_ids?: string[];
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inspection_templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One checklist template */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Archive a template (past inspections keep their copy) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a template (changed items make a new version) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        items?: {
+                            key?: string;
+                            label: {
+                                [key: string]: string;
+                            };
+                            /** @description check, number or text */
+                            kind: string;
+                            required?: boolean;
+                            min?: number | null;
+                            max?: number | null;
+                            /** @description needs_inspection, soft_down (default) or hard_down */
+                            fail_status?: string;
+                        }[];
+                        category_ids?: string[];
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/inspection_template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The checklist that applies to a unit (null when none) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/inspections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A unit's inspections, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Run a checklist on a unit; failures take it out of service with a ticket */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        template_id?: string;
+                        order_id?: string | null;
+                        results: {
+                            key: string;
+                            passed?: boolean;
+                            value?: (number | null) | (string | null) | null;
+                            note?: string;
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/actions/add_meter_reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a meter reading (never below the last one) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        value: number;
+                        /** Format: date-time */
+                        recorded_at?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/meter_readings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A unit's meter readings, newest first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/upkeep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A unit's meter, services due and done, and book value */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/actions/record_service": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a service done; the next one is due from now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        interval_id: string;
+                        notes?: string;
+                        /** Format: date-time */
+                        performed_at?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/service_intervals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Service intervals */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Create a service interval */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        product_id?: string | null;
+                        category_id?: string | null;
+                        every_days?: number | null;
+                        every_rentals?: number | null;
+                        every_meter?: number | null;
+                        opens_ticket?: boolean;
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/service_intervals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Archive a service interval */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Update a service interval */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        product_id?: string | null;
+                        category_id?: string | null;
+                        every_days?: number | null;
+                        every_rentals?: number | null;
+                        every_meter?: number | null;
+                        opens_ticket?: boolean;
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/service_due": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Units whose service is overdue or due soon */
+        get: {
+            parameters: {
+                query?: {
+                    location_id?: string;
+                    interval_id?: string;
+                    status?: "overdue" | "due_soon";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/actions/request_signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the customer to sign the document; the link is emailed */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        signer_name?: string;
+                        signer_email?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/signatures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Signature requests and signatures of a document */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signature_requests/{id}/actions/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a signature request */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/signatures/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signed PDF (the issued pages plus the signature page) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/signatures/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The signing page: which document, for whom, and its state */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/signatures/{token}/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The document to sign, as HTML */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/signatures/{token}/actions/send_code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email a six-digit code to the signer */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/signatures/{token}/actions/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign with the emailed code (a wrong code counts as a try) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    token: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        code: string;
+                        name: string;
+                        image?: string | null;
+                        consent: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/sso": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sign-in providers for an email address (for the sign-in page) */
+        get: {
+            parameters: {
+                query: {
+                    email: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Go to the provider to sign in */
+        get: {
+            parameters: {
+                query?: {
+                    next?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/oidc/{id}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The provider sends the person back here */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sso_providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sign-in providers of the shop, with the redirect URI to register */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Add a sign-in provider */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        issuer: string;
+                        client_id: string;
+                        client_secret?: string | null;
+                        allowed_domains: string[];
+                        default_role?: string;
+                        enforce_sso?: boolean;
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sso_providers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a sign-in provider */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change a sign-in provider */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name?: string;
+                        issuer?: string;
+                        client_id?: string;
+                        client_secret?: string | null;
+                        allowed_domains?: string[];
+                        default_role?: string;
+                        enforce_sso?: boolean;
+                        active?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/integrations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Installed integrations and the shop’s connections */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/{id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect: returns the provider’s sign-in URL (OAuth 2), or checks typed credentials */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        credentials?: {
+                            [key: string]: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/oauth/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The provider sends the shop back here after connecting */
+        get: {
+            parameters: {
+                query?: {
+                    code?: string;
+                    state?: string;
+                    error?: string;
+                    error_description?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration_connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One connection */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Disconnect (credentials are forgotten, links and log are kept) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change the connection’s settings (account codes…) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        settings: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/integration_connections/{id}/actions/catch_up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bring across what happened since a date */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        from: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration_connections/{id}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The sync log, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    status?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integration_tasks/{id}/actions/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Try a task again now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connection, what is waiting or failed, and a month’s booked totals by kind */
+        get: {
+            parameters: {
+                query?: {
+                    month?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Accounting systems that can be connected, with the shop’s connection */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/systems/{id}/app": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Save the app credentials (client id and secret, data centre) when the operator did not set them */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        config: {
+                            [key: string]: string | null;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/systems/{id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Connect: returns the system’s sign-in URL */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        credentials?: {
+                            [key: string]: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The shop’s accounting connection, or null */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Disconnect the accounting system (entries stay; nothing more is sent) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change the connection’s settings (invoice status, attachments, payments recorded there) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        settings: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/lookups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Accounts, tax rates, items and payment accounts of the connected organisation */
+        get: {
+            parameters: {
+                query?: {
+                    refresh?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/mapping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Map OpenRent’s accounts and tax rates to the organisation’s */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        mapping: {
+                            [key: string]: string | null;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the mapping is complete and still fits; the errors say what to fix */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/actions/start_sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start sending entries from a date */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        from: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/actions/pause_sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop sending for now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/actions/choose_organisation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch to another organisation of the same sign-in (mapping starts over) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        organisation_id: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/connection/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The sync log, newest first */
+        get: {
+            parameters: {
+                query?: {
+                    status?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/tasks/{id}/actions/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Try a sync task again now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Booked entries with their sync status and the record each became in the accounting system */
+        get: {
+            parameters: {
+                query?: {
+                    kind?: string;
+                    status?: string;
+                    from?: string;
+                    to?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/records/{id}/actions/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send an entry again now */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/records/{id}/actions/mark_handled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that staff booked this entry by hand; nothing more is sent for it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One booked entry with its lines */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Account codes, the lock date and when invoices are issued automatically */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        accounts?: {
+                            [key: string]: string;
+                        };
+                        locked_until?: string | null;
+                        invoice_when?: "manual" | "reserved" | "checked_out" | "closed";
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/accounting/journal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Double-entry journal of the booked entries (amounts in minor units; CSV and XLSX in major units) */
+        get: {
+            parameters: {
+                query: {
+                    from: string;
+                    to: string;
+                    format?: "json" | "csv" | "xlsx";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10959,7 +13790,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Run a report: revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment. Add format=csv or format=xlsx for a download. */
+        /** Run a report: revenue, utilization, availability_forecast, overdue, deposits_held, tax_summary, coupon_usage, fulfilment, depreciation. Add format=csv or format=xlsx for a download. */
         get: {
             parameters: {
                 query?: {
@@ -12414,7 +15245,7 @@ export interface paths {
                     "application/json": {
                         enabled?: boolean;
                         config?: {
-                            [key: string]: (string | number | boolean) | null;
+                            [key: string]: (string | null) | (number | null) | (boolean | null) | null;
                         };
                     };
                 };
@@ -13609,6 +16440,7 @@ export interface paths {
                         notes?: string;
                         priority?: "low" | "normal" | "high" | "urgent";
                         assignee_id?: string | null;
+                        /** Format: date-time */
                         due_at?: string | null;
                         cost?: number;
                         parts?: {
@@ -13687,6 +16519,7 @@ export interface paths {
                         notes?: string;
                         priority?: "low" | "normal" | "high" | "urgent";
                         assignee_id?: string | null;
+                        /** Format: date-time */
                         due_at?: string | null;
                         cost?: number;
                         parts?: {
@@ -15587,6 +18420,40 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/search-meilisearch/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** search-meilisearch: POST /reindex */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;

@@ -21,6 +21,9 @@
   import LanguageSettings from '#lib/components/language-settings.svelte';
   import LanguageTabs from '#lib/components/language-tabs.svelte';
   import LocationsSettings from '#lib/components/locations-settings.svelte';
+  import TeamSettings from '#lib/components/team-settings.svelte';
+  import PasswordSettings from '#lib/components/password-settings.svelte';
+  import SsoSettings from '#lib/components/sso-settings.svelte';
   import CustomFieldsSettings from '#lib/components/custom-fields-settings.svelte';
   import DataExport from '#lib/components/data-export.svelte';
   import DomainsSettings from '#lib/components/domains-settings.svelte';
@@ -30,7 +33,7 @@
   import ReconciliationIssues from '#lib/components/reconciliation-issues.svelte';
   import { api, session, t, toast, notifyError, fieldErrors, rel, confirmAction, majorFromMinor, minorFromInput } from '#lib';
 
-  const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'webhooks', 'api_keys', 'team', 'security'] as const;
+  const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'webhooks', 'api_keys', 'team', 'sso', 'security'] as const;
   // ?tab=email opens a tab directly (links from the Plugins page and email errors).
   // Old links used ?tab=hours for what is now the locations tab.
   let tab = $state<string>(new URLSearchParams(location.search).get('tab')?.replace(/^hours$/, 'locations') ?? 'general');
@@ -41,11 +44,9 @@
   let endpoints = $state<any[]>([]);
   let deliveries = $state<Record<string, any[]>>({});
   let keys = $state<any[]>([]);
-  let users = $state<any[]>([]);
   let secret = $state<string | null>(null);
   let newEndpoint = $state({ url: '', events: '*' });
   let newKey = $state({ name: '', kind: 'secret' });
-  let newUser = $state({ email: '', name: '', role: 'staff', password: '' });
   let totp = $state<{ secret: string; uri: string } | null>(null);
   let totpCode = $state('');
 
@@ -55,7 +56,6 @@
     providers = (await api.get('/payment_providers')).data;
     endpoints = (await api.get('/webhook_endpoints')).data;
     keys = (await api.get('/api_keys')).data;
-    users = (await api.get('/users')).data;
   }
   onMount(() => {
     load().catch(notifyError);
@@ -358,37 +358,15 @@
     </Tabs.Content>
 
     <Tabs.Content value="team" class="max-w-4xl">
-      <Card.Root>
-        <Card.Header><Card.Title>{t('settings.tab.team')}</Card.Title><Card.Description>{t('settings.team_hint')}</Card.Description></Card.Header>
-        <Card.Content class="flex flex-col gap-4">
-          <Table.Root>
-            <Table.Body>
-              {#each users as u (u.id)}
-                <Table.Row>
-                  <Table.Cell><div class="font-medium">{u.name || u.email}</div><div class="text-xs text-muted-foreground">{u.email}</div></Table.Cell>
-                  <Table.Cell>
-                    <NativeSelect.Root size="sm" value={u.role} onchange={(e) => run(() => api.patch(`/users/${u.id}`, { role: (e.target as HTMLSelectElement).value }), t('settings.role_changed'))} aria-label={t('settings.role')}>
-                      {#each ['owner', 'admin', 'staff', 'warehouse', 'read_only'] as r}<NativeSelect.Option value={r}>{t(`role.${r}` as any)}</NativeSelect.Option>{/each}
-                    </NativeSelect.Root>
-                  </Table.Cell>
-                  <Table.Cell class="text-right">{#if u.id !== session.me?.user.id}<Button size="sm" variant="ghost" onclick={async () => { if (await confirmAction({ title: t('settings.remove_member'), description: u.email, confirmLabel: t('common.remove'), destructive: true })) run(() => api.del(`/users/${u.id}`), t('common.removed')); }}>{t('common.remove')}</Button>{/if}</Table.Cell>
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-          <Field.Group class="grid gap-3 sm:grid-cols-4 sm:items-end">
-            <Field.Field><Field.Label for="ue">{t('field.email')}</Field.Label><Input id="ue" bind:value={newUser.email} /></Field.Field>
-            <Field.Field><Field.Label for="un">{t('field.name')}</Field.Label><Input id="un" bind:value={newUser.name} /></Field.Field>
-            <Field.Field><Field.Label for="upw">{t('settings.initial_password')}</Field.Label><Input id="upw" type="password" bind:value={newUser.password} /></Field.Field>
-            <Field.Field><Field.Label for="ur">{t('settings.role')}</Field.Label><NativeSelect.Root id="ur" class="w-full" bind:value={newUser.role}>{#each ['admin', 'staff', 'warehouse', 'read_only'] as r}<NativeSelect.Option value={r}>{t(`role.${r}` as any)}</NativeSelect.Option>{/each}</NativeSelect.Root></Field.Field>
-          </Field.Group>
-          <div><Button disabled={!newUser.email} onclick={() => run(async () => { await api.post('/users', { ...newUser, password: newUser.password || undefined }); newUser = { email: '', name: '', role: 'staff', password: '' }; }, t('settings.member_added'))}><PlusIcon />{t('settings.add_member')}</Button></div>
-          <p class="text-xs text-muted-foreground">{t('settings.member_hint')}</p>
-        </Card.Content>
-      </Card.Root>
+      <TeamSettings />
+    </Tabs.Content>
+
+    <Tabs.Content value="sso" class="max-w-4xl">
+      <SsoSettings />
     </Tabs.Content>
 
     <Tabs.Content value="security" class="max-w-3xl">
+      <PasswordSettings />
       <Card.Root>
         <Card.Header><Card.Title>{t('settings.totp')}</Card.Title><Card.Description>{t('settings.totp_hint')}</Card.Description></Card.Header>
         <Card.Content>

@@ -33,9 +33,10 @@
 </svelte:head>
 
 {#if data.preview}
-  <div class="bg-foreground text-background sticky top-0 z-50 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 text-sm" role="status">
+  <!-- Fixed colours: the banner must stay readable whatever the previewed theme does with its tokens. -->
+  <div class="sticky top-0 z-50 flex bg-[#18181b] text-white flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 text-sm" role="status">
     <span class="flex items-center gap-2"><EyeIcon class="size-4" />{t('preview.banner', { theme: data.preview }, data.shop.locale)}</span>
-    <Button size="sm" variant="secondary" href="/_or/preview" data-sveltekit-reload>{t('preview.exit', {}, data.shop.locale)}</Button>
+    <Button size="sm" class="bg-white text-[#18181b] hover:bg-white/90" href="/_or/preview" data-sveltekit-reload>{t('preview.exit', {}, data.shop.locale)}</Button>
   </div>
 {/if}
 {#key data.shop.locale}

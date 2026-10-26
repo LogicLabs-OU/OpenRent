@@ -41,7 +41,7 @@ test('staff see new online bookings in the bell and choose what they are told ab
   await bell.click();
   await page.getByTestId('notification-preferences').click();
   const dialog = page.getByRole('dialog', { name: 'Notification settings' });
-  await expect(dialog.getByTestId('notification-pref')).toHaveCount(10);
+  await expect(dialog.getByTestId('notification-pref')).toHaveCount(13);
   try {
     await dialog.getByRole('switch', { name: 'Low availability: Email' }).click();
     await expect.poll(async () => (await call(page, 'GET', '/me/notification_preferences')).kinds.find((k: any) => k.kind === 'staff_low_availability').email).toBe(false);

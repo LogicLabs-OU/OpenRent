@@ -1,0 +1,34 @@
+{
+  "name": "Products",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "default": "Now showing"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": ""
+    },
+    {
+      "id": "category",
+      "type": "collection",
+      "label": "Category",
+      "info": "Category slug; leave empty for all products",
+      "default": ""
+    },
+    {
+      "id": "limit",
+      "type": "range",
+      "label": "Most products shown",
+      "min": 4,
+      "max": 100,
+      "step": 4,
+      "default": 100
+    },
+    { "id": "chips", "type": "checkbox", "label": "Show category chips", "default": true }
+  ]
+}

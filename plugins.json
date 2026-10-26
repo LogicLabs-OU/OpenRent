@@ -1,3 +1,3 @@
 {
-  "plugins": ["@openrent/plugin-payment-stripe", "@openrent/plugin-notify-smtp", "@openrent/plugin-notify-postmark", "@openrent/plugin-notify-resend", "@openrent/plugin-storage-s3"]
+  "plugins": ["@openrent/plugin-payment-stripe", "@openrent/plugin-notify-smtp", "@openrent/plugin-notify-postmark", "@openrent/plugin-notify-resend", "@openrent/plugin-storage-s3", "@openrent/plugin-accounting-xero", "@openrent/plugin-accounting-quickbooks", "@openrent/plugin-accounting-zoho-books", "@openrent/plugin-crm-hubspot", "@openrent/plugin-reviews-trustpilot", "@openrent/plugin-tax-taxjar", "@openrent/plugin-search-meilisearch"]
 }

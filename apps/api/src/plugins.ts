@@ -10,6 +10,13 @@ const BUILTIN = {
   '@openrent/plugin-notify-postmark': () => import('@openrent/plugin-notify-postmark'),
   '@openrent/plugin-notify-resend': () => import('@openrent/plugin-notify-resend'),
   '@openrent/plugin-storage-s3': () => import('@openrent/plugin-storage-s3'),
+  '@openrent/plugin-accounting-xero': () => import('@openrent/plugin-accounting-xero'),
+  '@openrent/plugin-accounting-quickbooks': () => import('@openrent/plugin-accounting-quickbooks'),
+  '@openrent/plugin-accounting-zoho-books': () => import('@openrent/plugin-accounting-zoho-books'),
+  '@openrent/plugin-crm-hubspot': () => import('@openrent/plugin-crm-hubspot'),
+  '@openrent/plugin-reviews-trustpilot': () => import('@openrent/plugin-reviews-trustpilot'),
+  '@openrent/plugin-tax-taxjar': () => import('@openrent/plugin-tax-taxjar'),
+  '@openrent/plugin-search-meilisearch': () => import('@openrent/plugin-search-meilisearch'),
 };
 
 export const DEFAULT_PLUGINS_JSON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../plugins.json');

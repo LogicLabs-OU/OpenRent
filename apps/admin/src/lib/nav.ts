@@ -14,6 +14,9 @@ import WrenchIcon from '@lucide/svelte/icons/wrench';
 import FolderTreeIcon from '@lucide/svelte/icons/folder-tree';
 import TagsIcon from '@lucide/svelte/icons/tags';
 import TruckIcon from '@lucide/svelte/icons/truck';
+import CalendarRangeIcon from '@lucide/svelte/icons/calendar-range';
+import PlugIcon from '@lucide/svelte/icons/plug';
+import LandmarkIcon from '@lucide/svelte/icons/landmark';
 import type { MessageKey } from './i18n/index.svelte.ts';
 
 /** Base-path aware link helper. */
@@ -34,17 +37,20 @@ export const NAV: NavItem[] = [
   { href: '/categories', key: 'nav.categories', icon: FolderTreeIcon },
   { href: '/pricing', key: 'nav.pricing', icon: TagsIcon },
   { href: '/inventory', key: 'nav.inventory', icon: BoxesIcon },
+  { href: '/planner', key: 'nav.planner', icon: CalendarRangeIcon, perm: 'orders:read' },
   { href: '/customers', key: 'nav.customers', icon: UsersIcon },
   { href: '/scan', key: 'nav.scan', icon: ScanBarcodeIcon },
   { href: '/deliveries', key: 'nav.deliveries', icon: TruckIcon, perm: 'deliveries:read' },
   { href: '/maintenance', key: 'nav.maintenance', icon: WrenchIcon },
   { href: '/reports', key: 'nav.reports', icon: ChartColumnIcon },
+  { href: '/accounting', key: 'nav.accounting', icon: LandmarkIcon, perm: 'accounting:read' },
 ];
 
 /** Shop setup: storefront look, extensions and settings. */
 export const NAV_CONFIGURE: NavItem[] = [
   { href: '/themes', key: 'nav.themes', icon: PaletteIcon },
   { href: '/plugins', key: 'nav.plugins', icon: PuzzleIcon },
+  { href: '/integrations', key: 'nav.integrations', icon: PlugIcon, perm: 'integrations:manage' },
   { href: '/audit', key: 'nav.audit', icon: ScrollTextIcon },
   { href: '/settings', key: 'nav.settings', icon: SettingsIcon },
 ];

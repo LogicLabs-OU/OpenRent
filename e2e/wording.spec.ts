@@ -4,6 +4,10 @@ import { ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.t
 test('staff reword a storefront text, see it live and restore the original', async ({ page, browser }) => {
   const errors = collectErrors(page);
   await signIn(page);
+  // A run that stopped half way may have left the text changed.
+  const csrf = (await page.context().cookies()).find((c) => c.name === 'or_csrf')?.value ?? '';
+  const reset = await page.request.put(`${new URL(ADMIN).origin}/api/v1/strings/${encodeURIComponent('theme:default')}/en`, { headers: { 'x-csrf-token': csrf }, data: { values: { 'nav.all': null } } });
+  expect(reset.ok(), await reset.text()).toBe(true);
   await page.goto(`${ADMIN}/settings?tab=translations`);
   const card = page.getByTestId('string-overrides');
   await card.getByLabel('Texts of').selectOption({ label: 'Theme: OpenRent Default' });

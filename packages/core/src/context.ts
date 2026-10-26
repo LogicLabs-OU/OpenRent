@@ -10,13 +10,17 @@ export interface Queryable {
   query<R = any>(text: string, values?: unknown[]): Promise<QueryResult<R>>;
 }
 
-export type Role = 'owner' | 'admin' | 'staff' | 'warehouse' | 'read_only';
+export type Role = 'owner' | 'admin' | 'staff' | 'warehouse' | 'read_only' | 'custom';
+/** The five roles every shop has; 'custom' points to one of the shop's own (FR-USR-3). */
+export const SYSTEM_ROLES = ['owner', 'admin', 'staff', 'warehouse', 'read_only'] as const;
 
 export interface Actor {
   type: 'user' | 'api_key' | 'system' | 'customer' | 'storefront';
   id: string | null;
   role?: Role;
   scopes?: string[];
+  /** The permissions of a custom role. */
+  permissions?: string[];
 }
 
 export interface SecretBox {

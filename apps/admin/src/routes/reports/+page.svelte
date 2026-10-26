@@ -8,9 +8,9 @@
   import DownloadIcon from '@lucide/svelte/icons/download';
   import { api, qs, t, notifyError, fieldErrors, session, download, d, dt } from '#lib';
 
-  const REPORTS = ['revenue', 'utilization', 'availability_forecast', 'overdue', 'deposits_held', 'tax_summary', 'coupon_usage', 'fulfilment'];
+  const REPORTS = ['revenue', 'utilization', 'availability_forecast', 'overdue', 'deposits_held', 'tax_summary', 'coupon_usage', 'fulfilment', 'depreciation'];
   /** The groupings each report offers; the first is the default. */
-  const GROUPS: Record<string, string[]> = { revenue: ['day', 'month', 'product', 'category', 'location'], utilization: ['variant', 'location'], tax_summary: ['rate', 'location'] };
+  const GROUPS: Record<string, string[]> = { revenue: ['day', 'month', 'product', 'category', 'location'], utilization: ['variant', 'location'], tax_summary: ['rate', 'location'], depreciation: ['unit', 'location'] };
   const day = (offset: number) => new Date(Date.now() + offset * 86400_000).toISOString().slice(0, 10);
   let name = $state('revenue');
   let from = $state(day(-30));
@@ -19,7 +19,7 @@
   let locationId = $state(session.locationId);
   let rows = $state<any[]>([]);
   let errors = $state<Record<string, string>>({});
-  const MONEY = new Set(['net', 'tax', 'total', 'amount']);
+  const MONEY = new Set(['net', 'tax', 'total', 'amount', 'purchase_price', 'depreciated', 'book_value']);
   const forecast = $derived(name === 'availability_forecast');
   /** The forecast looks ahead over whole days; the other reports look back. */
   function pick(next: string) {
@@ -52,7 +52,7 @@
   const cell = (k: string, v: any) =>
     v == null ? '' : MONEY.has(k) && typeof v === 'number' ? formatMoney({ amount: v, currency: session.currency }) : k === 'utilization' ? `${(Number(v) * 100).toFixed(1)}%` : typeof v === 'boolean' ? (v ? t('common.yes') : t('common.no')) : typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) ? dt(v) : k === 'date' && typeof v === 'string' ? d(`${v}T12:00:00Z`) : String(v);
   /** Report columns with a translated heading; anything else shows its key. */
-  const COLUMNS = new Set(['key', 'orders', 'net', 'tax', 'total', 'product', 'variant', 'tracking', 'capacity', 'booked_unit_hours', 'utilization', 'number', 'customer', 'phone', 'ends_at', 'hours_overdue', 'payment_status', 'amount', 'method', 'status', 'authorized_at', 'expires_at', 'rate_bp', 'code', 'kind', 'value', 'uses_count', 'orders_in_period', 'starts_at', 'picked_up_at', 'returned_at', 'on_time_pickup', 'on_time_return', 'date', 'location', 'booked', 'available', 'shortage']);
+  const COLUMNS = new Set(['key', 'orders', 'net', 'tax', 'total', 'product', 'variant', 'tracking', 'capacity', 'booked_unit_hours', 'utilization', 'number', 'customer', 'phone', 'ends_at', 'hours_overdue', 'payment_status', 'amount', 'method', 'status', 'authorized_at', 'expires_at', 'rate_bp', 'code', 'kind', 'value', 'uses_count', 'orders_in_period', 'starts_at', 'picked_up_at', 'returned_at', 'on_time_pickup', 'on_time_return', 'date', 'location', 'booked', 'available', 'shortage', 'barcode', 'purchase_date', 'purchase_price', 'depreciated', 'book_value', 'fully_depreciated_at', 'units']);
   const heading = (c: string) => (COLUMNS.has(c) ? t(`reports.col.${c}` as any) : c);
 </script>
 

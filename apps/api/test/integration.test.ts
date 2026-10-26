@@ -442,6 +442,9 @@ suite('OpenRent API against PostgreSQL', () => {
       expect.objectContaining({ id: 'retro', live: false, status: 'ok' }),
       expect.objectContaining({ id: 'concept', live: false, status: 'ok' }),
       expect.objectContaining({ id: 'ink-green', live: false, status: 'ok' }),
+      expect.objectContaining({ id: 'marquee', live: false, status: 'ok' }),
+      expect.objectContaining({ id: 'linen', live: false, status: 'ok' }),
+      expect.objectContaining({ id: 'nightfall', live: false, status: 'ok' }),
     ]);
     const bad = await admin.patch('/api/v1/themes/default/settings', { settings: { accent: 'teal', radius: 99, nope: 1 } });
     expect(bad.status).toBe(422);

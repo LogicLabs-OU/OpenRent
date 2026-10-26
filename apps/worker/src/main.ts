@@ -3,7 +3,7 @@ import pg from 'pg';
 import { loadDotEnv } from '@openrent/db';
 import { bootstrap } from '@openrent/api/bootstrap';
 import { ConfigError, loadConfig } from '@openrent/api/config';
-import { SCHEDULED, deliverWebhooks, publishOutbox, runJobs, runPluginSchedule, sendNotifications, type WorkerLogger } from './jobs.ts';
+import { SCHEDULED, backfillAccounting, deliverWebhooks, publishOutbox, runJobs, runPluginSchedule, sendNotifications, type WorkerLogger } from './jobs.ts';
 
 loadDotEnv();
 let config;
@@ -30,6 +30,8 @@ function sanitize(o: Record<string, unknown>) {
 const logger: WorkerLogger = { info: log('info'), warn: log('warn'), error: log('error'), debug: log('debug') };
 
 const deps = await bootstrap(config, logger, { migrate: false, poolSize: 5, themes: false });
+// Invoices and payments from before the accounting triggers are booked once (idempotent).
+await backfillAccounting(deps, logger).catch((err) => logger.error({ err }, 'accounting backfill failed'));
 const boss = new PgBoss({ connectionString: config.databaseUrl, max: Number(process.env.PGBOSS_POOL_MAX ?? 4) });
 boss.on('error', (err) => logger.error({ err }, 'pg-boss error'));
 await boss.start();

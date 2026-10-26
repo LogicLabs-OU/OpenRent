@@ -1,5 +1,5 @@
 import { DeliveryError, type Attachment, type DomainEvent } from '@openrent/plugin-sdk';
-import { webhooks, notifications, orders, servicing, payments, documents, plugins, files, jobs, reports, domains, exportZip, hookContext, serverT, type Ctx } from '@openrent/core';
+import { webhooks, notifications, orders, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, domains, exportZip, hookContext, serverT, type Ctx } from '@openrent/core';
 import { rowsSheet, writeCsv, writeXlsx } from '@openrent/api/spreadsheets';
 import { withSystem, withTenant, type PoolClient } from '@openrent/db';
 import type { AppDeps } from '@openrent/api/deps';
@@ -54,6 +54,8 @@ export async function publishOutbox(deps: AppDeps, logger: WorkerLogger, batch =
         if (!row.event_type.startsWith('internal.')) {
           const ctx = ctxFor(deps, c, row.tenant_id, logger);
           await webhooks.fanOut(ctx, { id: row.id, type: row.event_type, payload: row.payload });
+          // Integrations that want this event get a task (run by integrations.run).
+          await integrations.enqueueForEvent(ctx, row.payload, { type: row.aggregate_type, id: row.aggregate_id });
           published.push(row.payload);
         } else if (INTERNAL[row.event_type]) {
           await INTERNAL[row.event_type]!(ctxFor(deps, c, row.tenant_id, logger), row.payload?.data?.object);
@@ -74,6 +76,28 @@ export async function publishOutbox(deps: AppDeps, logger: WorkerLogger, batch =
     );
   }
   return published.length;
+}
+
+/** Runs due integration tasks, oldest first, each in its own tenant transaction. */
+export async function runIntegrationTasks(deps: AppDeps, logger: WorkerLogger, batch = 50): Promise<number> {
+  const due = await withSystem(deps.db, (c) =>
+    c.query<{ id: string; tenant_id: string }>(
+      `SELECT t.id, t.tenant_id FROM integration_tasks t JOIN integration_connections c ON c.id = t.connection_id
+        WHERE t.status = 'pending' AND t.next_attempt_at <= now() AND c.status IN ('connected', 'error') ORDER BY t.next_attempt_at, t.created_at LIMIT $1`,
+      [batch],
+    ),
+  );
+  let n = 0;
+  for (const t of due.rows) {
+    try {
+      const r = await withTenant(deps.db, t.tenant_id, (c) => integrations.runTask(ctxFor(deps, c, t.tenant_id, logger), t.id));
+      if (r) n++;
+      if (r === 'retry' || r === 'failed') logger.warn({ task: t.id, result: r }, 'integration task did not go through');
+    } catch (err) {
+      logger.error({ err, task: t.id }, 'integration task crashed');
+    }
+  }
+  return n;
 }
 
 /** Sends due webhook deliveries (first attempts and retries). */
@@ -261,6 +285,24 @@ async function forEachTenant(deps: AppDeps, fn: (ctx: Ctx) => Promise<unknown>, 
   }
 }
 
+/** Books what the database queued for accounting (ADR 0009), a batch per transaction until nothing is left. */
+export async function postAccounting(deps: AppDeps, logger: WorkerLogger) {
+  const tenants = await withSystem(deps.db, (c) => c.query<{ tenant_id: string }>(`SELECT DISTINCT tenant_id FROM accounting_queue`));
+  for (const t of tenants.rows) {
+    try {
+      while ((await withTenant(deps.db, t.tenant_id, (c) => accounting.postPending(ctxFor(deps, c, t.tenant_id, logger)))) > 0);
+    } catch (err) {
+      logger.error({ err, tenant: t.tenant_id }, 'accounting posting failed for tenant');
+    }
+  }
+}
+
+/** Once at start: movements from before the accounting triggers existed are queued (safe to repeat). */
+export async function backfillAccounting(deps: AppDeps, logger: WorkerLogger) {
+  await forEachTenant(deps, (ctx) => accounting.backfill(ctx), logger);
+  await postAccounting(deps, logger);
+}
+
 /** A plugin's scheduled job (api.schedule) for every shop that has the plugin on (FR-PLG-8). */
 export async function runPluginSchedule(deps: AppDeps, logger: WorkerLogger, job: AppDeps['plugins']['schedules'][number]) {
   await forEachTenant(
@@ -305,6 +347,16 @@ export const SCHEDULED = {
       ),
   },
   // Every 10 minutes: look for the DNS records of custom domains still waiting (FR-SF-1).
+  // Every minute: integration tasks that are due, one transaction each (they call other systems).
+  'integrations.run': { cron: '* * * * *', run: (deps: AppDeps, l: WorkerLogger) => runIntegrationTasks(deps, l) },
+  // Every minute: invoices, credit notes and payments become accounting entries (ADR 0009).
+  'accounting.post': { cron: '* * * * *', run: (deps: AppDeps, l: WorkerLogger) => postAccounting(deps, l) },
+  // Every 15 minutes: payments recorded in the accounting system come back to their orders (when on).
+  'accounting.import_payments': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => integrations.records.importRemotePayments(ctx), l) },
+  // Daily: what was sent is compared with what the accounting system holds now.
+  'accounting.check': { cron: '41 4 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => integrations.records.checkRemote(ctx), l) },
+  // Daily: idle OAuth connections refresh their token so it does not lapse (Xero: 60 days).
+  'integrations.keep_alive': { cron: '17 3 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => integrations.setup.keepAlive(ctx), l) },
   // Daily (FR-MNT-4): overdue services are announced and get a ticket.
   'service.due': { cron: '31 5 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => servicing.runServiceDue(ctx), l) },
   'domains.verify': { cron: '*/10 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => domains.verifyPending(ctx), l) },

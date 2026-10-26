@@ -8,7 +8,7 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   // Plugins: the first-party plugins are listed with their state.
   await page.getByRole('link', { name: 'Plugins' }).first().click();
   // The built-in plugins plus the e2e fixture plugin (e2e/fixtures/plugins.json).
-  await expect(page.getByTestId('plugin-card')).toHaveCount(6);
+  await expect(page.getByTestId('plugin-card')).toHaveCount(13);
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'SMTP email' })).toBeVisible();
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'S3 file storage' })).toBeVisible();
   await shot(page, 'admin-plugins');
@@ -39,7 +39,7 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   const heading = `Rent smarter ${Date.now() % 10000}`;
   await page.getByRole('link', { name: 'Themes' }).first().click();
   // The bundled themes; child themes uploaded by other specs may also be listed.
-  await expect(page.getByTestId('theme-card').filter({ hasText: /OpenRent Default|Retro|Concept|Ink Green/ })).toHaveCount(4);
+  await expect(page.getByTestId('theme-card').filter({ hasText: /OpenRent Default|Retro|Concept|Ink Green|Marquee|Linen|Nightfall/ })).toHaveCount(7);
   await shot(page, 'admin-themes');
   await page
     .getByTestId('theme-card')
@@ -151,5 +151,20 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   await expect(ink.getByTestId('product-card').first()).toBeVisible();
   await expect(ink.locator('[data-section="cta"]')).toBeVisible();
   await shot(ink, 'sf-ink-green-preview');
+
+  // Marquee, Linen and Nightfall: each previews with its own hero, the date search and product cards.
+  for (const [name, h1] of [['Marquee', /gear line-up/i], ['Linen', /Get out there/], ['Nightfall', /Your gear, at your/]] as const) {
+    const tab = context.waitForEvent('page');
+    await page.getByTestId('theme-card').filter({ hasText: name }).getByRole('button', { name: 'Preview' }).click();
+    const sf = await tab;
+    await sf.waitForURL(`${STORE}/**`);
+    await expect(sf.getByRole('status').filter({ hasText: new RegExp(`Previewing the ${name} theme`) })).toBeVisible();
+    await expect(sf.getByRole('heading', { level: 1 })).toContainText(h1);
+    await expect(sf.getByTestId('date-bar')).toBeVisible();
+    await expect(sf.getByTestId('product-card').first()).toBeVisible();
+    await hydrated(sf);
+    await shot(sf, `sf-${name.toLowerCase()}-preview`);
+    await sf.close();
+  }
   expect(errors).toEqual([]);
 });

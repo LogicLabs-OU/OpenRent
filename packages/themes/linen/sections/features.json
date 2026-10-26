@@ -1,0 +1,47 @@
+{
+  "name": "Feature panels",
+  "settings": [
+    { "id": "heading", "type": "textarea", "label": "Heading", "info": "Each line break starts a new line", "default": "" },
+    {
+      "id": "highlight",
+      "type": "text",
+      "label": "Highlighted word",
+      "info": "Shown in the accent colour with an underline; empty marks the last word",
+      "default": ""
+    }
+  ],
+  "blocks": [
+    {
+      "type": "panel",
+      "name": "Panel",
+      "settings": [
+        { "id": "title", "type": "text", "label": "Title", "default": "Live availability" },
+        { "id": "subtitle", "type": "text", "label": "Subtitle", "default": "Every item, every day" },
+        {
+          "id": "text",
+          "type": "textarea",
+          "label": "Text",
+          "default": "Choose your dates and see straight away what is free. No emails back and forth, no waiting for a call."
+        },
+        { "id": "link_label", "type": "text", "label": "Link label", "default": "Learn more" },
+        { "id": "link", "type": "link", "label": "Link", "default": "" },
+        {
+          "id": "visual",
+          "type": "select",
+          "label": "Illustration",
+          "info": "Drawn from your shop's data when there is no image",
+          "default": "calendar",
+          "options": [
+            { "value": "calendar", "label": "Availability calendar" },
+            { "value": "prices", "label": "Price list" },
+            { "value": "booking", "label": "Booking summary" },
+            { "value": "categories", "label": "Categories" }
+          ]
+        },
+        { "id": "image", "type": "image", "label": "Image URL", "default": "" },
+        { "id": "alt", "type": "text", "label": "Image description", "default": "" }
+      ]
+    }
+  ],
+  "max_blocks": 6
+}

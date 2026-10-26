@@ -1,0 +1,27 @@
+{
+  "name": "Hero",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "textarea",
+      "label": "Heading",
+      "info": "Two short lines; the second one is drawn in outline",
+      "default": "This season’s\ngear line-up"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Cameras, bikes, tents and party kit, ready at the counter. Pick your dates first and we only show what is free."
+    },
+    {
+      "id": "product",
+      "type": "product",
+      "label": "Product on the poster",
+      "info": "Empty picks the first product with a photo",
+      "default": ""
+    },
+    { "id": "image", "type": "image", "label": "Poster photo URL", "info": "Replaces the product photo", "default": "" },
+    { "id": "alt", "type": "text", "label": "Poster photo description", "default": "" }
+  ]
+}

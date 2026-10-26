@@ -21,6 +21,8 @@ export const PERMISSIONS = [
   'audit:read',
   'plugins:manage',
   'themes:manage',
+  'integrations:manage',
+  'accounting:read', 'accounting:manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number] | '*';
@@ -40,11 +42,14 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     'customers:read', 'documents:read', 'locations:read', 'tenant:read', 'pricing:read', 'deliveries:read', 'deliveries:write',
   ],
   read_only: READ,
+  // A custom role carries its own permissions on the actor.
+  custom: [],
 };
 
 export function permissionsFor(actor: Actor): readonly Permission[] {
   if (actor.type === 'system') return ['*'];
   if (actor.type === 'api_key') return (actor.scopes ?? []) as Permission[];
+  if (actor.type === 'user' && actor.role === 'custom') return (actor.permissions ?? []) as Permission[];
   if (actor.type === 'user' && actor.role) return ROLE_PERMISSIONS[actor.role];
   return [];
 }

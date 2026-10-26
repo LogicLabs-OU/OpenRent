@@ -18,10 +18,18 @@ export async function databaseForTests(): Promise<{ url: string; real: boolean; 
   }
   if (process.env.TEST_PGLITE === '1') {
     const { startPglite } = await import('@openrent/db/dev/pglite');
-    const port = 5600 + Math.floor(Math.random() * 300);
-    // A second connection for migration runners (plugin migrations, restore); the app itself uses one.
-    const s = await startPglite({ port, maxConnections: 3 });
-    return { url: s.url, real: false, stop: s.stop };
+    // Each test file gets its own server; files run in parallel, so a taken port means try another.
+    // The range keeps clear of the dev (707x), test (717x) and PGlite (7432) ports.
+    for (let attempt = 0; ; attempt++) {
+      const port = 20000 + Math.floor(Math.random() * 10000);
+      try {
+        // A second connection for migration runners (plugin migrations, restore); the app itself uses one.
+        const s = await startPglite({ port, maxConnections: 3 });
+        return { url: s.url, real: false, stop: s.stop };
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || attempt >= 10) throw err;
+      }
+    }
   }
   return null;
 }

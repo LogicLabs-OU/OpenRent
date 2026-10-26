@@ -15,7 +15,7 @@ const SETTING_TYPES: SettingsField['type'][] = ['text', 'secret', 'boolean', 'se
 /** What a plugin may ask for; shown to the owner before installing (FR-PLG-2). */
 export const PLUGIN_PERMISSIONS = [
   'orders:read', 'orders:write', 'customers:read', 'customers:write', 'catalog:read', 'inventory:read', 'payments:read',
-  'documents:read', 'reports:read', 'events:emit', 'db:own_tables', 'network', 'storefront:scripts', 'admin:ui',
+  'documents:read', 'reports:read', 'events:emit', 'db:own_tables', 'network', 'storefront:scripts', 'admin:ui', 'integrations',
 ];
 const KNOWN = new Set(['$schema', 'id', 'name', 'version', 'author', 'license', 'compat', 'permissions', 'settings', 'locales', 'admin', 'migrations', 'jobs', 'description', 'homepage', 'main']);
 const DEPRECATED: Record<string, string> = {

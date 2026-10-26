@@ -130,6 +130,12 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
         await invalidateAll();
       },
     },
+    signature: {
+      sendCode: (token) => call(shop0.locale, 'POST', 'sign', { action: 'send_code', token }),
+      async sign(token, input) {
+        await call(shop0.locale, 'POST', 'sign', { action: 'sign', token, ...input });
+      },
+    },
     t,
     format: {
       money: (m) => (m ? money.format(m.amount / 100) : ''),

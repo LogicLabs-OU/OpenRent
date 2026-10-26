@@ -1,10 +1,10 @@
 import { format } from '@openrent/i18n';
 import type { TemplateName } from './types.ts';
 
-export const THEME_API_VERSION = '1.5.0';
+export const THEME_API_VERSION = '1.6.0';
 export const REQUIRED_TEMPLATES: TemplateName[] = ['index', 'collection', 'product', 'cart', 'checkout', 'order-confirmation', 'page', '404'];
 /** Templates a theme may leave out; the storefront then uses the default theme's (theme API 1.3). */
-export const OPTIONAL_TEMPLATES: TemplateName[] = ['account', 'account-login', 'search'];
+export const OPTIONAL_TEMPLATES: TemplateName[] = ['account', 'account-login', 'search', 'sign'];
 
 export type SettingType = 'color' | 'font' | 'image' | 'text' | 'textarea' | 'select' | 'range' | 'checkbox' | 'link' | 'product' | 'collection';
 

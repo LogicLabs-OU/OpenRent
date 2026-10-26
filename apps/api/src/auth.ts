@@ -95,14 +95,18 @@ export function registerAuth(app: FastifyInstance, deps: AppDeps) {
           if (!memberships.some((m) => m.tenant_id === requested)) throw new AppError('forbidden', 403, serverT('error.you_are_not_a_member_of_that'));
           tenantId = String(requested);
         }
-        const role = memberships.find((m) => m.tenant_id === tenantId)?.role as Role | undefined;
+        const member = memberships.find((m) => m.tenant_id === tenantId);
+        const role = member?.role as Role | undefined;
         if (!SAFE.has(req.method) && !url.startsWith('/api/v1/auth/login')) {
           const header = String(req.headers['x-csrf-token'] ?? '');
           const cookie = req.cookies?.[CSRF_COOKIE] ?? '';
           if (!header || !cookie || !safeEqual(header, cookie)) throw new AppError('csrf_failed', 403, serverT('error.missing_or_invalid_csrf_token'));
         }
         if (isLocale(session.locale)) req.locale = session.locale;
-        req.auth = { kind: 'session', tenantId: role ? tenantId : null, actor: { type: 'user', id: session.userId, role }, sessionId: session.sessionId, userId: session.userId };
+        req.auth = {
+          kind: 'session', tenantId: role ? tenantId : null, sessionId: session.sessionId, userId: session.userId,
+          actor: { type: 'user', id: session.userId, role, ...(role === 'custom' ? { permissions: member?.permissions ?? [] } : {}) },
+        };
         return;
       }
     }

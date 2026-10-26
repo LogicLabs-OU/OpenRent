@@ -13,7 +13,7 @@ export const EXPORT_TABLES = [
   'notification_templates', 'notifications', 'webhook_endpoints', 'webhook_events', 'audit_log', 'plugins',
 ];
 
-const SECRET_COLUMNS = new Set(['secret_encrypted', 'previous_secret_encrypted', 'config_encrypted']);
+const SECRET_COLUMNS = new Set(['secret_encrypted', 'previous_secret_encrypted', 'config_encrypted', 'client_secret_encrypted', 'credentials_encrypted', 'oauth_verifier_encrypted']);
 
 export async function exportTenant(ctx: Ctx) {
   const out: Record<string, unknown[]> = {};
@@ -31,7 +31,7 @@ export async function exportTenant(ctx: Ctx) {
 export const EXPORT_DENYLIST = ['sessions', 'customer_sessions', 'customer_login_tokens', 'idempotency_keys', 'outbox', 'checkout_sessions'];
 
 /** Columns never exported: credentials, token hashes and bearer tokens. Bytes and HTML go in their own folders. */
-export const REDACTED_COLUMNS = new Set(['secret_encrypted', 'previous_secret_encrypted', 'config_encrypted', 'token_hash', 'key_hash', 'public_token', 'password_hash', 'totp_secret', 'totp_pending']);
+export const REDACTED_COLUMNS = new Set(['secret_encrypted', 'previous_secret_encrypted', 'config_encrypted', 'token_hash', 'key_hash', 'public_token', 'password_hash', 'totp_secret', 'totp_pending', 'code_hash', 'client_secret_encrypted', 'credentials_encrypted', 'oauth_verifier_encrypted', 'oauth_state_hash']);
 const SEPARATE_COLUMNS: Record<string, string[]> = { files: ['data'], documents: ['html'] };
 
 /** Every table with a tenant_id column (plus the tenant itself), so new tables are exported by default. */

@@ -1,4 +1,4 @@
-import { inventory, availability, scans, maintenance, AppError, invalid, serverT } from '@openrent/core';
+import { inventory, availability, scans, maintenance, planner, AppError, invalid, serverT } from '@openrent/core';
 import type { Router } from '../http.ts';
 import { parseList } from '../http.ts';
 import { renderLabels } from '../labels.ts';
@@ -140,6 +140,36 @@ export function registerInventory(r: Router) {
     '/scans',
     { permission: 'inventory:read', tags: S, summary: 'Resolve a scanned code to an entity and next action', body: Type.Object({ code: Type.String({ minLength: 1 }), mode: Type.Optional(Type.String()), order_id: Type.Optional(Id) }), status: 200 },
     async (ctx, req) => ({ object: 'scan_result', ...(await scans.resolveScan(ctx, req.body)) }),
+  );
+  r.post(
+    '/scans/replay',
+    {
+      permission: 'orders:fulfil', tags: S, summary: 'Send scans made offline (up to 100); each is applied on its own, with the time it happened', status: 200,
+      body: Type.Object(
+        {
+          items: Type.Array(
+            Type.Object(
+              {
+                client_id: Type.String({ minLength: 8, maxLength: 64 }), mode: Type.Union(['lookup', 'prepare', 'check_out', 'check_in', 'stock_take', 'receive'].map((m) => Type.Literal(m))),
+                code: Type.String({ minLength: 1, maxLength: 128 }), occurred_at: Type.String({ format: 'date-time' }), order_id: Type.Optional(Nullable(Id)), stock_take_id: Type.Optional(Nullable(Id)),
+              },
+              { additionalProperties: false },
+            ),
+            { maxItems: 100 },
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    async (ctx, req) => scans.replayScans(ctx, req.body.items as any),
+  );
+  r.get(
+    '/planner',
+    {
+      permission: 'orders:read', tags: A, summary: 'Units of a location with their bookings over at most 31 days (at most 200 units)',
+      querystring: Type.Object({ from: Type.String({ format: 'date-time' }), days: Type.Optional(Type.Integer({ minimum: 1, maximum: 31 })), location_id: Type.Optional(Id), product_id: Type.Optional(Id), category_id: Type.Optional(Id) }),
+    },
+    async (ctx, req) => planner.planner(ctx, { ...req.query, location_id: await defaultLocation(ctx, req.query.location_id) }),
   );
   r.get('/search', { permission: 'orders:read', tags: S, summary: 'Global search for the command palette', querystring: Type.Object({ q: Type.String({ minLength: 1 }) }) }, async (ctx, req) => scans.search(ctx, req.query.q));
 }

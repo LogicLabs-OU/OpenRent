@@ -616,7 +616,28 @@ async function setStatus(ctx: Ctx, o: any, to: OrderStatus, eventName: string, p
   const api = await orderToApi(ctx, await orderRow(ctx, o.id));
   await emit(ctx, 'order.status_changed', { type: 'order', id: o.id }, { ...api, from: o.status, to }, { status: o.status });
   await emit(ctx, `order.${eventName}`, { type: 'order', id: o.id }, { ...api, ...payload });
+  await autoInvoice(ctx, o.id, to);
   return api;
+}
+
+const INVOICE_AT: Record<string, OrderStatus> = { reserved: 'reserved', checked_out: 'out', closed: 'closed' };
+
+/**
+ * Issues the order's invoice when it reaches the status the shop chose (ADR 0009), once: an order that
+ * has an invoice that still counts gets none. A failure is logged and never blocks the order.
+ */
+async function autoInvoice(ctx: Ctx, orderId: string, to: OrderStatus) {
+  const when = (await settings(ctx)).accounting.invoice_when;
+  if (when === 'manual' || INVOICE_AT[when] !== to) return;
+  if (await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND status <> 'voided'`, [orderId])) return;
+  await ctx.db.query('SAVEPOINT auto_invoice');
+  try {
+    await issueDocument(ctx, orderId, 'invoice');
+    await ctx.db.query('RELEASE SAVEPOINT auto_invoice');
+  } catch (err) {
+    await ctx.db.query('ROLLBACK TO SAVEPOINT auto_invoice');
+    ctx.logger.warn({ err, order: orderId }, 'automatic invoice not issued');
+  }
 }
 
 async function settings(ctx: Ctx): Promise<TenantSettings> {
@@ -1302,5 +1323,36 @@ export async function swapUnit(ctx: Ctx, ref: string, input: SwapInput) {
   await audit(ctx, { entity_type: 'order', entity_id: o.id, action: 'unit_swapped', extra: { from: fromId, to: toId, reason, old_status: status } });
   const api = await orderToApi(ctx, fresh);
   await emit(ctx, 'order.unit_swapped', { type: 'order', id: o.id }, { ...api, swap: { from_stock_item_id: fromId, to_stock_item_id: toId, old_status: status } });
+  return api;
+}
+
+/**
+ * Moves a unit's booking to another unit of the same product and location before it is picked up
+ * (FR-AV-9, the planner). The other unit must be free for the whole booking; if it is not, nothing
+ * changes and the caller gets a 409.
+ */
+export async function reassignUnit(ctx: Ctx, ref: string, input: { from_stock_item_id: string; to_stock_item_id: string }) {
+  const o = await orderRow(ctx, ref, true);
+  if (!['reserved', 'prepared'].includes(o.status)) throw new AppError('invalid_transition', 409, msg('error.reassign_needs_reserved', { status: o.status }));
+  const row = await one<any>(
+    ctx,
+    `SELECT u.*, s.barcode FROM order_line_units u JOIN order_lines l ON l.id = u.order_line_id JOIN stock_items s ON s.id = u.stock_item_id
+      WHERE l.order_id = $1 AND u.stock_item_id = $2 AND u.checked_out_at IS NULL AND u.replaced_by_id IS NULL FOR UPDATE OF u`,
+    [o.id, input.from_stock_item_id],
+  );
+  if (!row?.allocation_id) throw new AppError('unit_not_assigned', 409, msg('error.reassign_not_assigned'));
+  if (input.to_stock_item_id === input.from_stock_item_id) return orderToApi(ctx, o);
+  if (await one(ctx, `SELECT 1 FROM order_line_units WHERE order_line_id = $1 AND stock_item_id = $2`, [row.order_line_id, input.to_stock_item_id]))
+    throw new AppError('already_assigned', 409, msg('error.swap_same_line'));
+  const to = await must<any>(ctx, `SELECT id, barcode, status FROM stock_items WHERE id = $1`, [input.to_stock_item_id], 'stock_item', input.to_stock_item_id);
+  if (['needs_inspection', 'soft_down', 'hard_down', 'in_transit'].includes(to.status))
+    throw new AppError('unit_unavailable', 409, msg('error.unit_has_status', { barcode: to.barcode, status: to.status.replace('_', ' ') }));
+  // The whole booking moves: it has not started for this unit.
+  await availability.moveUnitAllocation(ctx, row.allocation_id, to.id, new Date(0));
+  await exec(ctx, `UPDATE order_line_units SET stock_item_id = $2 WHERE id = $1`, [row.id, to.id]);
+  await event(ctx, o.id, 'unit_reassigned', o.status, o.status, { barcodes: [row.barcode, to.barcode] });
+  await audit(ctx, { entity_type: 'order', entity_id: o.id, action: 'unit_reassigned', extra: { from: input.from_stock_item_id, to: to.id } });
+  const api = await orderToApi(ctx, await orderRow(ctx, o.id));
+  await emit(ctx, 'order.unit_reassigned', { type: 'order', id: o.id }, { ...api, reassign: { from_stock_item_id: input.from_stock_item_id, to_stock_item_id: to.id } });
   return api;
 }

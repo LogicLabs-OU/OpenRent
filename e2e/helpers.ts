@@ -21,8 +21,9 @@ export function collectErrors(page: Page) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
-    // Trace recording cannot script sandboxed srcdoc frames (email previews); Chromium logs that as an error.
-    if (m.location().url === 'about:srcdoc' && /sandboxed/.test(m.text())) return;
+    // Trace recording cannot script sandboxed frames (email previews, the document on the signing page);
+    // Chromium logs that as an error.
+    if (/Blocked script execution in .* frame is sandboxed/.test(m.text())) return;
     if (
       m.type() === 'error' &&
       !/favicon|Failed to load resource: the server responded with a status of 4\d\d/.test(m.text())

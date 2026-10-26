@@ -1,0 +1,28 @@
+{
+  "name": "Text",
+  "settings": [
+    {
+      "id": "heading",
+      "type": "text",
+      "label": "Heading",
+      "info": "Wrap words in *stars* to write them in the accent font",
+      "default": "About us"
+    },
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Text",
+      "default": "Tell customers who you are and what makes renting from you easy."
+    },
+    {
+      "id": "align",
+      "type": "select",
+      "label": "Alignment",
+      "default": "center",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Centre" }
+      ]
+    }
+  ]
+}

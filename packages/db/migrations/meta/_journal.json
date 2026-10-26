@@ -225,6 +225,48 @@
       "when": 1793002557772,
       "tag": "20261026081557_meters_service",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1793003260431,
+      "tag": "20261026082740_scan_replays",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793003584310,
+      "tag": "20261026083304_signatures",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793005251237,
+      "tag": "20261026090051_custom_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793008036713,
+      "tag": "20261026094716_sso",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793009021472,
+      "tag": "20261026100341_integrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793017928354,
+      "tag": "20261026123208_accounting_entries",
+      "breakpoints": true
     }
   ]
 }

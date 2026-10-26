@@ -1,0 +1,24 @@
+{
+  "name": "Ticker",
+  "settings": [
+    {
+      "id": "text",
+      "type": "textarea",
+      "label": "Words",
+      "info": "One per line; empty runs the category names",
+      "default": ""
+    },
+    {
+      "id": "tone",
+      "type": "select",
+      "label": "Colour",
+      "default": "blue",
+      "options": [
+        { "value": "blue", "label": "Accent" },
+        { "value": "orange", "label": "Second accent" },
+        { "value": "ink", "label": "Ink" }
+      ]
+    },
+    { "id": "speed", "type": "range", "label": "Seconds per loop", "min": 10, "max": 90, "step": 5, "default": 40 }
+  ]
+}
