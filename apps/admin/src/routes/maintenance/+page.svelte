@@ -51,7 +51,8 @@
     try {
       const q = { status: filter, location_id: session.locationId || undefined, assignee_id: mine ? 'me' : undefined, priority: priority || undefined, overdue: overdue || undefined };
       rows = (await api.get(`/maintenance_tickets?${qs(q)}`)).data;
-      if (open) show(rows!.find((r) => r.id === open.id) ?? (await api.get(`/maintenance_tickets/${open.id}`)));
+      // The open ticket is refreshed; what staff are typing in its form stays (actions call show() themselves).
+      if (open) open = rows!.find((r) => r.id === open.id) ?? (await api.get(`/maintenance_tickets/${open.id}`));
     } catch (e) {
       notifyError(e);
     }

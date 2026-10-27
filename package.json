@@ -1,7 +1,7 @@
 {
   "name": "openrent",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {
@@ -31,11 +31,15 @@
     "test:calendar-live": "tsx scripts/calendar-live.ts",
     "test:imports-live": "tsx scripts/imports-live.ts",
     "test:messaging-live": "tsx scripts/messaging-live.ts",
-    "test:payments-live": "tsx scripts/payments-live.ts"
+    "test:payments-live": "tsx scripts/payments-live.ts",
+    "storybook:a11y": "node scripts/storybook-a11y.ts",
+    "check:api": "node scripts/check-api.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
+    "@changesets/cli": "^3.0.3",
     "@eslint/js": "^10.0.1",
+    "@openrent/geo-fakes": "workspace:*",
     "@openrent/messaging-fakes": "workspace:*",
     "@openrent/plugin-accounting-quickbooks": "workspace:*",
     "@openrent/plugin-accounting-xero": "workspace:*",
@@ -47,10 +51,12 @@
     "@openrent/plugin-payment-mollie": "workspace:*",
     "@openrent/plugin-payment-paypal": "workspace:*",
     "@openrent/plugin-sdk": "workspace:*",
+    "@openrent/tax-fakes": "workspace:*",
     "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "eslint": "^10.13.0",
     "fflate": "^0.8.3",
+    "pg": "^8.23.1",
     "prettier": "^3.9.10",
     "prettier-plugin-svelte": "^4.1.1",
     "svelte": "^5.57.2",

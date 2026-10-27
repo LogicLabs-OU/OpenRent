@@ -327,7 +327,7 @@ describe('fee rules (FR-PR-8)', () => {
     const waiver = fee({ id: 'fee_dw', kind: 'damage_waiver', calculation: 'percent', amount: 1000, mode: 'optional' });
     const offered = run(two(3), [waiver]);
     expect(offered.lines.some((l) => l.type === 'fee')).toBe(false);
-    expect(offered.optional_fees).toEqual([{ id: 'fee_dw', name: 'percent', kind: 'damage_waiver', amount: 1500, selected: false }]);
+    expect(offered.optional_fees).toEqual([{ id: 'fee_dw', name: 'percent', kind: 'damage_waiver', amount: 1500, selected: false, priced_by: null }]);
     const taken = run(two(3), [waiver], { fees: ['fee_dw'] });
     expect(taken.lines.find((l) => l.type === 'fee')).toMatchObject({ subtotal: 1500, fee_kind: 'damage_waiver' });
     expect(taken.optional_fees[0]!.selected).toBe(true);

@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, collectErrors, signIn } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, collectErrors, signIn } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -24,13 +24,13 @@ test('staff set a long rental to monthly billing; pickup invoices the first mont
   await call(page, 'POST', `/orders/${order.id}/actions/reserve`, { notify: false });
 
   await page.goto(`${ADMIN}/orders/${order.id}`);
-  await page.getByLabel('Billing').selectOption({ label: 'Every month while out' });
+  await page.getByLabel('Billing', { exact: true }).selectOption({ label: 'Every month while out' });
   await expect(page.getByText('Each period is invoiced when it starts')).toBeVisible();
   await expect.poll(async () => (await call(page, 'GET', `/orders/${order.id}`)).billing_cycle).toBe('monthly');
   await page.getByRole('button', { name: 'Mark picked up' }).click();
   await expect(page.getByText('Out', { exact: true }).first()).toBeVisible();
   await expect(page.getByText(/^Billed until /)).toBeVisible();
-  await expect(page.getByLabel('Billing')).toBeDisabled();
+  await expect(page.getByLabel('Billing', { exact: true })).toBeDisabled();
   const docs = (await call(page, 'GET', `/orders/${order.id}?expand=documents`)).documents.filter((d: any) => d.type === 'invoice');
   expect(docs).toHaveLength(1);
   await expect(page.getByRole('button', { name: new RegExp(`Invoice ${docs[0].number}`) })).toBeVisible();

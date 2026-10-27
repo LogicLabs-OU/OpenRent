@@ -10,7 +10,7 @@ export const DEFAULT_THEMES_JSON = path.resolve(path.dirname(fileURLToPath(impor
 
 const readJson = (file: string) => JSON.parse(readFileSync(file, 'utf8'));
 
-/** Reads the data parts of a theme package (theme.json, config/*.json, locales/*.json). */
+/** Reads the data parts of a theme package (theme.json, config/*.json, locales/*.json, widget/widget.css). */
 export function readTheme(pkgDir: string, pkg: string): themes.InstalledTheme {
   const manifest = readJson(path.join(pkgDir, 'theme.json'));
   const config = (f: string, fallback: unknown) => (existsSync(path.join(pkgDir, 'config', f)) ? readJson(path.join(pkgDir, 'config', f)) : fallback);
@@ -22,7 +22,11 @@ export function readTheme(pkgDir: string, pkg: string): themes.InstalledTheme {
   const sectionSchemas = existsSync(sectionsDir)
     ? readdirSync(sectionsDir).filter((f) => f.endsWith('.json')).sort().map((f) => ({ ...readJson(path.join(sectionsDir, f)), type: f.replace(/\.json$/, '') }))
     : [];
-  const meta = { manifest, settingsSchema: config('settings_schema.json', []), settingsData: config('settings_data.json', {}), locales, sectionSchemas, sectionsData: config('sections_data.json', undefined) };
+  const widgetFile = path.join(pkgDir, 'widget', 'widget.css');
+  const meta = {
+    manifest, settingsSchema: config('settings_schema.json', []), settingsData: config('settings_data.json', {}), locales, sectionSchemas, sectionsData: config('sections_data.json', undefined),
+    widgetCss: existsSync(widgetFile) ? readFileSync(widgetFile, 'utf8') : undefined,
+  };
   return { ...meta, package: pkg, dir: pkgDir, problems: validateThemeMeta(meta) };
 }
 

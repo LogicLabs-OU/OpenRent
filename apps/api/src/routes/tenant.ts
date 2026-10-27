@@ -11,6 +11,10 @@ const OpeningHours = Type.Record(Type.String(), Type.Array(Type.Array(Type.Strin
 export function registerTenant(r: Router) {
   const T = ['Tenant'];
   r.get('/tenant', { permission: 'tenant:read', tags: T, summary: 'Get the tenant' }, async (ctx) => tenancy.tenantToApi(await tenancy.getTenant(ctx)));
+  r.get('/tenant/usage', { permission: 'tenant:read', tags: T, summary: 'This month’s orders, stored files and plugins turned on, against the shop’s limits (managed cloud)' }, async (ctx) => {
+    const t = await ctx.db.query(`SELECT limits FROM tenants WHERE id = $1`, [ctx.tenantId]);
+    return { object: 'shop_usage', limits: t.rows[0]?.limits ?? {}, usage: await tenancy.usageOf(ctx.db, ctx.tenantId) };
+  });
   r.patch(
     '/tenant',
     {
@@ -29,6 +33,10 @@ export function registerTenant(r: Router) {
   );
   r.get('/tenant/settings', { permission: 'tenant:read', tags: T, summary: 'Effective settings (defaults merged)' }, async (ctx) => ({ object: 'tenant_settings', ...(await tenancy.getSettings(ctx)) }));
   r.patch('/tenant/settings', { permission: 'tenant:write', tags: T, summary: 'Deep-merge settings', body: Json }, async (ctx, req) => ({ object: 'tenant_settings', ...(await tenancy.updateSettings(ctx, req.body)) }));
+  r.post('/tenant/settings/actions/refresh_rates', { permission: 'tenant:write', tags: T, summary: 'Update the exchange rates for display currencies now, from the chosen rates plugin', status: 200 }, async (ctx) => ({
+    object: 'tenant_settings',
+    ...(await tenancy.refreshRates(ctx, { strict: true })),
+  }));
   r.get('/tenant/export', { permission: 'tenant:write', tags: T, summary: 'Full tenant export as JSON (FR-MIG-1)', raw: true }, async (ctx, _req, reply) => {
     const data = await exportTenant(ctx);
     reply.header('Content-Disposition', `attachment; filename="openrent-export-${ctx.now.toISOString().slice(0, 10)}.json"`);
@@ -38,7 +46,7 @@ export function registerTenant(r: Router) {
   const L = ['Locations'];
   const LocationBody = Type.Object(
     {
-      name: Type.String({ minLength: 1 }), address: Type.Optional(Json), timezone: Type.Optional(Type.String()), opening_hours: Type.Optional(OpeningHours), is_default: Type.Optional(Type.Boolean()),
+      name: Type.String({ minLength: 1 }), address: Type.Optional(Json), timezone: Type.Optional(Type.String()), opening_hours: Type.Optional(OpeningHours), delivery_windows: Type.Optional(OpeningHours), is_default: Type.Optional(Type.Boolean()),
       phone: Type.Optional(Nullable(Type.String({ maxLength: 50 }))), email: Type.Optional(Nullable(Type.String({ maxLength: 200 }))),
       tax_ids: Type.Optional(Type.Array(Type.Object({ type: Type.String({ maxLength: 20 }), value: Type.String({ maxLength: 50 }) }), { maxItems: 5 })),
       tax_profile_id: Type.Optional(Nullable(Id)),

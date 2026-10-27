@@ -10,6 +10,9 @@ import { issueDocument } from '../documents/index.ts';
 import { notifyCustomer, notifyStaff } from '../notifications/index.ts';
 import { photosOf } from '../maintenance/index.ts';
 import { setOwner } from '../files/index.ts';
+import { placeDelivery } from './geo.ts';
+
+export { addressLine, distanceKm, haversineKm, locate } from './geo.ts';
 import { runAction } from '../orders/index.ts';
 
 /**
@@ -34,7 +37,7 @@ export interface DeliveryInput {
 export function deliveryToApi(d: any, photos: unknown[] = []) {
   return {
     id: d.id, object: 'delivery', order_id: d.order_id, order_number: d.order_number ?? null, kind: d.kind, status: d.status,
-    address: d.address ?? {}, contact: d.contact ?? {}, window_start: d.window_start, window_end: d.window_end, route_date: String(d.route_date).slice(0, 10),
+    address: d.address ?? {}, map: d.lat != null && d.lon != null ? { lat: Number(d.lat), lon: Number(d.lon) } : null, contact: d.contact ?? {}, window_start: d.window_start, window_end: d.window_end, route_date: String(d.route_date).slice(0, 10),
     position: d.position, driver_user_id: d.driver_user_id, driver_name: d.driver_name ?? null, notes: d.notes, signed_name: d.signed_name,
     signature_file_id: d.signature_file_id, failure_reason: d.failure_reason, dispatched_at: d.dispatched_at, completed_at: d.completed_at,
     customer_name: d.customer_name ?? null, photos, created_at: d.created_at, updated_at: d.updated_at,
@@ -150,6 +153,7 @@ export async function scheduleDelivery(ctx: Ctx, orderId: string, input: Deliver
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
     [id, ctx.tenantId, order.id, kind, json(address), json(contact), start, end, date, pos, input.driver_user_id ?? null, input.notes ?? ''],
   );
+  await placeDelivery(ctx, id, address);
   await coverWindows(ctx, order);
   const out = await api(ctx, id);
   await audit(ctx, { entity_type: 'delivery', entity_id: id, action: 'create', after: out });
@@ -173,6 +177,7 @@ export async function updateDelivery(ctx: Ctx, id: string, patch: DeliveryInput)
        driver_user_id = CASE WHEN $7::boolean THEN $8 ELSE driver_user_id END, notes = coalesce($9, notes) WHERE id = $1`,
     [id, start, end, date, patch.address ? json(patch.address) : null, json(patch.contact ?? {}), patch.driver_user_id !== undefined, patch.driver_user_id ?? null, patch.notes ?? null],
   );
+  if (patch.address) await placeDelivery(ctx, id, patch.address);
   if (patch.window_start || patch.window_end) await coverWindows(ctx, order);
   const out = await api(ctx, id);
   await audit(ctx, { entity_type: 'delivery', entity_id: id, action: 'update', before: deliveryToApi(before), after: out });
@@ -262,12 +267,13 @@ export async function routeCsv(ctx: Ctx, date: string, driverUserId?: string | n
   return [head, ...rows].map((r) => r.map(cell).join(',')).join('\r\n') + '\r\n';
 }
 
-/** The stops that have coordinates (`address.lat`, `address.lng`) as a GPX route. */
+/** The stops on the map (found by the geocoder, or `address.lat`/`address.lng` given by hand) as a GPX route. */
 export async function routeGpx(ctx: Ctx, date: string, driverUserId?: string | null) {
   const list = (await listDeliveries(ctx, { date, driver_user_id: driverUserId ?? undefined })).filter((d) => d.status !== 'cancelled');
   const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const at = (d: any) => d.map ?? (Number.isFinite(Number(d.address?.lat)) && Number.isFinite(Number(d.address?.lng)) ? { lat: Number(d.address.lat), lon: Number(d.address.lng) } : null);
   const points = list
-    .filter((d) => Number.isFinite(Number(d.address?.lat)) && Number.isFinite(Number(d.address?.lng)))
-    .map((d, i) => `<rtept lat="${Number(d.address.lat)}" lon="${Number(d.address.lng)}"><name>${esc(`${i + 1}. #${d.order_number} ${d.contact?.name || d.customer_name || ''}`)}</name><desc>${esc(d.kind)}</desc></rtept>`);
+    .filter((d) => at(d))
+    .map((d, i) => `<rtept lat="${at(d).lat}" lon="${at(d).lon}"><name>${esc(`${i + 1}. #${d.order_number} ${d.contact?.name || d.customer_name || ''}`)}</name><desc>${esc(d.kind)}</desc></rtept>`);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="OpenRent" xmlns="http://www.topografix.com/GPX/1/1"><rte><name>${esc(date)}</name>${points.join('')}</rte></gpx>\n`;
 }

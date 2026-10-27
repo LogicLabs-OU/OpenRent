@@ -1,5 +1,6 @@
 import { withSystem } from '@openrent/db';
 import { AppError, domains, serverT, tenancy } from '@openrent/core';
+import { PLUGIN_API_VERSION } from '@openrent/plugin-sdk';
 import type { Router } from '../http.ts';
 import { Type } from '../schemas.ts';
 
@@ -57,10 +58,12 @@ export function registerSystem(r: Router) {
     },
   );
 
-  r.get('/system/version', { public: true, tx: 'none', tags: ['System'], summary: 'Version' }, async () => ({ version: deps.version, api: 'v1', plugin_api: '1.0.0' }));
+  r.get('/system/version', { public: true, tx: 'none', tags: ['System'], summary: 'Version' }, async () => ({ version: deps.version, api: 'v1', plugin_api: PLUGIN_API_VERSION }));
 
   r.get('/system/metrics', { public: true, tx: 'none', raw: true, tags: ['System'], summary: 'Prometheus metrics' }, async (_c, req, reply) => {
-    if (deps.config.operatorKey && req.headers.authorization !== `Bearer ${deps.config.operatorKey}`) throw new AppError('unauthorized', 401, serverT('error.operator_key_required'));
+    // Only with the operator's key (X-Operator-Key, as for the operator API); without one set, not served.
+    if (!deps.config.operatorKey) throw new AppError('not_found', 404, serverT('error.operator_disabled'));
+    if (req.headers['x-operator-key'] !== deps.config.operatorKey) throw new AppError('unauthorized', 401, serverT('error.operator_key_required'));
     const mem = process.memoryUsage();
     const lines = [
       '# TYPE openrent_http_requests_total counter', `openrent_http_requests_total ${counters.requests}`,

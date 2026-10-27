@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, shot, signIn } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, STORE, collectErrors, shot, signIn } from './helpers.ts';
 
 test('staff add custom CSS and header HTML; unsafe parts are removed', async ({ page, browser }) => {
   const errors = collectErrors(page);

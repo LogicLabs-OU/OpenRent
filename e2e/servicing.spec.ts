@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, collectErrors, shot, signIn } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, collectErrors, shot, signIn } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -25,7 +25,7 @@ test('staff read a meter on the unit page, plan a service and record it', async 
   let intervalId: string | undefined;
   try {
     await page.goto(`${ADMIN}/inventory?q=${unit.barcode}`);
-    await page.getByRole('link', { name: unit.barcode }).click();
+    await page.getByRole('link', { name: unit.barcode, exact: true }).click();
     await expect(page.getByRole('heading', { name: `Generator ${stamp}`, level: 1 })).toBeVisible();
     // About six of 24 months gone: roughly three quarters of the value left.
     await expect(page.getByTestId('unit-value')).toContainText('Book value');

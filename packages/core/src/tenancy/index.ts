@@ -6,11 +6,13 @@ import { AppError, invalid, type FieldError } from '../errors.ts';
 import { audit, emit } from '../events.ts';
 import { newId, sha256 } from '../ids.ts';
 import { exec, json, many, must, one, updateSql } from '../sql.ts';
-import { generateApiKey, hashPassword } from '../auth/index.ts';
-import { isValidTimeZone } from '../time.ts';
-import { ACCOUNT_KEYS, DEFAULT_OPENING_HOURS, deepMerge, resolveSettings, type TenantSettings } from './settings.ts';
+import { API_KEY_SCOPES, generateApiKey, hashPassword } from '../auth/index.ts';
+import { isValidTimeZone, localDate } from '../time.ts';
+import { can, permissionsFor, type Permission } from '../permissions.ts';
+import { ACCOUNT_KEYS, DEFAULT_OPENING_HOURS, NAV_KINDS, NAV_MAX, deepMerge, resolveSettings, type TenantSettings } from './settings.ts';
 
 export * from './settings.ts';
+export { refreshRates } from './rates.ts';
 
 export interface TenantRow {
   id: string;
@@ -75,7 +77,51 @@ export async function updateTenant(ctx: Ctx, patch: Record<string, unknown>) {
   return after;
 }
 
-function validateSettings(s: TenantSettings) {
+/** `timezone` is the shop's: a lock date may be its today, which is not the UTC day around midnight. */
+/** Search engine texts: as long as search results show them; the shared picture is an https image address. */
+function checkSeo(seo: TenantSettings['seo'], errors: { field: string; code: string; message: string }[]) {
+  const text = (field: string, v: unknown, max: number) => {
+    if (v == null) return;
+    if (typeof v !== 'string') errors.push({ field, code: 'invalid', message: tr('settings.invalid') });
+    else if (v.length > max) errors.push({ field, code: 'too_long', message: tr('settings.seo_too_long', { max }) });
+  };
+  text('seo.title', seo.title, 70);
+  text('seo.description', seo.description, 160);
+  const img = seo.image_url;
+  if (img != null && (typeof img !== 'string' || img.length > 2000 || !/^https:\/\/[^\s]+$/i.test(img))) errors.push({ field: 'seo.image_url', code: 'invalid', message: tr('settings.invalid_image_url') });
+  for (const [l, v] of Object.entries(seo.translations ?? {})) {
+    if (!isLocale(l)) errors.push({ field: `seo.translations.${l}`, code: 'invalid', message: tr('settings.invalid_locales') });
+    text(`seo.translations.${l}.title`, v?.title, 70);
+    text(`seo.translations.${l}.description`, v?.description, 160);
+  }
+}
+
+/** Menus: known kinds, a target where one is needed, labels that fit, and addresses that stay http(s) or on the shop. */
+function checkNavigation(nav: TenantSettings['navigation'], errors: { field: string; code: string; message: string }[]) {
+  for (const menu of ['header', 'footer'] as const) {
+    const list = nav?.[menu];
+    if (!Array.isArray(list) || list.length > NAV_MAX[menu]) {
+      errors.push({ field: `navigation.${menu}`, code: 'invalid', message: tr('settings.invalid_menu', { max: NAV_MAX[menu] }) });
+      continue;
+    }
+    list.forEach((it, i) => {
+      const f = `navigation.${menu}.${i}`;
+      if (!it || typeof it !== 'object' || !(NAV_KINDS as readonly string[]).includes(it.kind)) return errors.push({ field: `${f}.kind`, code: 'invalid', message: tr('settings.invalid') });
+      const label = it.label == null ? '' : String(it.label);
+      if (label.length > 60) errors.push({ field: `${f}.label`, code: 'too_long', message: tr('settings.seo_too_long', { max: 60 }) });
+      if (['home', 'search', 'url'].includes(it.kind) && !label.trim()) errors.push({ field: `${f}.label`, code: 'required', message: tr('settings.menu_label_required') });
+      const target = it.target == null ? '' : String(it.target);
+      if (it.kind === 'url' && (target.length > 500 || !/^(https?:\/\/[^\s/]+|\/(?!\/))[^\s]*$/i.test(target))) errors.push({ field: `${f}.target`, code: 'invalid', message: tr('settings.invalid_menu_url') });
+      if (['category', 'page', 'product'].includes(it.kind) && !/^[a-z]{2,5}_[0-9A-Za-z]+$/.test(target)) errors.push({ field: `${f}.target`, code: 'required', message: tr('settings.menu_target_required') });
+      for (const [l, v] of Object.entries(it.translations ?? {})) {
+        if (!isLocale(l)) errors.push({ field: `${f}.translations.${l}`, code: 'invalid', message: tr('settings.invalid_locales') });
+        else if (typeof v !== 'string' || v.length > 60) errors.push({ field: `${f}.translations.${l}`, code: 'too_long', message: tr('settings.seo_too_long', { max: 60 }) });
+      }
+    });
+  }
+}
+
+function validateSettings(s: TenantSettings, timezone = 'UTC') {
   const errors: { field: string; code: string; message: string }[] = [];
   const pt = s.payment_terms;
   if (!['full', 'percent', 'fixed'].includes(pt.upfront)) errors.push({ field: 'payment_terms.upfront', code: 'invalid', message: tr('settings.invalid_upfront') });
@@ -87,7 +133,7 @@ function validateSettings(s: TenantSettings) {
   for (const [k, v] of Object.entries(s.accounting?.accounts ?? {}))
     if (!(ACCOUNT_KEYS as readonly string[]).includes(k) || typeof v !== 'string' || !v.trim() || v.length > 40) errors.push({ field: `accounting.accounts.${k}`, code: 'invalid', message: tr('error.field.account_code') });
   const lock = s.accounting.locked_until;
-  if (lock !== null && (typeof lock !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(lock) || Number.isNaN(Date.parse(lock)) || lock > new Date().toISOString().slice(0, 10)))
+  if (lock !== null && (typeof lock !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(lock) || Number.isNaN(Date.parse(lock)) || lock > localDate(new Date(), timezone)))
     errors.push({ field: 'accounting.locked_until', code: 'invalid', message: tr('error.field.lock_date') });
   if (!['manual', 'reserved', 'checked_out', 'closed'].includes(s.accounting.invoice_when)) errors.push({ field: 'accounting.invoice_when', code: 'invalid', message: tr('settings.invalid') });
   const cr = s.cart_reminders;
@@ -96,6 +142,14 @@ function validateSettings(s: TenantSettings) {
   if (typeof s.require_inspection_on_return !== 'boolean') errors.push({ field: 'require_inspection_on_return', code: 'invalid', message: tr('settings.invalid') });
   if (!['notify', 'reauthorize', 'convert_to_charge'].includes(s.deposit_expiry_policy)) errors.push({ field: 'deposit_expiry_policy', code: 'invalid', message: tr('settings.invalid_deposit_expiry_policy') });
   if (s.email_channel !== null && (typeof s.email_channel !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s.email_channel))) errors.push({ field: 'email_channel', code: 'invalid', message: tr('settings.invalid_email_channel') });
+  const dc = s.display_currencies;
+  if (!Array.isArray(dc.currencies) || dc.currencies.length > 10 || dc.currencies.some((c) => typeof c !== 'string' || !/^[A-Z]{3}$/.test(c)))
+    errors.push({ field: 'display_currencies.currencies', code: 'invalid', message: tr('settings.invalid_currencies') });
+  for (const [c, r] of Object.entries(dc.rates ?? {}))
+    if (!/^[A-Z]{3}$/.test(c) || typeof r !== 'number' || !(r > 0) || r > 1_000_000) errors.push({ field: `display_currencies.rates.${c}`, code: 'invalid', message: tr('settings.invalid_rate') });
+  if (typeof dc.source !== 'string' || !/^[a-z0-9-]{1,64}$/.test(dc.source)) errors.push({ field: 'display_currencies.source', code: 'invalid', message: tr('settings.invalid') });
+  for (const [l, v] of Object.entries(s.tax_display ?? {}))
+    if (!isLocale(l) || (v !== 'incl' && v !== 'excl')) errors.push({ field: `tax_display.${l}`, code: 'invalid', message: tr('settings.invalid') });
   for (const k of ['sms_channel', 'whatsapp_channel'] as const) {
     if (s[k] !== null && (typeof s[k] !== 'string' || !/^[a-z0-9-]{1,64}$/.test(s[k]))) errors.push({ field: k, code: 'invalid', message: tr('settings.invalid_text_channel') });
   }
@@ -107,14 +161,29 @@ function validateSettings(s: TenantSettings) {
   if (!Array.isArray(sf.locales) || !sf.locales.length || !sf.locales.every(isLocale)) errors.push({ field: 'storefront.locales', code: 'invalid', message: tr('settings.invalid_locales') });
   else if (!(sf.locales as string[]).includes(sf.default_locale)) errors.push({ field: 'storefront.default_locale', code: 'not_enabled', message: tr('settings.default_locale_not_enabled') });
   for (const l of Object.keys(s.terms.translations ?? {})) if (!isLocale(l)) errors.push({ field: `terms.translations.${l}`, code: 'invalid', message: tr('settings.invalid_locales') });
+  checkSeo(s.seo, errors);
+  checkNavigation(s.navigation, errors);
+  const ss = s.self_service;
+  if (!['request', 'self'].includes(ss.cancel)) errors.push({ field: 'self_service.cancel', code: 'invalid', message: tr('settings.invalid') });
+  if (!['off', 'request', 'self'].includes(ss.change_dates)) errors.push({ field: 'self_service.change_dates', code: 'invalid', message: tr('settings.invalid') });
+  for (const k of ['cancel_until_hours', 'change_until_hours'] as const)
+    if (!Number.isInteger(ss[k]) || ss[k] < 0 || ss[k] > 720) errors.push({ field: `self_service.${k}`, code: 'out_of_range', message: tr('settings.invalid_hours_before') });
+  const tiers = s.cancellation_policy;
+  if (!Array.isArray(tiers) || !tiers.length || tiers.length > 8) errors.push({ field: 'cancellation_policy', code: 'invalid', message: tr('settings.invalid_tiers') });
+  else tiers.forEach((x, i) => {
+    if (!Number.isInteger(x?.hours_before) || x.hours_before < 0 || x.hours_before > 8760) errors.push({ field: `cancellation_policy.${i}.hours_before`, code: 'invalid', message: tr('settings.invalid_hours_before') });
+    if (!Number.isInteger(x?.refund_pct) || x.refund_pct < 0 || x.refund_pct > 100) errors.push({ field: `cancellation_policy.${i}.refund_pct`, code: 'invalid', message: tr('settings.invalid_percent_0_100') });
+  });
   if (errors.length) throw invalid(tr('settings.invalid'), errors);
 }
 
 export async function updateSettings(ctx: Ctx, patch: Record<string, unknown>): Promise<TenantSettings> {
   // Locked while merging: two saves of different settings at once must both stay.
-  const t = (await one<{ settings: Record<string, unknown> | null }>(ctx, `SELECT settings FROM tenants WHERE id = $1 FOR UPDATE`, [ctx.tenantId]))!;
+  // Header and footer HTML and CSS go through PUT /storefront_code, which cleans them.
+  if (patch && typeof patch === 'object' && 'storefront_code' in patch) throw invalid(tr('settings.invalid'), [{ field: 'storefront_code', code: 'not_here', message: tr('settings.storefront_code_elsewhere') }]);
+  const t = (await one<{ settings: Record<string, unknown> | null; timezone: string }>(ctx, `SELECT settings, timezone FROM tenants WHERE id = $1 FOR UPDATE`, [ctx.tenantId]))!;
   const merged = deepMerge(t.settings ?? {}, patch);
-  validateSettings(resolveSettings(merged));
+  validateSettings(resolveSettings(merged), t.timezone);
   // The shop's own language (emails, documents, staff messages) follows the storefront default.
   const resolved = resolveSettings(merged);
   await exec(ctx, `UPDATE tenants SET settings = $2, locale = $3 WHERE id = $1`, [ctx.tenantId, json(merged), resolved.storefront.default_locale]);
@@ -138,7 +207,17 @@ export async function getLocation(ctx: Ctx, id?: string | null) {
   return def;
 }
 
-const LOCATION_COLS = { name: {}, address: { json: true }, timezone: {}, opening_hours: { json: true }, is_default: {}, phone: {}, email: {}, tax_ids: { json: true }, tax_profile_id: {} };
+const LOCATION_COLS = { name: {}, address: { json: true }, timezone: {}, opening_hours: { json: true }, delivery_windows: { json: true }, is_default: {}, phone: {}, email: {}, tax_ids: { json: true }, tax_profile_id: {} };
+
+const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+/** Delivery windows: per weekday up to six times "HH:MM" to "HH:MM", each ending after it starts. */
+function checkWindows(w: unknown, errors: FieldError[]) {
+  if (typeof w !== 'object' || Array.isArray(w)) return errors.push({ field: 'delivery_windows', code: 'invalid', message: msg('error.field.delivery_windows') });
+  for (const [day, list] of Object.entries(w as Record<string, unknown>)) {
+    const ok = WEEKDAYS.includes(day) && Array.isArray(list) && list.length <= 6 && list.every((x) => Array.isArray(x) && x.length === 2 && x.every((t) => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)) && x[0] < x[1]);
+    if (!ok) errors.push({ field: `delivery_windows.${day}`, code: 'invalid', message: msg('error.field.delivery_windows') });
+  }
+}
 
 /** Field-by-field checks for a location's time zone, email and tax profile. */
 async function checkLocation(ctx: Ctx, input: Record<string, any>) {
@@ -147,6 +226,7 @@ async function checkLocation(ctx: Ctx, input: Record<string, any>) {
   if (input.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) errors.push({ field: 'email', code: 'invalid', message: msg('error.field.invalid_email') });
   if (input.tax_profile_id && !(await one(ctx, `SELECT 1 FROM tax_profiles WHERE id = $1 AND deleted_at IS NULL`, [input.tax_profile_id])))
     errors.push({ field: 'tax_profile_id', code: 'not_found', message: msg('error.field.unknown_tax_profile') });
+  if (input.delivery_windows != null) checkWindows(input.delivery_windows, errors);
   if (errors.length) throw invalid(msg('error.check_the_location'), errors);
 }
 
@@ -169,9 +249,9 @@ export async function createLocation(ctx: Ctx, raw: Record<string, any>) {
   const row = (
     await many(
       ctx,
-      `INSERT INTO locations (id, tenant_id, name, address, timezone, opening_hours, is_default, phone, email, tax_ids, tax_profile_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-      [newId('loc'), ctx.tenantId, input.name, json(input.address ?? {}), tz, json(input.opening_hours ?? DEFAULT_OPENING_HOURS), isDefault, input.phone ?? null, input.email ?? null, json(input.tax_ids ?? []), input.tax_profile_id ?? null],
+      `INSERT INTO locations (id, tenant_id, name, address, timezone, opening_hours, delivery_windows, is_default, phone, email, tax_ids, tax_profile_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      [newId('loc'), ctx.tenantId, input.name, json(input.address ?? {}), tz, json(input.opening_hours ?? DEFAULT_OPENING_HOURS), json(input.delivery_windows ?? {}), isDefault, input.phone ?? null, input.email ?? null, json(input.tax_ids ?? []), input.tax_profile_id ?? null],
     )
   )[0];
   await audit(ctx, { entity_type: 'location', entity_id: row.id, action: 'create', after: row });
@@ -264,7 +344,15 @@ export async function listApiKeys(ctx: Ctx) {
 
 export async function createApiKey(ctx: Ctx, input: { name: string; kind: 'secret' | 'publishable'; scopes?: string[] }) {
   const gen = generateApiKey(input.kind, ctx.config.livemode);
-  const scopes = input.kind === 'publishable' ? ['storefront'] : input.scopes?.length ? input.scopes : ['*'];
+  // A key can do at most what its creator can: no key with more rights than the person making it.
+  const mine = permissionsFor(ctx.actor);
+  const wanted = input.scopes?.length ? [...new Set(input.scopes)] : mine.includes('*') ? ['*'] : [...mine];
+  const errors = wanted
+    .map((s, i) => (!(API_KEY_SCOPES as readonly string[]).includes(s) ? { i, code: 'unknown' } : s === '*' ? (mine.includes('*') ? null : { i, code: 'too_wide' }) : can(ctx.actor, s as Permission) ? null : { i, code: 'too_wide' }))
+    .filter((e): e is { i: number; code: string } => !!e)
+    .map((e) => ({ field: `scopes[${e.i}]`, code: e.code, message: msg(e.code === 'unknown' ? 'error.unknown_scope' : 'error.scope_beyond_yours') }));
+  if (input.kind === 'secret' && errors.length) throw invalid(msg('error.scope_beyond_yours'), errors);
+  const scopes = input.kind === 'publishable' ? ['storefront'] : wanted;
   const row = (
     await many(
       ctx,
@@ -342,8 +430,19 @@ export async function inviteUser(ctx: Ctx, input: { email: string; name?: string
   return getUser(ctx, user.id);
 }
 
+/** Owners are changed by owners only: an admin cannot demote, remove, lock out or reset one. */
+function guardOwner(ctx: Ctx, target: { role: string | null }) {
+  if (target.role === 'owner' && ctx.actor.role !== 'owner' && ctx.actor.type !== 'system') throw new AppError('forbidden', 403, msg('error.only_an_owner_can_change_an_owner'));
+}
+
+/** A staff account that also belongs to another shop: this shop leaves its name and password alone. */
+async function inOtherShops(ctx: Ctx, userId: string) {
+  return (await one<{ yes: boolean }>(ctx, `SELECT openrent_user_in_other_shops($1, $2) AS yes`, [userId, ctx.tenantId]))?.yes === true;
+}
+
 export async function updateMember(ctx: Ctx, userId: string, patch: { role?: string; name?: string; locale?: string }) {
   const before = await getUser(ctx, userId);
+  guardOwner(ctx, before);
   if (patch.role) {
     if (patch.role === 'owner' && ctx.actor.role !== 'owner' && ctx.actor.type !== 'system') throw new AppError('forbidden', 403, msg('error.only_an_owner_can_add_another_owner'));
     if (before.role === 'owner' && patch.role !== 'owner') await keepAnOwner(ctx, userId);
@@ -351,7 +450,7 @@ export async function updateMember(ctx: Ctx, userId: string, patch: { role?: str
     const role = await resolveRole(ctx, patch.role);
     await exec(ctx, `UPDATE memberships SET role = $2, role_id = $3 WHERE user_id = $1`, [userId, role.role, role.role_id]);
   }
-  if (patch.name !== undefined || patch.locale !== undefined) {
+  if ((patch.name !== undefined || patch.locale !== undefined) && !(await inOtherShops(ctx, userId))) {
     await exec(ctx, `UPDATE users SET name = coalesce($2, name), locale = coalesce($3, locale) WHERE id = $1`, [userId, patch.name ?? null, patch.locale ?? null]);
   }
   const after = await getUser(ctx, userId);
@@ -361,6 +460,7 @@ export async function updateMember(ctx: Ctx, userId: string, patch: { role?: str
 
 export async function removeMember(ctx: Ctx, userId: string) {
   const u = await getUser(ctx, userId);
+  guardOwner(ctx, u);
   if (u.role === 'owner') await keepAnOwner(ctx, userId);
   await exec(ctx, `DELETE FROM memberships WHERE user_id = $1`, [userId]);
   await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND tenant_id = $2`, [userId, ctx.tenantId]);
@@ -371,6 +471,7 @@ export async function removeMember(ctx: Ctx, userId: string) {
 export async function disableMember(ctx: Ctx, userId: string) {
   const u = await getUser(ctx, userId);
   if (ctx.actor.id === userId) throw new AppError('cannot_disable_self', 409, msg('error.cannot_disable_yourself'));
+  guardOwner(ctx, u);
   if (u.role === 'owner') await keepAnOwner(ctx, userId);
   await exec(ctx, `UPDATE memberships SET disabled_at = coalesce(disabled_at, now()) WHERE user_id = $1`, [userId]);
   await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`, [userId, ctx.tenantId]);
@@ -396,8 +497,15 @@ export async function sendAccessLink(ctx: Ctx, userId: string, kind: 'invite' | 
   const u = await getUser(ctx, userId);
   if (u.status === 'disabled') throw new AppError('member_disabled', 409, msg('error.member_disabled'));
   if (kind === 'reset_password') {
-    await exec(ctx, `UPDATE users SET password_hash = NULL WHERE id = $1`, [userId]);
-    await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    guardOwner(ctx, u);
+    // Someone who also works for another shop keeps their password and their sessions there: this
+    // shop only ends its own sessions and sends a sign-in link.
+    if (await inOtherShops(ctx, userId)) {
+      await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`, [userId, ctx.tenantId]);
+    } else {
+      await exec(ctx, `UPDATE users SET password_hash = NULL WHERE id = $1`, [userId]);
+      await exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    }
   }
   const { createLoginToken } = await import('../auth/index.ts');
   const link = await createLoginToken(ctx.db, u.email, INVITE_MINUTES);
@@ -477,6 +585,14 @@ export async function runSetup(db: Queryable, input: SetupInput, opts: { livemod
     `INSERT INTO api_keys (id, tenant_id, name, kind, key_hash, prefix, scopes) VALUES ($1,$2,'Storefront','publishable',$3,$4,'{storefront}')`,
     [newId('key'), tenantId, pk.hash, pk.prefix],
   );
+  // Two drafts to start from: where the shop is, and a contact form (built-in sections of the default theme).
+  const locale = input.tenant.locale ?? 'en';
+  for (const [key, section] of [['locations', 'plugin:openrent:locations'], ['contact', 'plugin:openrent:contact']] as const) {
+    const title = msg(`pages.default.${key}`, {}, locale);
+    await db.query(`INSERT INTO storefront_pages (id, tenant_id, slug, status, title, sections) VALUES ($1,$2,$3,'draft',$4,$5)`, [
+      newId('pag'), tenantId, slugify(title) === 'shop' ? key : slugify(title), title, json({ default: [{ id: `${key}-1`, type: section, settings: {}, blocks: [] }] }),
+    ]);
+  }
   await db.query(
     `INSERT INTO audit_log (id, tenant_id, actor_type, actor_id, entity_type, entity_id, action, diff) VALUES ($1,$2,'system',$3,'tenant',$2,'setup','{}')`,
     [newId('aud'), tenantId, user.id],
@@ -489,6 +605,23 @@ export async function storefrontKeyFor(db: Queryable, tenantId: string): Promise
   return r.rows[0] ? { id: r.rows[0].id, hash: r.rows[0].key_hash } : null;
 }
 
+/**
+ * Self-serve sign-up (managed cloud): a new shop with its owner, like first-run setup, for an email that
+ * has no account yet. The slug gets a number when it is taken.
+ */
+export async function runSignup(db: Queryable, input: SetupInput, opts: { livemode: boolean; limits: object }) {
+  // An existing account signs in instead: sign-up must not become a way around its second factor.
+  if ((await db.query(`SELECT 1 FROM users WHERE lower(email) = lower($1)`, [input.owner.email])).rowCount) {
+    throw invalid(msg('error.signup_account_exists'), [{ field: 'owner.email', code: 'account_exists', message: msg('error.signup_account_exists') }]);
+  }
+  const base = slugify(input.tenant.slug ?? input.tenant.name) || 'shop';
+  let slug = base;
+  for (let i = 2; (await db.query(`SELECT 1 FROM tenants WHERE slug = $1`, [slug])).rowCount; i++) slug = `${base}-${i}`;
+  const out = await runSetup(db, { ...input, tenant: { ...input.tenant, slug } }, { livemode: opts.livemode });
+  await db.query(`UPDATE tenants SET limits = $2 WHERE id = $1`, [out.tenantId, JSON.stringify(opts.limits)]);
+  return out;
+}
+
 export async function tenantBySlug(db: Queryable, slug: string) {
   const r = await db.query(`SELECT id, slug, name FROM tenants WHERE slug = $1`, [slug]);
   return r.rows[0] ?? null;
@@ -499,3 +632,5 @@ export const hashKey = sha256;
 export async function emitTenantEvent(ctx: Ctx, type: string, object: unknown) {
   return emit(ctx, type, { type: 'tenant', id: ctx.tenantId }, object);
 }
+
+export { assertWithinLimit, checkLimits, defaultLimits, listShops, resumeShop, setLimits, suspendShop, usageOf, type ShopLimits } from './operator.ts';

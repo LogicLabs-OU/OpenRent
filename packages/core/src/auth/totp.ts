@@ -9,6 +9,12 @@ export function totpUri(secret: string, account: string, issuer = 'OpenRent'): s
 }
 
 export function verifyTotp(secret: string, code: string): boolean {
+  return totpStep(secret, code) !== null;
+}
+
+/** The 30-second step a valid code belongs to (one step either side of now), or null. */
+export function totpStep(secret: string, code: string, now = Date.now()): number | null {
   const totp = new TOTP({ secret: Secret.fromBase32(secret), algorithm: 'SHA1', digits: 6, period: 30 });
-  return totp.validate({ token: code.replace(/\s/g, ''), window: 1 }) !== null;
+  const delta = totp.validate({ token: code.replace(/\s/g, ''), window: 1, timestamp: now });
+  return delta === null ? null : Math.floor(now / 30_000) + delta;
 }

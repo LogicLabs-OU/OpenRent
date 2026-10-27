@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, collectErrors, shot, signIn } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, collectErrors, shot, signIn } from './helpers.ts';
 
 test('staff add a custom domain, see the DNS records and remove it', async ({ page }) => {
   const errors = collectErrors(page);

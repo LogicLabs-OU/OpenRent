@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, collectErrors, shot, signIn } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, collectErrors, shot, signIn } from './helpers.ts';
 
 test('staff edit a document template with a live preview, then go back to the built-in one', async ({ page }) => {
   const errors = collectErrors(page);

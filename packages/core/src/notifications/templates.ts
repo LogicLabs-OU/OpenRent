@@ -157,6 +157,11 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     subject: '{{t "email.order_extended.subject" number=order.number}}',
     body: wrap(`${HI}<p>{{t "email.order_extended.body" number=order.number return=(datetime order.ends_at)}}</p>${ORDER_SUMMARY}${VIEW}`),
   },
+  order_rescheduled: {
+    audience: 'customer',
+    subject: '{{t "email.order_rescheduled.subject" number=order.number}}',
+    body: wrap(`${HI}<p>{{t "email.order_rescheduled.body" number=order.number start=(datetime order.starts_at) return=(datetime order.ends_at)}}</p>${ORDER_SUMMARY}${VIEW}`),
+  },
   extension_request_received: {
     audience: 'customer',
     subject: '{{t "email.extension_request_received.subject" number=order.number}}',
@@ -186,6 +191,26 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     audience: 'staff',
     subject: '{{t "email.staff_delivery_failed.subject" number=order.number customer=customer.name}}',
     body: wrap(`<p>{{t "email.staff_delivery_failed.body" number=order.number customer=customer.name}}</p>{{#if reason}}<p>{{t "email.reason" reason=reason}}</p>{{/if}}${ORDER_SUMMARY}`),
+  },
+  staff_customer_cancelled: {
+    audience: 'staff',
+    subject: '{{t "email.staff_customer_cancelled.subject" number=order.number customer=customer.name}}',
+    body: wrap(`<p>{{t "email.staff_customer_cancelled.body" customer=customer.name number=order.number}}</p>{{#if reason}}<p>{{t "email.reason" reason=reason}}</p>{{/if}}${ORDER_SUMMARY}<p><a href="{{admin_url}}">{{t "email.staff_open_order"}}</a></p>`),
+  },
+  staff_customer_rescheduled: {
+    audience: 'staff',
+    subject: '{{t "email.staff_customer_rescheduled.subject" number=order.number customer=customer.name}}',
+    body: wrap(`<p>{{t "email.staff_customer_rescheduled.body" customer=customer.name number=order.number start=(datetime order.starts_at) return=(datetime order.ends_at)}}</p>${ORDER_SUMMARY}<p><a href="{{admin_url}}">{{t "email.staff_open_order"}}</a></p>`),
+  },
+  staff_date_change_requested: {
+    audience: 'staff',
+    subject: '{{t "email.staff_date_change_requested.subject" number=order.number customer=customer.name}}',
+    body: wrap(`<p>{{t "email.staff_date_change_requested.body" customer=customer.name number=order.number}}</p>{{#if reason}}<p>{{t "email.reason" reason=reason}}</p>{{/if}}${ORDER_SUMMARY}<p><a href="{{admin_url}}">{{t "email.staff_extension_requested.link"}}</a></p>`),
+  },
+  staff_contact_message: {
+    audience: 'staff',
+    subject: '{{t "email.staff_contact_message.subject" name=name}}',
+    body: wrap(`<p>{{t "email.staff_contact_message.body" name=name email=email}}</p><p style="white-space:pre-wrap;border-left:3px solid #e5e7eb;padding-left:12px">{{message}}</p>{{#if consent}}<p>{{t "email.staff_contact_message.consent" text=consent}}</p>{{/if}}<p><a href="mailto:{{email}}">{{t "email.staff_contact_message.reply"}}</a></p>`),
   },
   staff_accounting_issue: {
     audience: 'staff',

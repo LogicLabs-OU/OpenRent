@@ -152,8 +152,16 @@ export async function tenantByHost(db: Ctx['db'], hostname: string): Promise<str
   return r.rows[0]?.tenant_id ?? null;
 }
 
-/** Base URL for links to the shop's storefront: the primary verified domain, else the installation's. */
+/**
+ * Base URL for links to the shop's storefront: the primary verified domain; else, on a multi-shop
+ * installation with shop subdomains, `{slug}.` that domain; else the installation's.
+ */
 export async function storefrontBase(ctx: Ctx): Promise<string> {
   const d = await one<{ hostname: string }>(ctx, `SELECT hostname FROM storefront_domains WHERE status = 'verified' ORDER BY is_primary DESC, verified_at LIMIT 1`);
-  return d ? `https://${d.hostname}` : ctx.config.storefrontUrl.replace(/\/$/, '');
+  if (d) return `https://${d.hostname}`;
+  const own = ctx.config.storefrontUrl.replace(/\/$/, '');
+  const wildcard = ctx.config.multiTenant ? ctx.config.storefrontDomain?.replace(/^\*\./, '') : null;
+  if (!wildcard) return own;
+  const t = await one<{ slug: string }>(ctx, `SELECT slug FROM tenants WHERE id = $1`, [ctx.tenantId]);
+  return t ? `${new URL(own).protocol}//${t.slug}.${wildcard}` : own;
 }

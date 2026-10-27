@@ -1,7 +1,7 @@
 import { format } from '@openrent/i18n';
 import type { TemplateName } from './types.ts';
 
-export const THEME_API_VERSION = '1.7.0';
+export const THEME_API_VERSION = '1.9.0';
 export const REQUIRED_TEMPLATES: TemplateName[] = ['index', 'collection', 'product', 'cart', 'checkout', 'order-confirmation', 'page', '404'];
 /** Templates a theme may leave out; the storefront then uses the default theme's (theme API 1.3). */
 export const OPTIONAL_TEMPLATES: TemplateName[] = ['account', 'account-login', 'search', 'sign'];
@@ -37,6 +37,24 @@ export interface ThemeManifest {
    * default settings, home layout, texts, CSS and assets. Shops install it at runtime.
    */
   extends?: string;
+  /**
+   * Places plugins may fill (theme API 1.8, FR-THM-12): `section.register` offers plugins' section
+   * types in the section editor (the theme renders them with the `section.plugin` slot);
+   * `checkout.extra_fields` shows plugins' checkout fields.
+   */
+  extension_points?: string[];
+}
+
+export const EXTENSION_POINTS = ['section.register', 'checkout.extra_fields'] as const;
+export type ExtensionPoint = (typeof EXTENSION_POINTS)[number];
+
+/** Section types plugins add carry this prefix: `plugin:<plugin id>:<type>`. */
+export const isPluginSection = (type: string) => type.startsWith('plugin:');
+
+/** The theme's own section types plus plugins' ones, when the theme takes them. */
+export function withPluginSections<T extends ThemeMeta>(t: T, plugin: SectionSchema[]): T {
+  if (!plugin.length || !t.manifest.extension_points?.includes('section.register')) return t;
+  return { ...t, sectionSchemas: [...(t.sectionSchemas ?? []), ...plugin] };
 }
 
 /** A home page section type, from `sections/<type>.json` (theme API 1.3). */
@@ -72,6 +90,8 @@ export interface ThemeMeta {
   /** Section types (`sections/*.json`) and the default home layout (`config/sections_data.json`). */
   sectionSchemas?: SectionSchema[];
   sectionsData?: SectionInstance[];
+  /** `widget/widget.css` (theme API 1.8): the embeddable widget's look, with `{{ … }}` placeholders. */
+  widgetCss?: string;
 }
 
 export interface ThemeModule extends ThemeMeta {
@@ -99,6 +119,7 @@ export function validateThemeMeta(t: ThemeMeta): string[] {
   if (m?.id && !/^[a-z0-9-]+$/.test(m.id)) errors.push('theme.json: id must be lowercase letters, digits and dashes');
   if (m?.compat && !satisfies(THEME_API_VERSION, m.compat)) errors.push(`theme requires theme API ${m.compat}; this storefront provides ${THEME_API_VERSION}`);
   if (!t.locales?.en) errors.push('missing locales/en.json');
+  for (const p of m?.extension_points ?? []) if (!(EXTENSION_POINTS as readonly string[]).includes(p)) errors.push(`theme.json: unknown extension point "${p}"`);
   const ids = new Set<string>();
   for (const group of t.settingsSchema ?? []) for (const s of group.settings) {
     if (ids.has(s.id)) errors.push(`settings_schema.json: duplicate setting id "${s.id}"`);
@@ -328,4 +349,41 @@ export function translator(t: ThemeMeta, locale: string, overrides: Record<strin
     // ICU plurals ({count, plural, one {…} other {…}}) and {params}, by the language's plural rules.
     return format(msg, params, locale);
   };
+}
+
+/** A setting value that may go into CSS: a colour, a number or a plain word, nothing that can break out. */
+const SAFE_CSS_VALUE = /^(#[0-9a-f]{3,8}|-?\d+(\.\d+)?|[a-z][a-z-]{0,30}|(rgb|rgba|hsl|hsla|oklch)\([\d.,%\s/]+\))$/i;
+const HEX = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** Black or white, whichever reads better on a hex colour (WCAG contrast). */
+export function contrastColor(hex: string): string {
+  const full = hex.length === 4 ? `#${[...hex.slice(1)].map((c) => c + c).join('')}` : hex;
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(full.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const l = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return 1.05 / (l + 0.05) >= (l + 0.05) / 0.05 ? '#ffffff' : '#0a0a0a';
+}
+
+/**
+ * Fills a theme's widget CSS (FR-THM-10, theme API 1.8). `{{ settings.accent | branding.primary_color | #0891b2 }}`
+ * takes the first value that is set and safe for CSS; `{{ contrast: … }}` gives black or white text for it.
+ * A placeholder with no usable value removes its whole declaration.
+ */
+export function fillWidgetCss(template: string, data: { settings: Record<string, unknown>; branding: Record<string, unknown> }): string {
+  const pick = (expr: string) => {
+    for (const part of expr.split('|').map((p) => p.trim())) {
+      const [scope, key] = part.split('.', 2) as [string, string | undefined];
+      const raw = key && (scope === 'settings' || scope === 'branding') ? data[scope][key] : key ? undefined : part;
+      const v = typeof raw === 'number' ? String(raw) : typeof raw === 'string' ? raw.trim() : '';
+      if (v && SAFE_CSS_VALUE.test(v)) return v;
+    }
+    return null;
+  };
+  const filled = template.replace(/\{\{\s*(contrast:)?([^}]*)\}\}/g, (_m, contrast: string | undefined, expr: string) => {
+    const v = pick(expr);
+    if (v === null) return '\uE000';
+    return contrast ? (HEX.test(v) ? contrastColor(v) : '\uE000') : v;
+  });
+  // Declarations that lost their value go; the rest stays as the theme wrote it.
+  return filled.replace(/[^;{}]*\uE000[^;{}]*;?/g, '').replace(/<\/style/gi, '');
 }

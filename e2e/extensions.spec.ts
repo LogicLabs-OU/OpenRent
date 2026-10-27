@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
 
 test('staff manage plugins, email and the storefront theme', async ({ page, context }) => {
   const errors = collectErrors(page);
@@ -8,7 +8,7 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   // Plugins: the first-party plugins are listed with their state.
   await page.getByRole('link', { name: 'Plugins' }).first().click();
   // The built-in plugins plus the e2e fixture plugin (e2e/fixtures/plugins.json).
-  await expect(page.getByTestId('plugin-card')).toHaveCount(19);
+  await expect(page.getByTestId('plugin-card')).toHaveCount(24);
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'SMTP email' })).toBeVisible();
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'S3 file storage' })).toBeVisible();
   await shot(page, 'admin-plugins');

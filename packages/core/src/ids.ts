@@ -8,7 +8,7 @@ export type IdPrefix =
   | 'prod' | 'var' | 'sti' | 'adj' | 'bun' | 'bnc' | 'cus' | 'cpn' | 'ord' | 'oln' | 'olu' | 'oev'
   | 'dwn' | 'alc' | 'doc' | 'dtp' | 'ppr' | 'pay' | 'pin' | 'pev' | 'dep' | 'dmg' | 'ntp' | 'ntf'
   | 'whe' | 'evt' | 'whd' | 'cs' | 'plg' | 'req' | 'fil' | 'pim' | 'imp' | 'prq' | 'cct' | 'mtk' | 'stk' | 'sts'
-  | 'cltk' | 'cses' | 'creq' | 'cal' | 'att' | 'cfd' | 'rci' | 'stn' | 'job' | 'dom' | 'cth' | 'prl' | 'fee' | 'xreq' | 'dlv' | 'ovb' | 'trf' | 'trl' | 'mtu' | 'itp' | 'ins' | 'mtr' | 'svi' | 'sev' | 'srp' | 'sgr' | 'sig' | 'rol' | 'sso' | 'icn' | 'itk' | 'ace' | 'acl' | 'ext' | 'svr' | 'imb';
+  | 'cltk' | 'cses' | 'creq' | 'cal' | 'att' | 'cfd' | 'rci' | 'stn' | 'job' | 'dom' | 'cth' | 'prl' | 'fee' | 'xreq' | 'dlv' | 'ovb' | 'trf' | 'trl' | 'mtu' | 'itp' | 'ins' | 'mtr' | 'svi' | 'sev' | 'srp' | 'sgr' | 'sig' | 'rol' | 'sso' | 'icn' | 'itk' | 'ace' | 'acl' | 'ext' | 'svr' | 'imb' | 'pag' | 'bpr' | 'cad';
 
 /** Prefixed ULID (`ord_01J...`). Opaque to clients (PRD §5.1). */
 export function newId(prefix: IdPrefix): string {

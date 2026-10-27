@@ -102,13 +102,17 @@ export class Router {
       url: `${this.prefix}${url}`,
       schema,
       config: { permission: opts.permission ?? null, ...(opts.rateLimit ? { rateLimit: opts.rateLimit } : {}) },
+      // Who may call it is settled before the body is even validated: callers without the right learn nothing about it.
+      preValidation: async (req: FastifyRequest) => {
+        if (opts.public) return;
+        await withLocale(req.locale, async () => {
+          if (!req.auth?.tenantId) throw new AppError('unauthorized', 401, serverT('error.sign_in_or_send_an_api_key'));
+          if (opts.permission) assertCan(req.auth.actor, opts.permission);
+        });
+      },
       // Server messages (errors, emails queued here) follow the request's language.
       handler: (req: FastifyRequest, reply: FastifyReply) => withLocale(req.locale, async () => {
         const auth = req.auth;
-        if (!opts.public) {
-          if (!auth?.tenantId) throw new AppError('unauthorized', 401, serverT('error.sign_in_or_send_an_api_key'));
-          if (opts.permission) assertCan(auth.actor, opts.permission);
-        }
         const run = async () => {
           if (opts.tx === 'none') return handler(null as unknown as Ctx, req as Req, reply);
           return withTenant(deps.db, auth!.tenantId!, (client) => handler(makeCtx(deps, client, req), req as Req, reply), { isolation: opts.isolation });

@@ -28,6 +28,7 @@
     type: 'text' | 'secret' | 'boolean' | 'select' | 'number';
     options?: string[];
     required?: boolean;
+    default?: string | number | boolean;
     help?: string;
   }
   interface Plugin {
@@ -83,7 +84,7 @@
     editing = p;
     errors = {};
     // Secrets start empty: typing replaces the stored value, leaving them empty keeps it.
-    form = Object.fromEntries(p.settings.map((f) => [f.key, f.type === 'secret' ? '' : (p.values[f.key] ?? (f.type === 'boolean' ? false : ''))]));
+    form = Object.fromEntries(p.settings.map((f) => [f.key, f.type === 'secret' ? '' : (p.values[f.key] ?? f.default ?? (f.type === 'boolean' ? false : ''))]));
   }
 
   async function save(e: SubmitEvent) {

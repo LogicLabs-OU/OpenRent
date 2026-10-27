@@ -26,6 +26,9 @@ export function registerPortal(r: Router) {
   r.post('/portal/auth/verify', { tags: P, summary: 'Exchange the token from the sign-in link for a session token (send it as X-Customer-Session)', body: Type.Object({ token: Type.String({ minLength: 16, maxLength: 200 }) }), rateLimit: { max: 10, timeWindow: '1 minute' }, status: 200 }, async (ctx, req) =>
     accounts.verifyLogin(ctx, req.body.token),
   );
+  r.post('/portal/invoices/:id/payment_intents', { tags: P, summary: 'Pay a monthly invoice as a whole: one payment for what its bookings still owe, shared out over them when it succeeds', params: Type.Object({ id: Id }), rateLimit: { max: 20, timeWindow: '1 minute' }, status: 200 }, async (ctx, req) =>
+    portal.payInvoice(ctx, await signedIn(ctx, req), req.params.id),
+  );
   r.post('/portal/auth/logout', { tags: P, summary: 'End the session', status: 200 }, async (ctx, req) => accounts.logout(ctx, token(req)));
 
   r.get('/portal/me', { tags: P, summary: 'Profile, account terms, what is owed, insurance documents and signatures waiting' }, async (ctx, req) => portal.me(ctx, await signedIn(ctx, req)));

@@ -2,24 +2,28 @@
   import { onMount } from 'svelte';
   import { Button } from '@openrent/ui/button';
   import { t } from './i18n/index.ts';
+  import { allowAnalytics } from './analytics.ts';
 
   /**
    * Plugins' storefront scripts (FR-PLG-5). "Necessary" ones load at once; analytics and marketing ones
-   * only after the visitor agrees, and the choice is kept for a year.
+   * only after the visitor agrees, and the choice is kept for a year. Analytics events wait for the same consent.
    */
-  type Script = { plugin: string; src: string; consent: 'necessary' | 'analytics' | 'marketing' };
+  type Script = { plugin: string; src: string; consent: 'necessary' | 'analytics' | 'marketing'; attrs?: Record<string, string> };
   let { scripts, locale }: { scripts: Script[]; locale: string } = $props();
   const COOKIE = 'or_consent';
   let choice = $state<string | null>(null);
   const optional = $derived(scripts.some((s) => s.consent !== 'necessary'));
 
   function load(allowed: Set<string>) {
+    // Analytics events (FR-SF-8) flow only once the visitor allows them; vendor queues are set up first.
+    if (allowed.has('analytics')) allowAnalytics(scripts.filter((s) => allowed.has(s.consent)));
     for (const s of scripts) {
       if (!allowed.has(s.consent) || document.querySelector(`script[data-or-plugin][src="${CSS.escape(s.src)}"]`)) continue;
       const el = document.createElement('script');
       el.src = s.src;
       el.async = true;
       el.dataset.orPlugin = s.plugin;
+      for (const [k, v] of Object.entries(s.attrs ?? {})) el.setAttribute(k, v);
       document.head.appendChild(el);
     }
   }

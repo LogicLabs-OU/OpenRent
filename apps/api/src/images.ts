@@ -1,4 +1,7 @@
 import sharp, { type Metadata } from 'sharp';
+
+/** Larger images would take gigabytes to decode: about 40 megapixels (e.g. 7700 × 5200) is plenty for rental photos. */
+const MAX_PIXELS = 40_000_000;
 import { AppError, files, serverT, type Ctx } from '@openrent/core';
 
 /** Formats accepted for photos. HEIC is left out: the prebuilt sharp cannot decode it. */
@@ -15,7 +18,7 @@ const VARIANTS = [
 export async function storeImage(ctx: Ctx, input: { kind: 'image' | 'photo'; filename: string; body: Buffer; ownerType?: string | null; ownerId?: string | null }) {
   let meta: Metadata;
   try {
-    meta = await sharp(input.body).metadata();
+    meta = await sharp(input.body, { limitInputPixels: MAX_PIXELS }).metadata();
   } catch {
     throw new AppError('unsupported_media_type', 415, serverT('images.unsupported'));
   }
@@ -34,7 +37,7 @@ export async function storeImage(ctx: Ctx, input: { kind: 'image' | 'photo'; fil
   });
   const base = input.filename.replace(/\.[^.]+$/, '');
   for (const v of VARIANTS) {
-    const { data, info } = await sharp(input.body).rotate().resize({ width: v.width, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer({ resolveWithObject: true });
+    const { data, info } = await sharp(input.body, { limitInputPixels: MAX_PIXELS }).rotate().resize({ width: v.width, withoutEnlargement: true }).webp({ quality: 80 }).toBuffer({ resolveWithObject: true });
     await files.putFile(ctx, { kind: v.kind, ownerType: 'file', ownerId: original.id, filename: `${base}-${v.width}.webp`, contentType: 'image/webp', body: data, width: info.width, height: info.height });
   }
   return original;

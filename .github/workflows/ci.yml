@@ -21,11 +21,16 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Known advisories in production dependencies; accepted lower ones are listed in docs/security/findings.md.
+      - run: pnpm audit --prod --audit-level=high
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm check:i18n
       - run: pnpm check:hardcoded
       - run: pnpm check:themes
+      # The committed OpenAPI document matches the code, and API v1 stays compatible.
+      - run: pnpm openapi && git diff --exit-code packages/api-spec packages/sdk/src/types.ts
+      - run: pnpm check:api
       - run: pnpm test:scripts
       - run: pnpm test
       - run: pnpm build
@@ -116,6 +121,8 @@ jobs:
           # First requests compile the pages; warm them so test timeouts measure the app, not the bundler.
           for u in http://localhost:7072/ http://localhost:7071/admin/login http://localhost:7073/; do curl -s -o /dev/null "$u"; done
       - run: pnpm e2e
+      # The shared components: every story checked with axe.
+      - run: pnpm --filter @openrent/ui build-storybook && pnpm storybook:a11y
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -123,6 +130,40 @@ jobs:
           path: |
             test-results/
             *.log
+
+  helm:
+    name: Helm chart (lint, kind install, upgrade)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/openrent --set database.url=postgres://u:p@db:5432/openrent
+      - run: helm lint deploy/helm/openrent -f deploy/helm/ci/values.yaml --set ingress.enabled=true,caddy.enabled=false
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: openrent
+      - name: Build the images and load them into kind
+        run: |
+          for t in api worker storefront; do
+            docker build --target $t -t ghcr.io/openrent/$t:ci .
+            kind load docker-image ghcr.io/openrent/$t:ci --name openrent
+          done
+      - name: Start PostgreSQL
+        run: kubectl apply -f deploy/helm/ci/postgres.yaml && kubectl rollout status statefulset/postgres --timeout=180s
+      - name: Install (the migration Job runs first)
+        run: helm install rent deploy/helm/openrent -f deploy/helm/ci/values.yaml --wait --timeout 10m
+      - run: helm test rent --timeout 5m --logs
+      - name: Upgrade (migrations again, generated keys kept)
+        run: |
+          before=$(kubectl get secret rent-openrent-secrets -o jsonpath='{.data.OPENRENT_ENCRYPTION_KEY}')
+          helm upgrade rent deploy/helm/openrent -f deploy/helm/ci/values.yaml --wait --timeout 10m
+          test "$before" = "$(kubectl get secret rent-openrent-secrets -o jsonpath='{.data.OPENRENT_ENCRYPTION_KEY}')"
+          helm test rent --timeout 5m --logs
+      - if: failure()
+        run: |
+          kubectl get pods,jobs,svc -o wide
+          kubectl describe pods
+          kubectl logs -l app.kubernetes.io/instance=rent --all-containers --tail=200
 
   docker:
     name: Docker image builds

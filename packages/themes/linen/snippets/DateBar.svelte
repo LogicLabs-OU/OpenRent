@@ -19,7 +19,7 @@
 
   const rt = getRuntime();
   const shop = rt.shop;
-  const tz = shop.locations[0]?.timezone ?? shop.tenant.timezone;
+  const tz = (shop.location ?? shop.locations[0])?.timezone ?? shop.tenant.timezone;
   const initial = (iso: string | null) => (iso ? parseDate(rt.zone.localDate(iso)) : undefined);
 
   let range = $state<DateRange>({ start: initial(shop.dates.from), end: initial(shop.dates.to) });
@@ -101,10 +101,17 @@
     onsubmit={apply}
     aria-label={rt.t('dates.hint')}
   >
-    {#if variant === 'bar'}<p class="col-span-2 hidden shrink-0 items-center gap-2.5 text-[0.8125rem] font-medium text-[var(--ln-accent)] xl:flex">
+    {#if variant === 'bar'}<p
+        class="col-span-2 hidden shrink-0 items-center gap-2.5 text-[0.8125rem] font-medium text-[var(--ln-accent)] xl:flex"
+      >
         {rt.t('dates.bar')}
       </p>{/if}
-    <div class={['col-span-2 flex flex-col gap-1.5', variant === 'bar' ? 'md:w-64 lg:flex-row lg:items-center lg:gap-2 lg:w-auto' : '']}>
+    <div
+      class={[
+        'col-span-2 flex flex-col gap-1.5',
+        variant === 'bar' ? 'md:w-64 lg:flex-row lg:items-center lg:gap-2 lg:w-auto' : '',
+      ]}
+    >
       <Label for="or-dates" class={variant === 'bar' ? 'lg:sr-only' : 'text-[0.8125rem] text-[#666]'}
         >{rt.t('dates.pickup')} – {rt.t('dates.return')}</Label
       >
@@ -172,11 +179,15 @@
       </NativeSelect>
     </div>
     <div class={['col-span-2 flex gap-2', variant === 'bar' && 'lg:ml-auto']}>
-      <Button type="submit" class={cn(btn, 'flex-1 md:flex-none')} disabled={busy}>{rt.t('dates.apply')}</Button>
+      <Button type="submit" class={cn(btn, 'flex-1 md:flex-none')} disabled={busy}
+        >{rt.t('dates.apply')}</Button
+      >
       {#if shop.dates.from}<Button type="button" variant="ghost" class="h-11" onclick={clear}
           ><XIcon />{rt.t('dates.clear')}</Button
         >{/if}
     </div>
     {#if error}<p class="text-destructive col-span-2 w-full text-sm" role="alert">{error}</p>{/if}
   </form>
+  <!-- Where the visitor rents from, when the shop has several locations (theme API 1.9). -->
+  <rt.components.Slot name="dates.after" />
 </div>

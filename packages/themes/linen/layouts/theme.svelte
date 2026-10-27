@@ -23,7 +23,7 @@
   const rt = getRuntime();
   const shop = $derived(rt.shop);
   const css = $derived(linenCss(shop.settings));
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
   const notice = $derived(String(shop.settings.announcement ?? '').trim());
   const noticeText = $derived(String(shop.settings.announcement_text ?? '').trim());
   const noticeLink = $derived(String(shop.settings.announcement_link ?? '').trim());
@@ -40,6 +40,8 @@
   const cartLabel = $derived(shop.cartCount ? `${rt.t('nav.cart')} (${shop.cartCount})` : rt.t('nav.cart'));
   let menu = $state(false);
   const cats = $derived(shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })));
+  // The shop's own header menu (theme API 1.9) takes the place of the categories when it has links.
+  const own = $derived(shop.navigation?.header ?? []);
   const pill =
     'flex h-9 items-center gap-1 rounded-full px-3.5 text-[0.9375rem] whitespace-nowrap text-[#202020] transition-colors outline-none hover:bg-white focus-visible:ring-3 focus-visible:ring-[var(--ln-accent)]/40 aria-[current=page]:bg-white data-[state=open]:bg-white';
   const footLink = 'w-fit text-[0.9375rem] text-[#a8a8a8] transition-colors hover:text-white';
@@ -59,7 +61,9 @@
   >
   {#if notice && noticeOpen}
     <aside class="relative grid md:grid-cols-2" aria-label={rt.t('notice.label')}>
-      <div class="flex flex-col items-start gap-3 bg-[var(--ln-signal)] px-5 py-7 pr-14 text-[#202020] md:px-10 md:py-12 lg:px-[105px]">
+      <div
+        class="flex flex-col items-start gap-3 bg-[var(--ln-signal)] px-5 py-7 pr-14 text-[#202020] md:px-10 md:py-12 lg:px-[105px]"
+      >
         <p class="text-[0.8125rem] font-medium">{rt.t('notice.label')}</p>
         <p class="ln-display text-2xl leading-tight">{notice}</p>
         {#if noticeText}<p class="max-w-xl leading-relaxed">{noticeText}</p>{/if}
@@ -69,7 +73,8 @@
           >{/if}
       </div>
       <div class="hidden items-center justify-center bg-[#202020] px-10 py-10 md:flex">
-        <span class="ln-display max-w-full text-center text-5xl leading-none tracking-[-0.03em] break-words text-[#ebe6dd] lg:text-7xl"
+        <span
+          class="ln-display max-w-full text-center text-5xl leading-none tracking-[-0.03em] break-words text-[#ebe6dd] lg:text-7xl"
           >{shop.tenant.name}</span
         >
       </div>
@@ -89,15 +94,24 @@
             class="max-h-9"
             src={shop.tenant.branding.logo_url}
             alt={shop.tenant.name}
-          />{:else}<span class="ln-display truncate text-[1.375rem] leading-none tracking-[-0.03em] sm:text-[1.625rem] md:text-[2rem]"
+          />{:else}<span
+            class="ln-display truncate text-[1.375rem] leading-none tracking-[-0.03em] sm:text-[1.625rem] md:text-[2rem]"
             >{shop.tenant.name}</span
           >{/if}
       </a>
       <nav class="hidden rounded-full bg-[var(--ln-panel)] p-1 lg:flex" aria-label={rt.t('nav.categories')}>
-        {#if cats.length}
+        {#each own as l (l.href)}<a
+            class={pill}
+            href={l.href}
+            aria-current={path === l.href ? 'page' : undefined}>{l.label}</a
+          >{/each}
+        {#if !own.length && cats.length}
           <DropdownMenu.Root>
             <DropdownMenu.Trigger class={pill}
-              >{rt.t('nav.categories')}<ChevronDownIcon class="size-3.5 opacity-60" aria-hidden="true" /></DropdownMenu.Trigger
+              >{rt.t('nav.categories')}<ChevronDownIcon
+                class="size-3.5 opacity-60"
+                aria-hidden="true"
+              /></DropdownMenu.Trigger
             >
             <DropdownMenu.Content
               align="center"
@@ -116,9 +130,11 @@
             </DropdownMenu.Content>
           </DropdownMenu.Root>
         {/if}
-        <a class={pill} href={rt.url.home()} aria-current={path === rt.url.home() ? 'page' : undefined}
-          >{rt.t('nav.all')}</a
-        >
+        {#if !own.length}<a
+            class={pill}
+            href={rt.url.home()}
+            aria-current={path === rt.url.home() ? 'page' : undefined}>{rt.t('nav.all')}</a
+          >{/if}
         {#if rt.url.search}<a
             class={pill}
             href={rt.url.search()}
@@ -156,11 +172,12 @@
               ></Sheet.Header
             >
             <nav class="flex flex-col overflow-y-auto px-3 py-4" aria-label={rt.t('nav.categories')}>
-              {#each [{ href: rt.url.home(), label: rt.t('nav.all') }, ...cats] as l (l.href)}<a
+              {#each own.length ? own : [{ href: rt.url.home(), label: rt.t('nav.all') }, ...cats] as l (l.href)}<a
                   class="ln-display flex items-center gap-3 rounded-xl px-3 py-2.5 text-xl tracking-[-0.01em] hover:bg-[var(--ln-panel)]"
                   href={l.href}
                   aria-current={path === l.href ? 'page' : undefined}
-                  onclick={() => (menu = false)}><span class="ln-square size-2" aria-hidden="true"></span>{l.label}</a
+                  onclick={() => (menu = false)}
+                  ><span class="ln-square size-2" aria-hidden="true"></span>{l.label}</a
                 >{/each}
               {#if account}<a
                   class="mt-3 rounded-xl px-3 py-3 text-base font-medium hover:bg-[var(--ln-panel)]"
@@ -210,6 +227,8 @@
           <nav class="flex flex-col gap-2.5" aria-labelledby="ln-footer-info">
             <h2 id="ln-footer-info" class="mb-2 text-base font-medium text-white">{rt.t('footer.info')}</h2>
             <a class={footLink} href={rt.url.page('terms')}>{rt.t('footer.terms')}</a>
+            {#each shop.navigation?.footer ?? [] as l (l.href)}<a class={footLink} href={l.href}>{l.label}</a
+              >{/each}
             {#if rt.url.search}<a class={footLink} href={rt.url.search()}>{rt.t('search.title')}</a>{/if}
             {#if account}<a class={footLink} href={account}>{accountLabel}</a>{/if}
             <a class={footLink} href={rt.url.cart()}>{rt.t('nav.cart')}</a>

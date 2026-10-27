@@ -17,7 +17,7 @@
   const rt = getRuntime();
   const shop = $derived(rt.shop);
   const css = $derived(inkCss(shop.settings.ink, shop.settings.highlight));
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
   const notice = $derived(String(shop.settings.announcement ?? '').trim());
   // The home page carries the date search in its hero; checkout and orders do not need it.
   // `path` includes the language prefix (/de/...), so compare with the runtime's URLs.
@@ -31,10 +31,15 @@
   let menu = $state(false);
   /** The bar holds a few links like the reference site; the menu lists the rest. */
   const BAR_LINKS = 5;
-  const links = $derived([
-    { href: rt.url.home(), label: rt.t('nav.all') },
-    ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
-  ]);
+  // The shop's own header menu (theme API 1.9) takes the place of the categories when it has links.
+  const links = $derived(
+    shop.navigation?.header.length
+      ? shop.navigation.header.map((l) => ({ href: l.href, label: l.label }))
+      : [
+          { href: rt.url.home(), label: rt.t('nav.all') },
+          ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
+        ],
+  );
 </script>
 
 <svelte:head>
@@ -150,6 +155,9 @@
       <nav class="flex flex-col gap-2 text-sm" aria-labelledby="ink-footer-info">
         <h2 id="ink-footer-info" class="text-primary mb-1 font-medium">{rt.t('footer.info')}</h2>
         <a class="w-fit hover:underline" href={rt.url.page('terms')}>{rt.t('footer.terms')}</a>
+        {#each shop.navigation?.footer ?? [] as l (l.href)}<a class="w-fit hover:underline" href={l.href}
+            >{l.label}</a
+          >{/each}
         {#if account}<a class="w-fit hover:underline" href={account}
             >{shop.customer ? rt.t('nav.account') : rt.t('nav.sign_in')}</a
           >{/if}

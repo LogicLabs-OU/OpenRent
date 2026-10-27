@@ -1,7 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { startXeroFake, xeroOrg, type XeroFake } from '../packages/accounting-fakes/src/index.ts';
-import { ADMIN, collectErrors, shot, signIn } from './helpers.ts';
+import { test, ADMIN, collectErrors, shot, signIn } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 

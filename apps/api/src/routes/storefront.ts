@@ -1,14 +1,27 @@
 import { storefront, accounts, availability, customers, orders, themes, AppError, invalid, serverT } from '@openrent/core';
 import type { FastifyReply } from 'fastify';
+import { fillWidgetCss, resolveSettings as resolveThemeSettings } from '@openrent/theme-sdk/manifest';
 import { imageBytes } from '../images.ts';
 import type { Router } from '../http.ts';
 import { Address, Id, IdParams, Nullable, QuoteOptions, Type } from '../schemas.ts';
 
 const CartLine = Type.Object({ variant_id: Id, quantity: Type.Integer({ minimum: 0, maximum: 1000 }), picks: Type.Optional(Nullable(Type.Record(Type.String({ maxLength: 80 }), Id, { description: 'Choice bundles: the option picked per slot' }))) });
 
+/** The currency the visitor sees prices in (FR-I18N-7), sent by the storefront. */
+const displayCurrency = (req: { headers: Record<string, unknown> }) => {
+  const v = req.headers['x-display-currency'];
+  return typeof v === 'string' && /^[A-Z]{3}$/.test(v) ? v : null;
+};
+
 export function registerStorefront(r: Router) {
   const S = ['Storefront'];
   const loc = async (ctx: any, id?: string) => id ?? (await ctx.db.query(`SELECT id FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC LIMIT 1`)).rows[0]?.id;
+  /** The location the shopper picked on the storefront (X-Storefront-Location), for requests that name none. */
+  const chosen = async (ctx: any, req: { headers: Record<string, unknown> }) => {
+    const h = req.headers['x-storefront-location'];
+    if (typeof h !== 'string' || !/^loc_[0-9A-Za-z]+$/.test(h)) return undefined;
+    return (await ctx.db.query(`SELECT 1 FROM locations WHERE id = $1 AND deleted_at IS NULL`, [h])).rows.length ? h : undefined;
+  };
 
   r.get('/storefront/settings', { tags: S, summary: 'Shop, locations, categories, terms, payment and theme settings in one storefront language. X-Theme-Preview renders a previewed theme', querystring: Type.Object({ locale: Type.Optional(Type.String()) }) }, async (ctx, req, reply) => {
     const token = req.headers['x-theme-preview'];
@@ -16,21 +29,66 @@ export function registerStorefront(r: Router) {
     if (typeof token === 'string' && token && (!preview || preview.tenantId !== ctx.tenantId)) throw new AppError('preview_invalid', 403, serverT('themes.preview_invalid'));
     reply.header('Cache-Control', preview ? 'private, no-store' : 'public, max-age=30, stale-while-revalidate=300');
     if (preview) reply.header('Vary', 'X-Theme-Preview');
-    return { ...(await storefront.storefrontSettings(ctx, { previewThemeId: preview?.themeId ?? null, locale: req.query.locale })), features: { document_pdfs: r.deps.config.pdfRenderer === 'playwright' } };
+    const s = await storefront.storefrontSettings(ctx, { previewThemeId: preview?.themeId ?? null, locale: req.query.locale });
+    // The embeddable widget dresses like the live theme (FR-THM-10): its widget CSS with the shop's settings.
+    const code = r.deps.themes.find((t) => t.manifest.id === s.theme.code_id);
+    const widget = { css: code?.widgetCss ? fillWidgetCss(code.widgetCss, { settings: resolveThemeSettings(code, s.theme.settings), branding: s.tenant.branding ?? {} }) : '' };
+    return { ...s, widget, features: { document_pdfs: r.deps.config.pdfRenderer === 'playwright' } };
   });
+  r.get(
+    '/storefront/pages/:slug',
+    { tags: S, summary: 'A published page of the shop in one storefront language, with its sections for the live theme (X-Theme-Preview: the previewed theme, drafts too)', params: Type.Object({ slug: Type.String({ maxLength: 120 }) }), querystring: Type.Object({ locale: Type.Optional(Type.String()) }) },
+    async (ctx, req, reply) => {
+      const token = req.headers['x-theme-preview'];
+      const preview = typeof token === 'string' && token ? themes.verifyPreviewToken(r.deps.config.sessionSecret, token, ctx.now) : null;
+      if (typeof token === 'string' && token && (!preview || preview.tenantId !== ctx.tenantId)) throw new AppError('preview_invalid', 403, serverT('themes.preview_invalid'));
+      reply.header('Cache-Control', preview ? 'private, no-store' : 'public, max-age=30, stale-while-revalidate=300');
+      if (preview) reply.header('Vary', 'X-Theme-Preview');
+      return storefront.storefrontPage(ctx, req.params.slug, { previewThemeId: preview?.themeId ?? null, locale: req.query.locale });
+    },
+  );
+  r.post(
+    '/storefront/contact',
+    {
+      tags: S,
+      summary: 'A message from the storefront contact form; staff get it as a notice and by email',
+      body: Type.Object({
+        name: Type.String({ maxLength: 200 }),
+        email: Type.String({ maxLength: 254 }),
+        message: Type.String({ maxLength: 5000 }),
+        consent: Type.Optional(Nullable(Type.String({ maxLength: 300 }))),
+        consent_required: Type.Optional(Type.Boolean()),
+        website: Type.Optional(Nullable(Type.String({ maxLength: 200 }))),
+      }),
+      // Per sender, on top of the limit per client address that every public endpoint has. A form
+      // without an email is refused anyway, so it gets no key of its own to use up.
+      rateLimit: { max: 3, timeWindow: '10 minutes', hook: 'preHandler', keyGenerator: (req: any) => { const email = String(req.body?.email ?? '').trim().toLowerCase(); return email ? `contact:${email}` : `contact-none:${req.id}`; } },
+      status: 200,
+    },
+    async (ctx, req) => storefront.sendContactMessage(ctx, req.body),
+  );
+  r.get(
+    '/storefront/sitemap',
+    { tags: S, summary: 'Paths for search engines: the home page, categories and public products, with when each last changed', querystring: Type.Object({ offset: Type.Optional(Type.Integer({ minimum: 0 })), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50000 })) }) },
+    async (ctx, req, reply) => {
+      reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
+      return storefront.sitemap(ctx, req.query);
+    },
+  );
   r.get('/storefront/catalog/categories', { tags: S, summary: 'Categories' }, async (ctx) => (await storefront.storefrontSettings(ctx)).categories);
   r.get(
     '/storefront/catalog/products',
     { tags: S, summary: 'Public products; pass from/to for live availability', querystring: Type.Object({ category: Type.Optional(Type.String()), q: Type.Optional(Type.String()), from: Type.Optional(Type.String()), to: Type.Optional(Type.String()), location_id: Type.Optional(Id), locale: Type.Optional(Type.String()), limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })), cursor: Type.Optional(Type.String()), sort: Type.Optional(Type.Union([Type.Literal('relevance'), Type.Literal('name'), Type.Literal('newest')])), available: Type.Optional(Type.Boolean()) }) },
     async (ctx, req, reply) => {
       if (!req.query.from) reply.header('Cache-Control', 'public, max-age=30, stale-while-revalidate=300');
-      return storefront.catalogProducts(ctx, req.query);
+      reply.header('Vary', 'X-Display-Currency, X-Storefront-Location');
+      return storefront.catalogProducts(ctx, { ...req.query, location_id: req.query.location_id ?? (await chosen(ctx, req)), display_currency: displayCurrency(req) });
     },
   );
   r.get(
     '/storefront/catalog/products/:slug',
     { tags: S, summary: 'One public product', params: Type.Object({ slug: Type.String() }), querystring: Type.Object({ from: Type.Optional(Type.String()), to: Type.Optional(Type.String()), location_id: Type.Optional(Id), locale: Type.Optional(Type.String()) }) },
-    async (ctx, req) => storefront.catalogProduct(ctx, req.params.slug, req.query),
+    async (ctx, req) => storefront.catalogProduct(ctx, req.params.slug, { ...req.query, location_id: req.query.location_id ?? (await chosen(ctx, req)), display_currency: displayCurrency(req) }),
   );
   r.get(
     '/storefront/availability',
@@ -38,7 +96,7 @@ export function registerStorefront(r: Router) {
     async (ctx, req) => {
       const v = await ctx.db.query(`SELECT p.visibility FROM variants v JOIN products p ON p.id = v.product_id WHERE v.id = $1`, [req.query.variant_id]);
       if (v.rows[0]?.visibility !== 'public') throw new AppError('not_found', 404, serverT('error.product_not_found'));
-      const locationId = await loc(ctx, req.query.location_id);
+      const locationId = await loc(ctx, req.query.location_id ?? (await chosen(ctx, req)));
       if (req.query.month) return { object: 'list', data: await availability.calendar(ctx, { variantId: req.query.variant_id, locationId, month: req.query.month }) };
       if (!req.query.from || !req.query.to) throw invalid(serverT('error.pass_month_or_from_and_to'));
       const res = await availability.check(ctx, { variantId: req.query.variant_id, locationId, from: new Date(req.query.from), to: new Date(req.query.to) });
@@ -55,7 +113,7 @@ export function registerStorefront(r: Router) {
       rateLimit: { max: 60, timeWindow: '1 minute' },
       status: 200,
     },
-    async (ctx, req) => orders.breakdownToApi((await orders.priceQuote(ctx, { ...req.body, lines: req.body.lines.filter((l: any) => l.quantity > 0) })).breakdown),
+    async (ctx, req) => orders.breakdownToApi((await orders.priceQuote(ctx, { ...req.body, location_id: req.body.location_id ?? (await chosen(ctx, req)), lines: req.body.lines.filter((l: any) => l.quantity > 0) })).breakdown),
   );
   const SessionPatch = Type.Object({
     location_id: Type.Optional(Id),
@@ -66,7 +124,7 @@ export function registerStorefront(r: Router) {
     customer: Type.Optional(Type.Object({ name: Type.Optional(Type.String()), email: Type.Optional(Type.String()), phone: Type.Optional(Type.String()) })),
     options: Type.Optional(QuoteOptions),
   });
-  r.post('/storefront/checkout_sessions', { tags: S, summary: 'Start a cart (server-created, expires after 3 h idle)', body: SessionPatch }, async (ctx, req) => storefront.createCheckoutSession(ctx, req.body as any));
+  r.post('/storefront/checkout_sessions', { tags: S, summary: 'Start a cart (server-created, expires after 3 h idle)', body: SessionPatch }, async (ctx, req) => storefront.createCheckoutSession(ctx, { ...(req.body as any), location_id: req.body.location_id ?? (await chosen(ctx, req)) }));
   r.get('/storefront/checkout_sessions/:id', { tags: S, summary: 'Cart with live quote and availability; ?locale= names lines in a storefront language', params: IdParams, querystring: Type.Object({ locale: Type.Optional(Type.String()) }) }, async (ctx, req) =>
     storefront.getCheckoutSession(ctx, req.params.id, req.query.locale),
   );
@@ -115,6 +173,15 @@ export function registerStorefront(r: Router) {
   );
   r.get('/storefront/orders/:id', { tags: S, summary: 'Order confirmation by id or token (?token= required)', params: IdParams, querystring: Type.Object({ token: Type.String({ minLength: 16 }) }), rateLimit: { max: 120, timeWindow: '1 minute' } }, async (ctx, req) =>
     storefront.publicOrder(ctx, req.params.id, req.query.token),
+  );
+  r.get(
+    '/storefront/orders/:id/calendar',
+    { tags: S, summary: 'The booking’s pickup and return as an iCalendar file (?token= required)', params: IdParams, querystring: Type.Object({ token: Type.String({ minLength: 16 }), locale: Type.Optional(Type.String()) }), raw: true, rateLimit: { max: 60, timeWindow: '1 minute' } },
+    async (ctx, req, reply) => {
+      const o = await storefront.publicOrder(ctx, req.params.id, req.query.token);
+      const cal = await orders.orderCalendar(ctx, o.id, req.query.locale);
+      return reply.header('Content-Type', 'text/calendar; charset=utf-8').header('Content-Disposition', `attachment; filename="${cal.filename}"`).header('Cache-Control', 'private, no-store').send(cal.content);
+    },
   );
   r.post('/storefront/orders/:id/payment_intents', { tags: S, summary: 'New payment attempt for an unpaid storefront order', params: IdParams, body: Type.Object({ token: Type.String({ minLength: 16 }) }), status: 200 }, async (ctx, req) => {
     const o = await storefront.publicOrder(ctx, req.params.id, req.body.token);
@@ -197,6 +264,24 @@ function registerAccount(r: Router, S: string[]) {
       }),
     },
     async (ctx, req) => accounts.updateProfile(ctx, await signedIn(ctx, req), req.body),
+  );
+  r.post('/storefront/account/orders/:id/actions/cancel', { tags: A, summary: 'Cancel one of your bookings yourself, when the shop allows it; the refund follows its cancellation rules', params: OrderParams, body: Type.Object({ reason: Type.Optional(Type.String({ maxLength: 500 })) }), rateLimit: { max: 10, timeWindow: '1 minute' }, status: 200 }, async (ctx, req) =>
+    accounts.cancelByCustomer(ctx, await signedIn(ctx, req), req.params.id, req.body ?? {}),
+  );
+  r.post(
+    '/storefront/account/orders/:id/actions/change_dates',
+    {
+      tags: A,
+      summary: 'Move one of your bookings to other dates, or ask the shop to, as its rules allow; dry_run answers with the price and whether the dates are free',
+      params: OrderParams,
+      body: Type.Object({ starts_at: Type.String({ format: 'date-time' }), ends_at: Type.String({ format: 'date-time' }), reason: Type.Optional(Type.String({ maxLength: 1000 })), dry_run: Type.Optional(Type.Boolean()) }),
+      rateLimit: { max: 30, timeWindow: '1 minute' },
+      status: 200,
+    },
+    async (ctx, req) => accounts.changeDatesByCustomer(ctx, await signedIn(ctx, req), req.params.id, req.body),
+  );
+  r.post('/storefront/account/orders/:id/actions/book_again', { tags: A, summary: 'A new cart with the items of one of your bookings, without dates; items no longer offered are named in `skipped`', params: OrderParams, rateLimit: { max: 20, timeWindow: '1 minute' }, status: 200 }, async (ctx, req) =>
+    storefront.bookAgain(ctx, await signedIn(ctx, req), req.params.id),
   );
   r.post('/storefront/account/orders/:id/cancellation_request', { tags: A, summary: 'Ask the shop to cancel a booking', params: OrderParams, body: Reason, rateLimit: { max: 10, timeWindow: '1 minute' } }, async (ctx, req) =>
     accounts.requestCancellation(ctx, await signedIn(ctx, req), req.params.id, req.body?.reason),

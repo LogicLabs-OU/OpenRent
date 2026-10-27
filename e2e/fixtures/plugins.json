@@ -17,6 +17,11 @@
     "@openrent/plugin-calendar-microsoft",
     "@openrent/plugin-reviews-trustpilot",
     "@openrent/plugin-tax-taxjar",
+    "@openrent/plugin-tax-vies",
+    "@openrent/plugin-notify-slack",
+    "@openrent/plugin-rates-ecb",
+    "@openrent/plugin-analytics",
+    "@openrent/plugin-geocode-osm",
     "@openrent/plugin-search-meilisearch",
     "e2e-extras"
   ]

@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/build/**', '**/.svelte-kit/**', '**/.svelte-kit-*/**', '**/node_modules/**', '**/*.svelte', 'packages/sdk/src/types.ts', '.dev/**'] },
+  { ignores: ['**/dist/**', '**/build/**', '**/.svelte-kit/**', '**/.svelte-kit-*/**', '**/storybook-static/**', '**/node_modules/**', '**/*.svelte', 'packages/sdk/src/types.ts', '.dev/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

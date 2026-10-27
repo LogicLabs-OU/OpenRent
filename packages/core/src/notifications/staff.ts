@@ -11,7 +11,8 @@ import { exec, json, many, one } from '../sql.ts';
 export const STAFF_KINDS = [
   'staff_new_order', 'staff_payment_failed', 'staff_overdue', 'deposit_expiring', 'staff_cancellation_requested',
   'staff_low_availability', 'staff_webhook_disabled', 'staff_export_ready', 'staff_extension_requested', 'staff_delivery_failed',
-  'staff_ticket_assigned', 'staff_service_due', 'staff_accounting_issue',
+  'staff_ticket_assigned', 'staff_service_due', 'staff_accounting_issue', 'staff_contact_message',
+  'staff_customer_cancelled', 'staff_customer_rescheduled', 'staff_date_change_requested',
 ] as const;
 export type StaffKind = (typeof STAFF_KINDS)[number];
 

@@ -49,6 +49,9 @@ export default defineConfig(({ mode }) => {
             // Child themes' fonts come from the API (FR-THM-8).
             'font-src': ['self', 'data:', apiOrigin as 'self'],
             'object-src': ['none'],
+            // Framed only by the admin's previews (the API's origin serves the admin), never by other
+            // sites (clickjacking on checkout and the account); the widget is a separate bundle.
+            'frame-ancestors': ['self', apiOrigin as 'self', ...(mode === 'development' ? ['http://localhost:*' as 'self'] : [])],
             'base-uri': ['self'],
           },
         },

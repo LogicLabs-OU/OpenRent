@@ -1,0 +1,1 @@
+ALTER TABLE "customers" ADD COLUMN "tax_id_check" jsonb;

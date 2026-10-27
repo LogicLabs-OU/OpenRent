@@ -22,6 +22,11 @@ const BUILTIN = {
   '@openrent/plugin-calendar-microsoft': () => import('@openrent/plugin-calendar-microsoft'),
   '@openrent/plugin-reviews-trustpilot': () => import('@openrent/plugin-reviews-trustpilot'),
   '@openrent/plugin-tax-taxjar': () => import('@openrent/plugin-tax-taxjar'),
+  '@openrent/plugin-tax-vies': () => import('@openrent/plugin-tax-vies'),
+  '@openrent/plugin-notify-slack': () => import('@openrent/plugin-notify-slack'),
+  '@openrent/plugin-rates-ecb': () => import('@openrent/plugin-rates-ecb'),
+  '@openrent/plugin-analytics': () => import('@openrent/plugin-analytics'),
+  '@openrent/plugin-geocode-osm': () => import('@openrent/plugin-geocode-osm'),
   '@openrent/plugin-search-meilisearch': () => import('@openrent/plugin-search-meilisearch'),
 };
 

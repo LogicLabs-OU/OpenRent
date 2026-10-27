@@ -18,7 +18,16 @@
   const shop = $derived(rt.shop);
   const accent = $derived((shop.settings.accent as string) || shop.tenant.branding.primary_color || '');
   const css = $derived(brandCss(accent, Number(shop.settings.radius ?? 10)));
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
+  // The shop's own header menu (theme API 1.9) takes the place of the categories when it has links.
+  const links = $derived(
+    shop.navigation?.header.length
+      ? shop.navigation.header.map((l) => ({ href: l.href, label: l.label }))
+      : [
+          { href: rt.url.home(), label: rt.t('nav.all') },
+          ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
+        ],
+  );
   // `path` includes the language prefix (/de/...), so compare with the runtime's URLs.
   const showDates = $derived(!path.startsWith(rt.url.order('')) && !path.startsWith(rt.url.checkout()));
 </script>
@@ -45,22 +54,14 @@
         class="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none]"
         aria-label={rt.t('nav.categories')}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          href={rt.url.home()}
-          aria-current={path === rt.url.home() ? 'page' : undefined}
-          class={cn('text-muted-foreground', path === rt.url.home() && 'text-foreground bg-accent')}
-          >{rt.t('nav.all')}</Button
-        >
-        {#each shop.categories as c (c.id)}
-          {@const active = path === rt.url.category(c.slug)}
+        {#each links as l (l.href)}
+          {@const active = path === l.href}
           <Button
             variant="ghost"
             size="sm"
-            href={rt.url.category(c.slug)}
+            href={l.href}
             aria-current={active ? 'page' : undefined}
-            class={cn('text-muted-foreground', active && 'text-foreground bg-accent')}>{c.name}</Button
+            class={cn('text-muted-foreground', active && 'text-foreground bg-accent')}>{l.label}</Button
           >
         {/each}
       </nav>
@@ -129,6 +130,10 @@
         <a class="hover:text-foreground underline-offset-4 hover:underline" href={rt.url.page('terms')}
           >{rt.t('footer.terms')}</a
         >
+        {#each shop.navigation?.footer ?? [] as l (l.href)}<a
+            class="hover:text-foreground underline-offset-4 hover:underline"
+            href={l.href}>{l.label}</a
+          >{/each}
         {#if shop.settings.show_powered_by !== false}
           <Separator orientation="vertical" class="h-4" />
           <a

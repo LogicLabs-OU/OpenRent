@@ -3,7 +3,7 @@ import { browserLocale, devLocale, setLocale } from './i18n/index.svelte.ts';
 
 export interface Me {
   user: { id: string; email: string; name: string; locale: string; totp_enabled: boolean; has_password?: boolean };
-  tenant: { id: string; slug: string; name: string; currency: string; timezone: string; locale: string; branding: Record<string, any> } | null;
+  tenant: { id: string; slug: string; name: string; currency: string; timezone: string; locale: string; branding: Record<string, any>; status?: 'active' | 'suspended'; suspended_reason?: string | null } | null;
   memberships: { tenant_id: string; tenant_name: string; role: string }[];
   role: string | null;
   permissions: string[];

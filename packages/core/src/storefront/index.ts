@@ -5,16 +5,18 @@ import { createHash } from 'node:crypto';
 import type { Ctx } from '../context.ts';
 import { t as tr } from '../i18n/index.ts';
 import { money } from '../crud.ts';
-import { AppError, invalid } from '../errors.ts';
+import { AppError, invalid, type FieldError } from '../errors.ts';
 import { newId } from '../ids.ts';
 import { exec, json, many, must, one } from '../sql.ts';
-import { addMinutes } from '../time.ts';
+import { addMinutes, localDate, parseLocalDate, zonedTimeToUtc } from '../time.ts';
 import * as availability from '../availability/index.ts';
 import { describeStructure, type QuoteOptions } from '../pricing/engine.ts';
 import { formatMoney } from '../format.ts';
-import { activeFeeRules, listProducts, getProduct, categories, toEngineStructure, relationsOf } from '../catalog/index.ts';
-import { findOrCreateByEmail } from '../customers/index.ts';
+import { activeFeeRules, listProducts, getProduct, categories, taxProfileAt, toEngineStructure, relationsOf } from '../catalog/index.ts';
+import { taxRateFor } from '../orders/quote.ts';
+import { fillFromCheckout, findOrCreateByEmail, getProfile, saveProfile, snapshotOf, cleanAddress, type BillingSnapshot } from '../customers/index.ts';
 import { accountTermsFor } from '../customers/b2b.ts';
+import { checkTaxId } from '../customers/tax-id.ts';
 
 export { sendCartReminders, restoreCart, stopCartReminders } from './reminders.ts';
 import { activeProvider, amountDue, createPaymentIntent, createPaymentRequest, upfrontAmount } from '../payments/index.ts';
@@ -22,12 +24,13 @@ import { notifyStaff } from '../notifications/index.ts';
 import { tenantLocale } from '../i18n/context.ts';
 import { storefrontBase } from '../domains/index.ts';
 import { enabledProvider, textChannel } from '../plugins/index.ts';
-import { checkCheckoutExtra, productBadges, storefrontExtensions } from '../plugins/storefront.ts';
+import { checkCheckoutExtra, pluginSectionSchemas, productBadges, renderPluginSections, storefrontExtensions } from '../plugins/storefront.ts';
 import { hookContext } from '../plugins/scope.ts';
 import { overridesByLocale, overridesFor } from '../strings/index.ts';
-import { resolveSettings, type TenantSettings } from '../tenancy/settings.ts';
+import { resolveSettings, type NavItem, type TenantSettings } from '../tenancy/settings.ts';
+import { publishedPages } from './pages.ts';
 import { breakdownToApi, createOrder, priceQuote, runAction } from '../orders/index.ts';
-import { canRequestCancel, canRequestExtension, extensionToApi, latestExtensions, latestRequests, orderDocuments, requestToApi } from '../accounts/index.ts';
+import { accountCustomer, asCustomerCtx, ownedOrder, canRequestCancel, canRequestExtension, extensionToApi, latestExtensions, latestRequests, orderDocuments, requestToApi } from '../accounts/index.ts';
 import { customerAttachments } from '../attachments/index.ts';
 import { visibleFields } from '../customfields/index.ts';
 import { scheduleDelivery } from '../deliveries/index.ts';
@@ -42,6 +45,13 @@ export function termsText(s: TenantSettings, locale?: string | null) {
 
 /** Category name in a storefront language (falls back to the base name). */
 const categoryName = (c: any, locale?: string | null) => (locale && c.translations?.[locale]?.name?.trim()) || c.name;
+/** A search engine text in one language: the language's own, else the base one, else nothing. */
+const seoText = (base: { title?: string | null; description?: string | null } | null | undefined, own: { title?: string | null; description?: string | null } | null | undefined) => ({
+  title: own?.title?.trim() || base?.title?.trim() || null,
+  description: own?.description?.trim() || base?.description?.trim() || null,
+});
+/** Products and categories keep their other languages' search engine texts beside the name. */
+const seoOwn = (tr: { seo_title?: string; seo_description?: string } | null | undefined) => (tr ? { title: tr.seo_title, description: tr.seo_description } : null);
 
 /**
  * `previewThemeId` comes from a verified preview token (themes.verifyPreviewToken). `locale` picks
@@ -63,39 +73,68 @@ async function withChildTheme(ctx: Ctx, theme0: ReturnType<typeof storefrontThem
   return { ...theme, code_id: child.parent, settings: { ...child.settingsData, ...theme.settings }, translations, sections: theme.sections ?? child.sectionsData, css: child.css, assets: child.assets };
 }
 
+/** The HTML of the plugin sections on the home page, rendered here so the storefront needs no second call. */
+async function withPluginSections<T extends { sections: unknown[] | null }>(ctx: Ctx, theme: T, locale: string) {
+  return { ...theme, plugin_sections: await renderPluginSections(ctx, theme.sections as { id: string; type: string; settings?: Record<string, unknown> }[] | null, locale) };
+}
+
 /** The payment provider's origins plus those of plugin scripts (loaded only after consent). */
 async function cspFor(ctx: Ctx, pc: Awaited<ReturnType<typeof activeProvider>>) {
   const base = pc?.provider.cspSources?.(pc.pctx) ?? {};
-  const scripts = (await storefrontExtensions(ctx)).scripts.map((s) => new URL(s.src).origin);
-  return scripts.length ? { ...base, script: [...new Set([...(base.script ?? []), ...scripts])] } : base;
+  const list = (await storefrontExtensions(ctx)).scripts;
+  if (!list.length) return base;
+  const scripts = list.map((s) => new URL(s.src).origin);
+  // Where analytics scripts send their beacons (plugin API 1.7).
+  const sends = list.flatMap((s) => s.connect);
+  return {
+    ...base,
+    script: [...new Set([...(base.script ?? []), ...scripts])],
+    ...(sends.length ? { connect: [...new Set([...(base.connect ?? []), ...sends])], img: [...new Set([...(base.img ?? []), ...sends])] } : {}),
+  };
 }
 
 export async function storefrontSettings(ctx: Ctx, opts: { previewThemeId?: string | null; locale?: string | null } = {}) {
   const t = await must<any>(ctx, `SELECT * FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
   const s = resolveSettings(t.settings);
-  const locations = await many(ctx, `SELECT id, name, address, timezone, opening_hours, is_default FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC, name`);
+  const locations = await many<any>(ctx, `SELECT id, name, address, timezone, opening_hours, delivery_windows, is_default, phone, email FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC, name`);
+  // Days each location is closed in the next 60 days (holidays, stocktaking), for the locations section.
+  const closed = await many<{ location_id: string; starts_at: string; ends_at: string; reason: string | null }>(
+    ctx,
+    `SELECT location_id, lower(period) AS starts_at, upper(period) AS ends_at, reason FROM location_blackouts WHERE period && tstzrange(now(), now() + interval '60 days') ORDER BY lower(period) LIMIT 200`,
+  );
+  for (const l of locations) l.closures = closed.filter((c) => c.location_id === l.id).map((c) => ({ starts_at: new Date(c.starts_at).toISOString(), ends_at: new Date(c.ends_at).toISOString(), reason: c.reason }));
   const pc = s.storefront.payment === 'stripe' ? await activeProvider(ctx) : null;
   const cats = await categories.list(ctx, { limit: 200 });
   return {
     object: 'storefront_settings',
     tenant: { id: t.id, slug: t.slug, name: t.name, currency: t.currency.trim(), locale: t.locale, timezone: t.timezone, branding: t.branding },
     locations,
-    categories: cats.data.map((c: any) => ({ ...c, name: categoryName(c, opts.locale) })),
+    categories: cats.data.map((c: any) => ({ ...c, name: categoryName(c, opts.locale), seo: seoText(c.seo, seoOwn(opts.locale ? c.translations?.[opts.locale] : null)) })),
+    // The shop's menus as ready links (paths without the language prefix, or other sites' addresses).
+    navigation: await resolveNavigation(ctx, s, cats.data, opts.locale),
+    // Canonical links, the sitemap and shared links use the shop's own address; the home page's texts.
+    seo: { base_url: await storefrontBase(ctx), ...seoText(s.seo, opts.locale ? s.seo.translations?.[opts.locale] : null), image_url: s.seo.image_url ?? (t.branding?.logo_url || null) },
     locales: s.storefront.locales,
     default_locale: s.storefront.default_locale,
-    display_prices_including_tax: s.display_prices_including_tax,
+    display_prices_including_tax: includesTax(s, opts.locale ?? t.locale),
+    // Other currencies prices may be shown in, approximately (FR-I18N-7); the shop's own is charged.
+    currencies: {
+      base: t.currency.trim(),
+      display: s.display_currencies.currencies.filter((c) => c !== t.currency.trim() && (s.display_currencies.rates[c] ?? 0) > 0).map((c) => ({ code: c, rate: s.display_currencies.rates[c]! })),
+      updated_at: s.display_currencies.updated_at,
+    },
     terms: { text: termsText(s, opts.locale), version: s.terms.version, hash: termsHash(termsText(s, opts.locale)) },
     cancellation_policy: s.cancellation_policy,
     payment: pc ? { provider: pc.provider.id, ...pc.provider.publicConfig(pc.pctx) } : null,
     // The shop's wording of storefront texts in this language (FR-I18N-6).
     strings: await overridesFor(ctx, 'storefront', opts.locale ?? t.locale),
-    // Plugins' checkout fields and consent-gated scripts (FR-PLG-5).
-    extensions: await storefrontExtensions(ctx, opts.locale),
+    // Plugins' checkout fields, consent-gated scripts (FR-PLG-5) and home page section types (FR-THM-12).
+    extensions: { ...(await storefrontExtensions(ctx, opts.locale)), sections: await pluginSectionSchemas(ctx, opts.locale ?? t.locale) },
     // Booking updates the customer may ask for at checkout and in the account (FR-NOT-4).
     messaging: { sms: !!(await textChannel(ctx, 'sms')), whatsapp: !!(await textChannel(ctx, 'whatsapp')) },
     // Origins the storefront adds to its Content-Security-Policy for this shop (FR-THM-7).
     csp: await cspFor(ctx, pc),
-    theme: await withChildTheme(ctx, storefrontTheme(s, opts.previewThemeId, opts.locale)),
+    theme: await withPluginSections(ctx, await withChildTheme(ctx, storefrontTheme(s, opts.previewThemeId, opts.locale)), opts.locale ?? t.locale),
     code: {
       css: s.storefront_code.css,
       header_html: (opts.locale && s.storefront_code.translations?.[opts.locale]?.header_html) || s.storefront_code.header_html,
@@ -104,16 +143,97 @@ export async function storefrontSettings(ctx: Ctx, opts: { previewThemeId?: stri
   };
 }
 
-function publicVariant(v: any, currency: string, locale: string) {
-  const structure = toEngineStructure(v.price_structure ? { ...v.price_structure, amount: v.price_structure.amount.amount ?? v.price_structure.amount } : null);
+/**
+ * Menu items as links in one language. A category, page or product that is gone, hidden or a draft
+ * is left out, so a menu never links to a page that is not there.
+ */
+async function resolveNavigation(ctx: Ctx, s: TenantSettings, cats: any[], locale?: string | null) {
+  const items = [...s.navigation.header, ...s.navigation.footer];
+  const pages = items.some((i) => i.kind === 'page') ? await publishedPages(ctx, locale) : [];
+  const productIds = items.filter((i) => i.kind === 'product').map((i) => i.target);
+  const products = productIds.length ? await many<any>(ctx, `SELECT id, slug, name, translations FROM products WHERE id = ANY($1) AND deleted_at IS NULL AND visibility = 'public'`, [productIds]) : [];
+  const link = (it: NavItem): { label: string; href: string; external: boolean } | null => {
+    const label = (fallback: string) => (locale && it.translations?.[locale]?.trim()) || it.label?.trim() || fallback;
+    switch (it.kind) {
+      case 'home':
+        return { label: label(''), href: '/', external: false };
+      case 'search':
+        return { label: label(''), href: '/search', external: false };
+      case 'url':
+        return it.target ? { label: label(it.target), href: it.target, external: /^https?:\/\//i.test(it.target) } : null;
+      case 'category': {
+        const c = cats.find((x) => x.id === it.target);
+        return c ? { label: label(categoryName(c, locale)), href: `/c/${c.slug}`, external: false } : null;
+      }
+      case 'page': {
+        const p = pages.find((x) => x.id === it.target);
+        return p ? { label: label(p.title), href: `/pages/${p.slug}`, external: false } : null;
+      }
+      case 'product': {
+        const p = products.find((x) => x.id === it.target);
+        return p ? { label: label(translate(p, locale ?? undefined).name), href: `/p/${p.slug}`, external: false } : null;
+      }
+    }
+  };
+  // One link per address: themes key their menus by it.
+  const resolve = (list: NavItem[]) => {
+    const seen = new Set<string>();
+    return list.map(link).filter((x): x is NonNullable<typeof x> => !!x && !!x.label && !seen.has(x.href) && !!seen.add(x.href));
+  };
+  return { header: resolve(s.navigation.header), footer: resolve(s.navigation.footer) };
+}
+
+/** With or without tax in this storefront language (FR-I18N-7): the language's own rule, else the shop's. */
+export function includesTax(s: TenantSettings, locale?: string | null) {
+  const own = locale ? s.tax_display?.[locale] : undefined;
+  return own ? own === 'incl' : s.display_prices_including_tax;
+}
+
+/**
+ * How catalogue prices are shown in one language: with tax at each product's rate, or as entered; and
+ * in the visitor's currency when the shop offers it (the descriptions; amounts stay in the shop's).
+ */
+async function priceDisplay(ctx: Ctx, locale: string, displayCurrency?: string | null) {
+  const t = await must<any>(ctx, `SELECT currency, settings FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
+  const s = resolveSettings(t.settings);
+  const incl = includesTax(s, locale);
+  const profileOf = await taxProfileAt(ctx, null);
+  const cache = new Map<string, number>();
+  const rate = displayCurrency && displayCurrency !== t.currency.trim() && s.display_currencies.currencies.includes(displayCurrency) ? s.display_currencies.rates[displayCurrency] : undefined;
+  return {
+    incl,
+    rateOf: async (profileId: string | null) => (incl ? taxRateFor(ctx, profileOf(profileId), cache) : 0),
+    shown: rate ? { code: displayCurrency!, rate } : null,
+  };
+}
+
+/** A price structure with tax on every amount it names (tiers are shares, so they follow). */
+function withTax<T extends { amount: number; price_table?: { periods: number; amount: number }[]; extra_per_period?: number }>(s: T, bp: number): T {
+  if (!bp) return s;
+  const g = (n: number) => Math.round((n * (10000 + bp)) / 10000);
+  return { ...s, amount: g(s.amount), price_table: s.price_table?.map((r) => ({ ...r, amount: g(r.amount) })), extra_per_period: s.extra_per_period ? g(s.extra_per_period) : s.extra_per_period };
+}
+
+function publicVariant(v: any, currency: string, locale: string, tax: { incl: boolean; bp: number } = { incl: false, bp: 0 }, shown: { code: string; rate: number } | null = null) {
+  const fmt = (n: number) => (shown ? `≈ ${formatMoney(Math.round(n * shown.rate), shown.code, locale)}` : formatMoney(n, currency, locale));
+  const raw = toEngineStructure(v.price_structure ? { ...v.price_structure, amount: v.price_structure.amount.amount ?? v.price_structure.amount } : null);
+  const structure = raw ? withTax(raw, tax.bp) : null;
   return {
     id: v.id,
     name: v.translations?.[locale]?.name?.trim() || v.name,
     options: v.options,
     tracking: v.tracking,
-    price: structure ? { kind: structure.kind, period_unit: structure.period_unit, amount: money(structure.amount, currency), description: describeStructure(structure, (n) => formatMoney(n, currency, locale), locale) } : null,
+    price: structure
+      ? { kind: structure.kind, period_unit: structure.period_unit, amount: money(structure.amount, currency), includes_tax: tax.incl, description: describeStructure(structure, fmt, locale), from: fromPrice(structure, currency) }
+      : null,
     deposit_amount: v.deposit_amount,
   };
+}
+
+/** The price of the shortest rental: one period, or a price table's first row (for "from" prices and structured data). */
+function fromPrice(s: { kind: string; amount: number; price_table?: { periods: number; amount: number }[] }, currency: string) {
+  const first = s.kind === 'table' ? [...(s.price_table ?? [])].sort((a, b) => a.periods - b.periods)[0] : null;
+  return first ? { amount: money(first.amount, currency), periods: first.periods } : { amount: money(s.amount, currency), periods: 1 };
 }
 
 /** Uploaded gallery first; older products may still carry image URLs in seo.images. */
@@ -127,20 +247,27 @@ function publicImages(p: any, name: string, locale: string) {
 function translate(p: any, locale?: string) {
   const tr = locale ? p.translations?.[locale] : null;
   // A language added later may have empty texts: those fall back to the product's own.
-  return { name: tr?.name?.trim() || p.name, description: tr?.description?.trim() ? tr.description : p.description };
+  return { name: tr?.name?.trim() || p.name, description: tr?.description?.trim() ? tr.description : p.description, seo: seoText(p.seo, seoOwn(tr)) };
 }
 
 /** A product for the storefront; `detail` (its own page) adds what goes with it and each bundle option's availability. */
-async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: Date; to?: Date; locationId?: string; detail?: boolean }) {
+async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: Date; to?: Date; locationId?: string; detail?: boolean; displayCurrency?: string | null }) {
   const t = await must<any>(ctx, `SELECT currency, locale FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
   const currency = t.currency.trim();
   const locale = opts.locale ?? t.locale;
-  const variants = p.variants.map((v: any) => publicVariant(v, currency, locale));
+  const show = await priceDisplay(ctx, locale, opts.displayCurrency);
+  const tax = { incl: show.incl, bp: await show.rateOf(p.tax_profile_id ?? null) };
+  const variants = p.variants.map((v: any) => publicVariant(v, currency, locale, tax, show.shown));
   if (opts.from && opts.to) {
     const loc = opts.locationId ?? (await one(ctx, `SELECT id FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC LIMIT 1`))?.id;
     for (const v of variants) {
       const r = await availability.check(ctx, { variantId: v.id, locationId: loc, from: opts.from, to: opts.to });
       v.available = r.available;
+      // On its own page, a variant gone at this location names the other locations that have it free.
+      if (opts.detail && r.available === 0) {
+        const all = await availability.checkAcrossLocations(ctx, { variantId: v.id, from: opts.from, to: opts.to });
+        v.elsewhere = all.filter((x) => x.location_id !== loc && (x.available === null || x.available > 0)).map((x) => ({ location_id: x.location_id, name: x.location_name, available: x.available }));
+      }
     }
   }
   const tr = translate(p, opts.locale);
@@ -149,8 +276,8 @@ async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: D
     fields: await visibleFields(ctx, 'product', p.custom_fields, 'storefront', locale),
     badges: await productBadges(ctx, p.tags, locale),
     deposit_amount: money(p.deposit_amount, currency), min_duration_min: p.min_duration_min, max_duration_min: p.max_duration_min, min_notice_min: p.min_notice_min,
-    increment_min: p.increment_min, images: publicImages(p, tr.name, opts.locale ?? locale), seo: p.seo, variants, bundle: p.bundle ? await publicBundle(ctx, p.bundle, opts) : null,
-    ...(opts.detail ? await publicRelations(ctx, p.id, currency, opts.locale ?? locale) : {}),
+    increment_min: p.increment_min, images: publicImages(p, tr.name, opts.locale ?? locale), seo: tr.seo, updated_at: p.updated_at, variants, bundle: p.bundle ? await publicBundle(ctx, p.bundle, opts) : null,
+    ...(opts.detail ? await publicRelations(ctx, p.id, currency, opts.locale ?? locale, opts.displayCurrency) : {}),
   };
 }
 
@@ -158,16 +285,20 @@ async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: D
  * Accessories offered with the product, and products that go with it (FR-CAT-7): staff's related ones
  * first, then those often rented with it. Public products only.
  */
-async function publicRelations(ctx: Ctx, productId: string, currency: string, locale: string) {
+async function publicRelations(ctx: Ctx, productId: string, currency: string, locale: string, displayCurrency?: string | null) {
   const r = (await relationsOf(ctx, [productId], { publicOnly: true })).get(productId)!;
   const ids = [...new Set([...r.accessory, ...r.related, ...r.often_rented_with].map((x) => x.id))];
   if (!ids.length) return { accessories: [], related: [] };
   const full = (await listProducts(ctx, { filters: { id: { eq: ids } }, limit: 50 })).data;
+  const show = await priceDisplay(ctx, locale, displayCurrency);
+  const bps = new Map<string, number>();
+  for (const p of full) bps.set(p.id, await show.rateOf(p.tax_profile_id ?? null));
   const card = (id: string) => {
     const p = full.find((x: any) => x.id === id);
     if (!p) return null;
     const tr = translate(p, locale);
-    return { id: p.id, name: tr.name, slug: p.slug, type: p.type, variant_id: p.variants[0]?.id ?? null, price: p.variants[0] ? publicVariant(p.variants[0], currency, locale).price : null, image: publicImages(p, tr.name, locale)[0] ?? null };
+    const price = p.variants[0] ? publicVariant(p.variants[0], currency, locale, { incl: show.incl, bp: bps.get(p.id) ?? 0 }, show.shown).price : null;
+    return { id: p.id, name: tr.name, slug: p.slug, type: p.type, variant_id: p.variants[0]?.id ?? null, price, image: publicImages(p, tr.name, locale)[0] ?? null };
   };
   const accessories = r.accessory.map((x) => card(x.id)).filter(Boolean);
   const seen = new Set(r.accessory.map((x) => x.id));
@@ -196,6 +327,9 @@ const SORTS: Record<string, string | undefined> = { relevance: undefined, name: 
  * `available` keeps only products with a free unit for `from`–`to`.
  */
 export { cleanCss, cleanHtml, getStorefrontCode, saveStorefrontCode, type StorefrontCode } from './code.ts';
+export { sitemap } from './sitemap.ts';
+export { sendContactMessage, type ContactInput } from './contact.ts';
+export { listPages, getPage, createPage, updatePage, deletePage, updatePageSections, updatePageContent, publicPage, storefrontPage, publishedPages, pageToApi, RESERVED_PAGE_SLUGS, type PageInput } from './pages.ts';
 
 /**
  * Search through a search plugin (FR-PLG-1) when the shop has one: its ids, best first, limited to
@@ -219,7 +353,7 @@ async function pluginSearch(ctx: Ctx, q: { q?: string; locale?: string; limit?: 
   return { data: found.data.sort((a: any, b: any) => rank.get(a.id)! - rank.get(b.id)!), has_more: false, next_cursor: null };
 }
 
-export async function catalogProducts(ctx: Ctx, q: { category?: string; q?: string; from?: string; to?: string; location_id?: string; locale?: string; limit?: number; cursor?: string; sort?: string; available?: boolean }) {
+export async function catalogProducts(ctx: Ctx, q: { category?: string; q?: string; from?: string; to?: string; location_id?: string; locale?: string; limit?: number; cursor?: string; sort?: string; available?: boolean; display_currency?: string | null }) {
   let categoryId: string | undefined;
   if (q.category) {
     const c = await one(ctx, `SELECT id FROM categories WHERE (slug = $1 OR id = $1) AND deleted_at IS NULL`, [q.category]);
@@ -231,7 +365,7 @@ export async function catalogProducts(ctx: Ctx, q: { category?: string; q?: stri
   const to = q.to ? new Date(q.to) : undefined;
   const data = [];
   for (const p of page.data) {
-    const pp = await publicProduct(ctx, p, { locale: q.locale, from, to, locationId: q.location_id });
+    const pp = await publicProduct(ctx, p, { locale: q.locale, from, to, locationId: q.location_id, displayCurrency: q.display_currency });
     // Untracked variants (available = null) are always free.
     if (q.available && from && to && !pp.variants.some((v: any) => v.available === null || v.available === undefined || v.available > 0)) continue;
     data.push(pp);
@@ -239,10 +373,10 @@ export async function catalogProducts(ctx: Ctx, q: { category?: string; q?: stri
   return { ...page, data };
 }
 
-export async function catalogProduct(ctx: Ctx, slug: string, q: { from?: string; to?: string; location_id?: string; locale?: string }) {
+export async function catalogProduct(ctx: Ctx, slug: string, q: { from?: string; to?: string; location_id?: string; locale?: string; display_currency?: string | null }) {
   const p = await getProduct(ctx, slug);
   if (p.visibility !== 'public') throw new AppError('not_found', 404, msg('error.product_not_found'));
-  return publicProduct(ctx, p, { locale: q.locale, from: q.from ? new Date(q.from) : undefined, to: q.to ? new Date(q.to) : undefined, locationId: q.location_id, detail: true });
+  return publicProduct(ctx, p, { locale: q.locale, from: q.from ? new Date(q.from) : undefined, to: q.to ? new Date(q.to) : undefined, locationId: q.location_id, detail: true, displayCurrency: q.display_currency });
 }
 
 /** Only public products may be booked through the storefront. */
@@ -365,14 +499,51 @@ export async function updateCheckoutSession(
  * A delivery fee chosen at checkout books the delivery and the collection (FR-OR-12): two-hour windows
  * before pickup and after the return, at the address the customer gave. Staff adjust them on the day board.
  */
-async function bookChosenDelivery(ctx: Ctx, order: any, options: QuoteOptions) {
+type Windows = { delivery: { start: Date; end: Date }; collection: { start: Date; end: Date } };
+
+async function bookChosenDelivery(ctx: Ctx, order: any, options: QuoteOptions, windows: Windows | null) {
   const delivery = (await activeFeeRules(ctx, null, ['delivery'])).find((f) => (options.fees ?? []).includes(f.id));
   if (!delivery) return;
   const address = { line1: options.address ?? '', postal_code: options.postcode ?? '' };
   const start = new Date(order.starts_at);
   const end = new Date(order.ends_at);
-  await scheduleDelivery(ctx, order.id, { kind: 'delivery', window_start: addMinutes(start, -120).toISOString(), window_end: start.toISOString(), address });
-  await scheduleDelivery(ctx, order.id, { kind: 'collection', window_start: end.toISOString(), window_end: addMinutes(end, 120).toISOString(), address });
+  // The windows the customer chose, else two hours before pickup and after the return.
+  const d = windows?.delivery ?? { start: addMinutes(start, -120), end: start };
+  const c = windows?.collection ?? { start: end, end: addMinutes(end, 120) };
+  await scheduleDelivery(ctx, order.id, { kind: 'delivery', window_start: d.start.toISOString(), window_end: d.end.toISOString(), address });
+  await scheduleDelivery(ctx, order.id, { kind: 'collection', window_start: c.start.toISOString(), window_end: c.end.toISOString(), address });
+}
+
+const WEEKDAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+/**
+ * The delivery and collection windows chosen at checkout (`extra['delivery.window']` and
+ * `extra['collection.window']`, "HH:MM-HH:MM" on the pickup and return days in the location's time).
+ * Only for a delivery, and only when the location offers windows; then both are needed.
+ */
+async function chosenWindows(ctx: Ctx, s: any, extra: Record<string, unknown>): Promise<Windows | null> {
+  const delivery = (await activeFeeRules(ctx, null, ['delivery'])).find((f) => (s.options?.fees ?? []).includes(f.id));
+  if (!delivery) return null;
+  const loc = await must<any>(ctx, `SELECT timezone, delivery_windows FROM locations WHERE id = $1`, [s.location_id], 'location');
+  const offered = (loc.delivery_windows ?? {}) as Record<string, [string, string][]>;
+  if (!Object.values(offered).some((l) => l?.length)) return null;
+  const errors: FieldError[] = [];
+  const pick = (kind: 'delivery' | 'collection', at: Date) => {
+    const date = localDate(at, loc.timezone);
+    const { year, month, day } = parseLocalDate(date);
+    const slots = offered[WEEKDAY[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]!] ?? [];
+    const field = `extra.${kind}.window`;
+    if (!slots.length) return void errors.push({ field, code: 'no_window', message: tr(`checkout.${kind}_no_window`) });
+    const raw = String(extra[`${kind}.window`] ?? '');
+    const slot = slots.find(([a, b]) => `${a}-${b}` === raw);
+    if (!slot) return void errors.push({ field, code: 'required', message: tr(`checkout.${kind}_window_required`) });
+    const time = (hm: string) => zonedTimeToUtc(year, month, day, Number(hm.slice(0, 2)), Number(hm.slice(3, 5)), loc.timezone);
+    return { start: time(slot[0]), end: time(slot[1]) };
+  };
+  const d = pick('delivery', new Date(s.starts_at));
+  const c = pick('collection', new Date(s.ends_at));
+  if (errors.length || !d || !c) throw invalid(tr('checkout.window_invalid'), errors);
+  return { delivery: d, collection: c };
 }
 
 /** Only optional fees the shop offers may be chosen; the postcode is kept short and trimmed. */
@@ -450,19 +621,20 @@ export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInpu
     sms_opt_in: input.customer.sms_opt_in === true || input.extra?.['messages.sms'] === true,
     whatsapp_opt_in: input.customer.whatsapp_opt_in === true || input.extra?.['messages.whatsapp'] === true,
   };
-  const extra = await checkCheckoutExtra(ctx, Object.fromEntries(Object.entries(input.extra ?? {}).filter(([k]) => !k.startsWith('b2b.') && !k.startsWith('messages.'))));
+  const extra = await checkCheckoutExtra(ctx, Object.fromEntries(Object.entries(input.extra ?? {}).filter(([k]) => !k.startsWith('b2b.') && !k.startsWith('messages.') && !k.startsWith('billing.') && !k.startsWith('delivery.') && !k.startsWith('collection.'))));
   const account = onAccount && accountEmail && accountEmail.toLowerCase() === input.customer.email.trim().toLowerCase() ? await accountTermsFor(ctx, accountEmail) : null;
   if (onAccount && !account) throw invalid(tr('checkout.account_sign_in'), [{ field: 'extra.b2b.pay_on_account', code: 'not_on_account', message: tr('checkout.account_sign_in') }]);
+  const billing = await checkoutBilling(ctx, input, accountEmail);
+  const windows = await chosenWindows(ctx, s, input.extra ?? {});
   // A plugin may still refuse the booking (HookVeto), e.g. a delivery postcode it does not serve.
   await ctx.plugins.runHook('before', 'checkout.complete', { session_id: id, customer: input.customer, extra: input.extra ?? {} }, hookContext(ctx));
   for (const l of s.lines) {
     const errs = await availability.assertBookable(ctx, { variantId: l.variant_id, locationId: s.location_id, startsAt: new Date(s.starts_at), endsAt: new Date(s.ends_at), strict: true });
     if (errs.length) throw invalid(msg('error.these_dates_cannot_be_booked'), errs);
   }
+  // Booking on account: the account's own record, with what was typed filling its empty fields.
+  if (account) await fillFromCheckout(ctx, await must<any>(ctx, `SELECT * FROM customers WHERE id = $1`, [account.customer_id], 'customer'), { ...input.customer, ...wants });
   const customer = account ? { id: account.customer_id, flags: (await one<any>(ctx, `SELECT flags FROM customers WHERE id = $1`, [account.customer_id]))?.flags } : await findOrCreateByEmail(ctx, { ...input.customer, ...wants });
-  if (account && (wants.sms_opt_in || wants.whatsapp_opt_in)) {
-    await exec(ctx, `UPDATE customers SET sms_opt_in = sms_opt_in OR $2, whatsapp_opt_in = whatsapp_opt_in OR $3, phone = coalesce($4, phone) WHERE id = $1`, [account.customer_id, wants.sms_opt_in, wants.whatsapp_opt_in, input.customer.phone?.trim() || null]);
-  }
   if (customer.flags?.blocked) throw new AppError('customer_blocked', 403, msg('error.online_booking_is_not_available_for_this'));
   const order = await createOrder(ctx, {
     customer_id: customer.id,
@@ -474,6 +646,7 @@ export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInpu
     options: s.options ?? {},
     notes: input.notes ? { customer: input.notes } : undefined,
     po_number: po,
+    billing,
     source: 'storefront',
   });
   const acceptance = { version: settings.terms.version, text_sha256: input.terms_hash, accepted_at: ctx.now.toISOString(), ip: ctx.ip ?? null, user_agent: ctx.userAgent ?? null, name: input.customer.name };
@@ -502,9 +675,64 @@ export async function completeCheckout(ctx: Ctx, id: string, input: CompleteInpu
   } else {
     final = await runAction(ctx, order.id, 'reserve', {});
   }
-  await bookChosenDelivery(ctx, final, s.options ?? {});
+  await bookChosenDelivery(ctx, final, s.options ?? {}, windows);
   await exec(ctx, `UPDATE checkout_sessions SET status = 'completed', order_id = $2, customer = $3 WHERE id = $1`, [id, order.id, json(input.customer)]);
   return { object: 'checkout_result', order: { id: final.id, number: final.number, status: final.status, token: final.public_token, totals: final.totals }, payment };
+}
+
+/**
+ * The billing details for a storefront order (ADR 0012): billing details the signed-in customer saved
+ * (`extra['billing.profile_id']`), else the company, tax number and address typed at checkout, saved
+ * for next time when asked (`extra['billing.save']`). None of them: the customer's own apply.
+ * A VAT number the register says is not valid is refused here, where the customer can fix it; if the
+ * register cannot answer, the booking goes ahead with tax.
+ */
+async function checkoutBilling(ctx: Ctx, input: CompleteInput, accountEmail: string | null): Promise<BillingSnapshot | null> {
+  const signedIn = accountEmail && accountEmail.toLowerCase() === input.customer.email.trim().toLowerCase() ? await accountCustomer(ctx, accountEmail).catch(() => null) : null;
+  const profileId = input.extra?.['billing.profile_id'];
+  if (typeof profileId === 'string' && profileId) {
+    const p = signedIn ? await getProfile(ctx, signedIn.id, profileId).catch(() => null) : null;
+    if (!p) throw invalid(tr('checkout.billing_profile_unknown'), [{ field: 'extra.billing.profile_id', code: 'not_found', message: tr('checkout.billing_profile_unknown') }]);
+    return snapshotOf(p);
+  }
+  const c = input.customer;
+  const company = c.company_name?.trim() || null;
+  const taxId = c.tax_id?.trim() || null;
+  const address = cleanAddress(c.billing_address);
+  if (!company && !taxId && !address.line1) return null;
+  const check = taxId ? await checkTaxId(ctx, taxId) : null;
+  if (check?.status === 'invalid') throw invalid(tr('checkout.tax_id_invalid'), [{ field: 'customer.tax_id', code: 'invalid', message: tr('checkout.tax_id_invalid') }]);
+  const billing: BillingSnapshot = { kind: company || taxId ? 'company' : 'private', name: c.name.trim(), company_name: company, tax_id: taxId, tax_id_check: check ?? null, address };
+  if (signedIn && input.extra?.['billing.save'] === true) {
+    await saveProfile(asCustomerCtx(ctx, signedIn.id), signedIn.id, { kind: billing.kind, name: billing.name, company_name: company, tax_id: taxId, address }).catch((err) => {
+      // An address too incomplete to keep still bills this booking.
+      ctx.logger.info({ err: String(err?.message ?? err) }, 'billing details from checkout not saved');
+    });
+  }
+  return billing;
+}
+
+/**
+ * A new cart with the items of one of the customer's bookings, without dates (the customer picks new
+ * ones), at the same location. Items the shop no longer offers are left out and named.
+ */
+export async function bookAgain(ctx: Ctx, email: string, orderId: string) {
+  const { order: o } = await ownedOrder(ctx, email, orderId);
+  const lines = await many<any>(
+    ctx,
+    `SELECT l.variant_id, l.quantity, l.description, l.price_snapshot, p.visibility, p.deleted_at AS product_deleted, v.deleted_at AS variant_deleted
+       FROM order_lines l LEFT JOIN variants v ON v.id = l.variant_id LEFT JOIN products p ON p.id = v.product_id
+      WHERE l.order_id = $1 AND l.parent_line_id IS NULL AND l.type IN ('rental', 'sale') AND l.variant_id IS NOT NULL ORDER BY l.position, l.created_at`,
+    [o.id],
+  );
+  const kept = lines.filter((l) => l.visibility === 'public' && !l.product_deleted && !l.variant_deleted);
+  const skipped = lines.filter((l) => !kept.includes(l)).map((l) => String(l.description));
+  if (!kept.length) throw new AppError('nothing_to_book', 409, msg('account.book_again_nothing'));
+  const cart = await createCheckoutSession(ctx, {
+    location_id: o.location_id,
+    lines: kept.map((l) => ({ variant_id: l.variant_id, quantity: l.quantity, picks: l.price_snapshot?.picks ?? null })),
+  });
+  return { object: 'book_again', cart_id: cart.id, skipped };
 }
 
 /**

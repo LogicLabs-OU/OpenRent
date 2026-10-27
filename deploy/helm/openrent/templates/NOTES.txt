@@ -1,0 +1,14 @@
+OpenRent {{ .Chart.AppVersion }} is installed as "{{ .Release.Name }}".
+
+{{- if .Values.caddy.enabled }}
+Point the DNS of {{ (urlParse .Values.publicUrl).host }} at the Caddy service:
+  kubectl get svc {{ include "openrent.fullname" . }}-caddy -n {{ .Release.Namespace }}
+Caddy gets the TLS certificate on the first visit.
+{{- end }}
+
+Then open {{ trimSuffix "/" .Values.publicUrl }}/admin/setup to create the shop and its owner.
+
+{{- if not .Values.secrets.existingSecret }}
+Keep a copy of the generated keys (the encryption key cannot be recovered):
+  kubectl get secret {{ include "openrent.secretName" . }} -n {{ .Release.Namespace }} -o yaml
+{{- end }}

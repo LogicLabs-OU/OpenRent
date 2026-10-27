@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
-import { ADMIN, ADMIN_STATE, shot } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, ADMIN_STATE, shot } from './helpers.ts';
 
 /**
  * Plain English admin texts (no placeholders): any of them on screen under en-XA skipped the catalogue.
  * The product name and language names (each shown in its own language) are the same in every language.
  */
-const SAME_EVERYWHERE = new Set(['OpenRent', 'English', 'Deutsch', 'Français', 'Español', 'Eesti', '日本語']);
+const SAME_EVERYWHERE = new Set(['OpenRent', 'English', 'Deutsch', 'Français', 'Español', 'Eesti', '日本語', 'Nederlands']);
 const english = new Set(
   Object.entries(
     JSON.parse(

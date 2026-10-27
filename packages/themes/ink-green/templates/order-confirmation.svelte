@@ -182,6 +182,8 @@
         {@html o.qr_svg}
       </div>
       <p class="text-muted-foreground text-sm">{rt.t('order.show_qr')}</p>
+      <!-- Calendar links (theme API 1.9). -->
+      <rt.components.Slot name="order.actions" context={{ order: o }} />
     </Card.Content>
   </Card.Root>
 </div>

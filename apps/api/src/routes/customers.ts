@@ -28,6 +28,9 @@ export function registerCustomers(r: Router) {
   r.post('/customers/:id/actions/merge', { permission: 'customers:write', tags: C, summary: 'Merge another customer into this one', params: IdParams, body: Type.Object({ source_id: Id }), status: 200 }, async (ctx, req) =>
     customers.mergeCustomers(ctx, req.params.id, req.body.source_id),
   );
+  r.post('/customers/:id/actions/check_tax_id', { permission: 'customers:write', tags: C, summary: 'Check the customer’s tax number again with the tax plugin (VIES for EU VAT numbers)', params: IdParams, status: 200 }, async (ctx, req) =>
+    customers.recheckTaxId(ctx, req.params.id),
+  );
   r.post('/customers/:id/actions/send_portal_link', { permission: 'customers:write', tags: C, summary: 'Email the customer a link to their account, valid for a week (also before the first booking)', params: IdParams, status: 202 }, async (ctx, req) =>
     accounts.sendPortalLink(ctx, req.params.id),
   );

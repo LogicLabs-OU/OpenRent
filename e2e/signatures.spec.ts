@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, messageHtml, ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -16,7 +16,7 @@ async function mail(page: Page, template: string, to: string) {
   const log = await call(page, 'GET', '/notifications?limit=50');
   const n = log.data.find((x: any) => x.template === template && x.recipient === to);
   expect(n, `${template} to ${to}`).toBeTruthy();
-  return ((await call(page, 'GET', `/notifications/${n.id}`)).body_html as string).replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
+  return (await messageHtml(n.id)).replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
 }
 
 test('staff ask for a signature and the customer signs with the emailed code', async ({ page, browser }) => {

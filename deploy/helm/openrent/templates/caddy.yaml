@@ -1,0 +1,114 @@
+{{- if .Values.caddy.enabled }}
+{{- $full := include "openrent.fullname" . }}
+{{- $host := (urlParse .Values.publicUrl).host }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-caddy
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+data:
+  # Same routes as deploy/compose/Caddyfile. Caddy listens on 8080/8443 (no root needed); the Service
+  # maps 80 and 443 to them.
+  Caddyfile: |
+    {
+      http_port 8080
+      https_port 8443
+      {{- with .Values.caddy.email }}
+      email {{ . }}
+      {{- end }}
+      # Certificates for shops' own domains are issued on first visit, only for hosts the API knows.
+      on_demand_tls {
+        ask http://{{ $full }}-api:7070/api/v1/system/domain_check
+      }
+    }
+
+    {{ $host }} {
+      encode zstd gzip
+      @api path /api/* /admin* /docs* /webhooks/* /widget/*
+      handle @api {
+        reverse_proxy {{ $full }}-api:7070
+      }
+      handle {
+        reverse_proxy {{ $full }}-storefront:7072
+      }
+    }
+
+    https:// {
+      tls {
+        on_demand
+      }
+      encode zstd gzip
+      reverse_proxy {{ $full }}-storefront:7072
+    }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $full }}-caddy
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.caddy.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.caddy.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-caddy
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: caddy
+spec:
+  # One instance: its certificates live on one volume.
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: {{- include "openrent.selector" (dict "root" . "component" "caddy") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "openrent.selector" (dict "root" . "component" "caddy") | nindent 8 }}
+      annotations:
+        checksum/config: {{ printf "%s%s" .Values.publicUrl .Values.caddy.email | sha256sum }}
+    spec:
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: caddy
+          image: {{ .Values.caddy.image }}
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: https, containerPort: 8443 }
+          env:
+            - { name: XDG_DATA_HOME, value: /data }
+            - { name: XDG_CONFIG_HOME, value: /config }
+          volumeMounts:
+            - { name: config, mountPath: /etc/caddy }
+            - { name: data, mountPath: /data }
+            - { name: runtime, mountPath: /config }
+          readinessProbe:
+            tcpSocket: { port: http }
+      volumes:
+        - name: config
+          configMap: { name: {{ $full }}-caddy }
+        - name: data
+          persistentVolumeClaim: { claimName: {{ $full }}-caddy }
+        - name: runtime
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-caddy
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+  {{- with .Values.caddy.service.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.caddy.service.type }}
+  selector: {{- include "openrent.selector" (dict "root" . "component" "caddy") | nindent 4 }}
+  ports:
+    - { name: http, port: 80, targetPort: http }
+    - { name: https, port: 443, targetPort: https }
+{{- end }}

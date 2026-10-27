@@ -1,0 +1,21 @@
+{
+  "name": "create-openrent-storefront",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Start a headless OpenRent shop: a SvelteKit storefront on @openrent/sdk",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "create-openrent-storefront": "./bin.js"
+  },
+  "exports": {
+    ".": "./scaffold.js"
+  },
+  "files": ["bin.js", "scaffold.js", "template"],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
+  }
+}

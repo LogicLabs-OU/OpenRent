@@ -30,6 +30,8 @@ export function makeHandlebars(currency: string, tz: string, locale: string) {
   // {{t "doc.total" name=value}}: core catalogue text in the render language; Handlebars escapes it.
   hb.registerHelper('t', (key: unknown, options: { hash?: Record<string, unknown> }) => tAny(String(key), Object.fromEntries(Object.entries(options?.hash ?? {}).map(([k, v]) => [k, typeof v === 'number' ? v : String(v ?? '')])), locale));
   hb.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+  // {{localized x}}: a text kept in several languages (a tax plugin's note), in the render language.
+  hb.registerHelper('localized', (v: unknown) => (v && typeof v === 'object' ? String((v as Record<string, unknown>)[locale] ?? (v as Record<string, unknown>).en ?? '') : String(v ?? '')));
   return hb;
 }
 
@@ -58,6 +60,7 @@ export async function buildOrderData(ctx: Ctx, orderId: string) {
   const payments = await many(ctx, `SELECT * FROM payments WHERE order_id = $1 AND status = 'succeeded' ORDER BY created_at`, [orderId]);
   const deposit = await one(ctx, `SELECT * FROM deposits WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`, [orderId]);
   const addr = tenant.address ?? {};
+  const chosen = chosenBilling(order.billing, customer?.addresses);
   const orderUrl = `${await storefrontBase(ctx)}/order/${order.public_token}`;
   const qr_svg = await QRCode.toString(orderUrl, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
   return {
@@ -77,7 +80,15 @@ export async function buildOrderData(ctx: Ctx, orderId: string) {
       id: order.id, number: order.number, status: order.status, starts_at: order.starts_at, ends_at: order.ends_at,
       quote_expires_at: order.quote_expires_at, timezone: order.timezone, public_token: order.public_token, po_number: order.po_number ?? null,
     },
-    customer: customer ? { name: customer.name, email: customer.email, phone: customer.phone, company_name: customer.company_name, tax_id: customer.tax_id, locale: customer.locale, addresses: customer.addresses, billing: customer.addresses?.billing ?? null } : { name: tAny('doc.walk_in', {}, tenant.locale) },
+    customer: customer
+      ? {
+          name: chosen.name ?? customer.name, email: customer.email, phone: customer.phone, locale: customer.locale,
+          company_name: chosen.company_name !== undefined ? chosen.company_name : customer.company_name,
+          tax_id: chosen.tax_id !== undefined ? chosen.tax_id : customer.tax_id,
+          addresses: chosen.addresses ?? customer.addresses,
+          billing: chosen.billing !== undefined ? chosen.billing : (customer.addresses?.billing ?? null),
+        }
+      : { name: tAny('doc.walk_in', {}, tenant.locale) },
     location: location
       ? {
           name: location.name, address: location.address, phone: location.phone, email: location.email,
@@ -107,6 +118,13 @@ export async function buildOrderData(ctx: Ctx, orderId: string) {
     signature: order.terms_acceptance ?? null,
     pickup_signature: await pickupSignature(ctx, order.terms_acceptance?.pickup_signature),
   };
+}
+
+/** The billing details chosen at checkout (ADR 0012) print in place of the customer's own. */
+function chosenBilling(b: any, addresses: any): Partial<{ name: string; company_name: string | null; tax_id: string | null; addresses: any; billing: any }> {
+  if (!b) return {};
+  const address = b.address && Object.keys(b.address).length ? b.address : null;
+  return { ...(b.name ? { name: b.name } : {}), company_name: b.company_name ?? null, tax_id: b.tax_id ?? null, addresses: { ...(addresses ?? {}), billing: address }, billing: address };
 }
 
 /** The signature taken at pickup, with a drawn signature inlined so the frozen document keeps it. */
@@ -246,7 +264,8 @@ export async function issueConsolidatedInvoice(ctx: Ctx, customerId: string, ord
   }
   const data: Record<string, any> = {
     ...base, lines, payments, deposit: null, qr_svg: null, order_url: null,
-    totals: { ...totals, tax_breakdown: [...rates.values()] }, tax_breakdown: [...rates.values()],
+    // The reverse-charge note of the bookings stays on the invoice (their 0 % lines need it).
+    totals: { ...totals, tax_breakdown: [...rates.values()], tax_note: orders.find((o) => o.totals?.tax_note)?.totals.tax_note ?? null }, tax_breakdown: [...rates.values()],
     orders: orders.map((o) => ({ id: o.id, number: o.number, po_number: o.po_number ?? null })),
     order: { ...base.order, id: null, number: null, status: null, public_token: null, po_number: null, starts_at: period.from, ends_at: period.to },
   };

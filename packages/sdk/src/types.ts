@@ -180,6 +180,186 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/operator/shops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every shop with its status, limits and usage this month */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/shops/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Erase a suspended shop and all its data for good; `confirm` must be its slug */
+        delete: {
+            parameters: {
+                query: {
+                    confirm: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Set a shop’s limits (null removes one) */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        limits: {
+                            orders_per_month?: number | null;
+                            storage_mb?: number | null;
+                            plugins?: number | null;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/operator/shops/{id}/actions/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend a shop: admin and storefront answer "suspended"; nothing is deleted */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/shops/{id}/actions/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume a suspended shop */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -307,7 +487,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Exchange a sign-in link token for a session */
+        /** Exchange a sign-in link token for a session; with an authenticator app, its code too */
         post: {
             parameters: {
                 query?: never;
@@ -319,6 +499,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         token: string;
+                        totp?: string;
                     };
                 };
             };
@@ -381,7 +562,7 @@ export interface paths {
                 content: {
                     "application/json": {
                         name?: string;
-                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja" | "nl";
                     };
                 };
             };
@@ -592,6 +773,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether anyone may open a shop here */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Open a new shop with its owner and first location, and sign the owner in */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        owner: {
+                            /** Format: email */
+                            email: string;
+                            password: string;
+                            name: string;
+                        };
+                        tenant: {
+                            name: string;
+                            currency: string;
+                            timezone: string;
+                            locale?: string;
+                        };
+                        location: {
+                            name: string;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/setup": {
         parameters: {
             query?: never;
@@ -744,6 +997,40 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/v1/tenant/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This month’s orders, stored files and plugins turned on, against the shop’s limits (managed cloud) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tenant/settings": {
         parameters: {
             query?: never;
@@ -800,6 +1087,40 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/v1/tenant/settings/actions/refresh_rates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update the exchange rates for display currencies now, from the chosen rates plugin */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/tenant/export": {
@@ -900,6 +1221,9 @@ export interface paths {
                         };
                         timezone?: string;
                         opening_hours?: {
+                            [key: string]: string[][];
+                        };
+                        delivery_windows?: {
                             [key: string]: string[][];
                         };
                         is_default?: boolean;
@@ -1037,6 +1361,9 @@ export interface paths {
                         };
                         timezone?: string;
                         opening_hours?: {
+                            [key: string]: string[][];
+                        };
+                        delivery_windows?: {
                             [key: string]: string[][];
                         };
                         is_default?: boolean;
@@ -3612,6 +3939,10 @@ export interface paths {
                         translations?: {
                             [key: string]: unknown;
                         };
+                        seo?: {
+                            title?: string;
+                            description?: string;
+                        };
                     };
                 };
             };
@@ -3703,6 +4034,10 @@ export interface paths {
                         position?: number;
                         translations?: {
                             [key: string]: unknown;
+                        };
+                        seo?: {
+                            title?: string;
+                            description?: string;
                         };
                     };
                 };
@@ -4511,12 +4846,18 @@ export interface paths {
                     "application/json": {
                         name: string;
                         kind: "delivery" | "cleaning" | "damage_waiver" | "extension" | "late";
-                        calculation: "flat" | "per_unit" | "percent" | "per_period" | "zone";
+                        calculation: "flat" | "per_unit" | "percent" | "per_period" | "zone" | "per_km";
                         /** @description Minor units; basis points for percent (1000 = 10%) */
                         amount?: number;
                         period_unit?: ("hour" | null) | ("day" | null) | ("week" | null) | ("month" | null) | null;
                         zones?: {
                             postcodes: string[];
+                            amount: number;
+                        }[];
+                        /** @description per_km: the first band the distance fits */
+                        distance_bands?: {
+                            /** @description Up to this many kilometres; null for any distance */
+                            up_to_km: number | null;
                             amount: number;
                         }[];
                         /** @description optional: the customer chooses it at checkout */
@@ -4617,12 +4958,18 @@ export interface paths {
                     "application/json": {
                         name?: string;
                         kind?: "delivery" | "cleaning" | "damage_waiver" | "extension" | "late";
-                        calculation?: "flat" | "per_unit" | "percent" | "per_period" | "zone";
+                        calculation?: "flat" | "per_unit" | "percent" | "per_period" | "zone" | "per_km";
                         /** @description Minor units; basis points for percent (1000 = 10%) */
                         amount?: number;
                         period_unit?: ("hour" | null) | ("day" | null) | ("week" | null) | ("month" | null) | null;
                         zones?: {
                             postcodes: string[];
+                            amount: number;
+                        }[];
+                        /** @description per_km: the first band the distance fits */
+                        distance_bands?: {
+                            /** @description Up to this many kilometres; null for any distance */
+                            up_to_km: number | null;
                             amount: number;
                         }[];
                         /** @description optional: the customer chooses it at checkout */
@@ -6460,6 +6807,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/customers/{id}/actions/check_tax_id": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check the customer’s tax number again with the tax plugin (VIES for EU VAT numbers) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/customers/{id}/actions/send_portal_link": {
         parameters: {
             query?: never;
@@ -7159,6 +7542,154 @@ export interface paths {
             };
         };
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/actions/reschedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a reserved order that is not picked up yet to other dates; priced again, dry_run answers with the price and whether the dates are free */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        starts_at: string;
+                        /** Format: date-time */
+                        ends_at: string;
+                        dry_run?: boolean;
+                        notify?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orders/{id}/billing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set the billing details printed on the order (until an invoice is issued); null uses the customer’s own */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        billing: {
+                            kind?: "private" | "company";
+                            name?: string;
+                            company_name?: string | null;
+                            tax_id?: string | null;
+                            address?: {
+                                line1?: string;
+                                line2?: string;
+                                postal_code?: string;
+                                city?: string;
+                                region?: string;
+                                /** @description ISO 3166-1 alpha-2 */
+                                country?: string;
+                            } | null;
+                            is_default?: boolean;
+                        } | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "order";
+                            number: number;
+                            status: string;
+                            payment_status: string;
+                            totals: {
+                                [key: string]: unknown;
+                            };
+                            lines: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "order_line";
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
         post?: never;
         delete?: never;
         options?: never;
@@ -14352,7 +14883,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                    locale?: "en" | "de" | "fr" | "es" | "et" | "ja" | "nl";
                 };
                 header?: never;
                 path?: never;
@@ -14388,7 +14919,7 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
-                    locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                    locale?: "en" | "de" | "fr" | "es" | "et" | "ja" | "nl";
                 };
                 header?: never;
                 path: {
@@ -14425,9 +14956,9 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
-                        subject: string;
-                        body: string;
-                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                        subject?: string;
+                        body?: string;
+                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja" | "nl";
                         enabled?: boolean;
                         /** @description The SMS and WhatsApp text; empty sends none, null restores the built-in one */
                         text?: string | null;
@@ -14470,7 +15001,7 @@ export interface paths {
                         subject: string;
                         body: string;
                         order_id?: string;
-                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja" | "nl";
                     };
                 };
             };
@@ -14515,7 +15046,7 @@ export interface paths {
                         /** Format: email */
                         to: string;
                         order_id?: string;
-                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja";
+                        locale?: "en" | "de" | "fr" | "es" | "et" | "ja" | "nl";
                     };
                 };
             };
@@ -15194,6 +15725,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storefront/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A published page of the shop in one storefront language, with its sections for the live theme (X-Theme-Preview: the previewed theme, drafts too) */
+        get: {
+            parameters: {
+                query?: {
+                    locale?: string;
+                };
+                header?: never;
+                path: {
+                    slug: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A message from the storefront contact form; staff get it as a notice and by email */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        email: string;
+                        message: string;
+                        consent?: string | null;
+                        consent_required?: boolean;
+                        website?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/sitemap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Paths for search engines: the home page, categories and public products, with when each last changed */
+        get: {
+            parameters: {
+                query?: {
+                    offset?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storefront/catalog/categories": {
         parameters: {
             query?: never;
@@ -15746,6 +16397,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storefront/orders/{id}/calendar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The booking’s pickup and return as an iCalendar file (?token= required) */
+        get: {
+            parameters: {
+                query: {
+                    token: string;
+                    locale?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/storefront/orders/{id}/payment_intents": {
         parameters: {
             query?: never;
@@ -16035,6 +16725,131 @@ export interface paths {
         };
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/orders/{id}/actions/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel one of your bookings yourself, when the shop allows it; the refund follows its cancellation rules */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/orders/{id}/actions/change_dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move one of your bookings to other dates, or ask the shop to, as its rules allow; dry_run answers with the price and whether the dates are free */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        starts_at: string;
+                        /** Format: date-time */
+                        ends_at: string;
+                        reason?: string;
+                        dry_run?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/orders/{id}/actions/book_again": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new cart with the items of one of your bookings, without dates; items no longer offered are named in `skipped` */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -16488,6 +17303,1222 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/storefront_pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The shop’s storefront pages */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Create a page (a draft unless `status` is published); `slug` comes from the title when left out */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        title?: string;
+                        slug?: string;
+                        status?: "draft" | "published";
+                        body?: string;
+                        seo?: {
+                            title?: string | null;
+                            description?: string | null;
+                        };
+                        translations?: {
+                            [key: string]: {
+                                title?: string | null;
+                                body?: string | null;
+                                seo_title?: string | null;
+                                seo_description?: string | null;
+                            };
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront_pages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One page with its sections per theme */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        /** Delete a page */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change a page’s title, address, text, status or translations */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        title?: string;
+                        slug?: string;
+                        status?: "draft" | "published";
+                        body?: string;
+                        seo?: {
+                            title?: string | null;
+                            description?: string | null;
+                        };
+                        translations?: {
+                            [key: string]: {
+                                title?: string | null;
+                                body?: string | null;
+                                seo_title?: string | null;
+                                seo_description?: string | null;
+                            };
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/storefront_pages/{id}/sections/{theme}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save a page’s sections for one theme (checked against its section types); null removes them */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    theme: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        sections: {
+                            [key: string]: unknown;
+                        }[] | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront_pages/{id}/content/{theme}/{locale}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Translate a page’s section texts for one theme into one storefront language */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    theme: string;
+                    locale: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        values: {
+                            [key: string]: string | null;
+                        };
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront_navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The storefront’s header and footer menus */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        /** Replace the header and footer menus; an empty header leaves the theme’s own menu */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        header: {
+                            kind: "home" | "search" | "category" | "page" | "product" | "url";
+                            target?: string | null;
+                            label?: string | null;
+                            translations?: {
+                                [key: string]: string;
+                            };
+                        }[];
+                        footer: {
+                            kind: "home" | "search" | "category" | "page" | "product" | "url";
+                            target?: string | null;
+                            label?: string | null;
+                            translations?: {
+                                [key: string]: string;
+                            };
+                        }[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/billing_profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved billing details, the default first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save billing details: private, or a company with its tax number (checked when the shop has a tax plugin) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind?: "private" | "company";
+                        name?: string;
+                        company_name?: string | null;
+                        tax_id?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/billing_profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete saved billing details (orders keep their copy) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profile_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change saved billing details, or make them the default */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profile_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind?: "private" | "company";
+                        name?: string;
+                        company_name?: string | null;
+                        tax_id?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/storefront/account/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved delivery addresses, the default first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save a delivery address */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string | null;
+                        recipient?: string | null;
+                        phone?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/addresses/{address_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a saved delivery address */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change a saved delivery address, or make it the default */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string | null;
+                        recipient?: string | null;
+                        phone?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/portal/me/billing_profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved billing details, the default first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save billing details: private, or a company with its tax number (checked when the shop has a tax plugin) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind?: "private" | "company";
+                        name?: string;
+                        company_name?: string | null;
+                        tax_id?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/me/billing_profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete saved billing details (orders keep their copy) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profile_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change saved billing details, or make them the default */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    profile_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind?: "private" | "company";
+                        name?: string;
+                        company_name?: string | null;
+                        tax_id?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/portal/me/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved delivery addresses, the default first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save a delivery address */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string | null;
+                        recipient?: string | null;
+                        phone?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/me/addresses/{address_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a saved delivery address */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change a saved delivery address, or make it the default */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    address_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string | null;
+                        recipient?: string | null;
+                        phone?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/billing_profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved billing details, the default first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save billing details: private, or a company with its tax number (checked when the shop has a tax plugin) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind?: "private" | "company";
+                        name?: string;
+                        company_name?: string | null;
+                        tax_id?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/billing_profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete saved billing details (orders keep their copy) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    profile_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change saved billing details, or make them the default */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    profile_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        kind?: "private" | "company";
+                        name?: string;
+                        company_name?: string | null;
+                        tax_id?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Saved delivery addresses, the default first */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Save a delivery address */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string | null;
+                        recipient?: string | null;
+                        phone?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/addresses/{address_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a saved delivery address */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    address_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Change a saved delivery address, or make it the default */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                    address_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        label?: string | null;
+                        recipient?: string | null;
+                        phone?: string | null;
+                        address?: {
+                            line1?: string;
+                            line2?: string;
+                            postal_code?: string;
+                            city?: string;
+                            region?: string;
+                            /** @description ISO 3166-1 alpha-2 */
+                            country?: string;
+                        } | null;
+                        is_default?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
     "/api/v1/portal/auth/request_link": {
         parameters: {
             query?: never;
@@ -16552,6 +18583,42 @@ export interface paths {
                     };
                 };
             };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/invoices/{id}/payment_intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pay a monthly invoice as a whole: one payment for what its bookings still owe, shared out over them when it succeeds */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
             responses: {
                 /** @description Default Response */
                 200: {

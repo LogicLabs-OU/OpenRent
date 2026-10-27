@@ -2,7 +2,8 @@ import { t as msg } from '../i18n/index.ts';
 import type { Ctx } from '../context.ts';
 import { AppError, invalid } from '../errors.ts';
 import { money } from '../crud.ts';
-import { many, one } from '../sql.ts';
+import { exec, many, one } from '../sql.ts';
+import { newId } from '../ids.ts';
 import { putFile } from '../files/index.ts';
 import { addAttachment } from '../attachments/index.ts';
 import { accountTermsFor } from '../customers/b2b.ts';
@@ -43,6 +44,41 @@ export async function orders(ctx: Ctx, email: string, loaded?: Awaited<ReturnTyp
   });
 }
 
+/**
+ * Monthly invoices of the customer with something left to pay (ADR 0012): what each still owes is
+ * what its bookings still owe.
+ */
+async function openInvoices(ctx: Ctx, ids: string[]) {
+  if (!ids.length) return [];
+  const rows = await many<any>(
+    ctx,
+    `SELECT d.id, d.number, d.issued_at, d.currency, d.data, sum(greatest((o.totals->>'balance')::bigint, 0))::bigint AS due, min(o.starts_at) AS first
+       FROM documents d JOIN orders o ON o.invoice_id = d.id
+      WHERE d.type = 'invoice' AND d.status IN ('issued', 'sent') AND d.customer_id = ANY($1) AND d.order_id IS NULL
+      GROUP BY d.id HAVING sum(greatest((o.totals->>'balance')::bigint, 0)) > 0 ORDER BY d.issued_at`,
+    [ids],
+  );
+  return rows.map((d) => ({ id: d.id, object: 'invoice', number: d.number, issued_at: d.issued_at, due_at: d.data?.due_at ?? null, due: money(Number(d.due), String(d.currency).trim()) }));
+}
+
+/**
+ * Starts paying a monthly invoice as a whole: one payment for what its bookings still owe, shared out
+ * over them when it succeeds. Paid on the first booking's page, where the payment form takes over.
+ */
+export async function payInvoice(ctx: Ctx, email: string, invoiceId: string) {
+  const ids = await customerIds(ctx, email);
+  const open = (await openInvoices(ctx, ids)).find((i) => i.id === invoiceId);
+  if (!open) throw new AppError('not_payable', 409, msg('payments.not_payable'));
+  if (!(await activeProvider(ctx))) throw new AppError('online_payment_unavailable', 409, msg('portal.online_payment_unavailable'));
+  const anchor = (await one<{ id: string; public_token: string }>(ctx, `SELECT id, public_token FROM orders WHERE invoice_id = $1 AND (totals->>'balance')::bigint > 0 ORDER BY starts_at, number LIMIT 1`, [invoiceId]))!;
+  const c = await currency(ctx);
+  // One open request per invoice: a new attempt replaces the last.
+  await exec(ctx, `UPDATE payment_requests SET status = 'cancelled' WHERE invoice_id = $1 AND status = 'open'`, [invoiceId]);
+  const request = (await many<{ id: string }>(ctx, `INSERT INTO payment_requests (id, tenant_id, order_id, amount, currency, kind, status, invoice_id) VALUES ($1,$2,$3,$4,$5,'invoice','open',$6) RETURNING id`, [newId('prq'), ctx.tenantId, anchor.id, open.due.amount, c, invoiceId]))[0]!;
+  const intent = await createPaymentIntent(ctx, anchor.id, { purpose: 'rental', amount: open.due.amount, paymentRequestId: request.id });
+  return { ...intent, invoice_id: invoiceId, order_url: `${await storefrontBase(ctx)}/order/${anchor.public_token}` };
+}
+
 /** Profile, account terms, what is owed, insurance documents and signatures waiting. */
 export async function me(ctx: Ctx, email: string) {
   const { orders: list, ...profile } = await overview(ctx, email);
@@ -65,6 +101,7 @@ export async function me(ctx: Ctx, email: string) {
   );
   return {
     ...profile,
+    invoices: await openInvoices(ctx, ids),
     b2b: terms ? { on_account: true, po_required: terms.po_required, payment_terms_days: terms.payment_terms_days, available_credit: terms.available_credit } : null,
     open_balance: money(owed, c),
     owing: owing.map((o) => ({ id: o.id, number: o.number, status: o.status, balance: o.balance, order_url: o.order_url })),

@@ -19,7 +19,7 @@
   import XIcon from '@lucide/svelte/icons/x';
   import CircleCheckIcon from '@lucide/svelte/icons/circle-check';
   import { call, config, money } from './api.ts';
-  import { css, registerProperties } from './styles.ts';
+  import { css, registerProperties, themeCss } from './styles.ts';
   import { t } from './i18n/index.ts';
 
   /**
@@ -29,6 +29,11 @@
   let { product = '', shop = '', pk = '', api = '', storefront = '', lang = '', from = '', to = '', qty = 1, order = '', token = '', paid = '' }: Record<string, any> = $props();
   registerProperties();
   const cfg = $derived(config({ api, shop, pk, storefront, lang }));
+  // The shop's theme look (FR-THM-10), after the widget's own styles.
+  let themeStyle = $state('');
+  $effect(() => {
+    if (cfg.api) void themeCss(cfg).then((c) => (themeStyle = c));
+  });
   const L = $derived(cfg.locale);
 
   let host: HTMLElement | undefined = $state();
@@ -128,7 +133,7 @@
   const orderLink = $derived(done ? `${cfg.storefront!.replace(/\/$/, '')}/order/${done.order.public_token ?? token}` : '');
 </script>
 
-{@html css}
+{@html css}{@html themeStyle}
 <div class="fixed inset-0 z-[2147483000] flex justify-end bg-black/40 text-sm" part="backdrop" onclick={(e) => e.target === e.currentTarget && close()} role="presentation">
   <div bind:this={host} class="bg-background text-foreground flex h-full w-full max-w-md flex-col overflow-y-auto shadow-xl" role="dialog" aria-modal="true" aria-label={t('checkout_title', {}, L)} part="drawer">
     <div class="flex items-center justify-between border-b px-5 py-4">

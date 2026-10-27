@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { contentField, resolveSettings as themeDefaults, validateSections, validateThemeSettings, type SectionInstance, type ThemeMeta } from '@openrent/theme-sdk/manifest';
+import { contentField, resolveSettings as themeDefaults, validateSections, validateThemeSettings, withPluginSections, type SectionInstance, type ThemeMeta } from '@openrent/theme-sdk/manifest';
+import { pluginSectionSchemas } from '../plugins/storefront.ts';
 import { isLocale } from '@openrent/i18n';
 import type { Ctx } from '../context.ts';
 import { AppError, invalid, type FieldError } from '../errors.ts';
@@ -39,6 +40,10 @@ export function savedThemeSettings(s: TenantSettings, id: string): Record<string
   return s.theme_settings[id] ?? (s.theme.id === id ? s.theme.settings : {});
 }
 
+export function findTheme(installed: InstalledTheme[], id: string): InstalledTheme {
+  return find(installed, id);
+}
+
 function find(installed: InstalledTheme[], id: string): InstalledTheme {
   const theme = installed.find((x) => x.manifest.id === id);
   if (!theme) throw new AppError('not_found', 404, t('themes.not_installed', { id }));
@@ -72,8 +77,15 @@ export async function listThemes(ctx: Ctx, installed: InstalledTheme[]) {
   return installed.map((theme) => summary(theme, s));
 }
 
+/** The theme with the plugin section types it takes (FR-THM-12), named in the shop's language. */
+/** A theme with the section types plugins add (FR-THM-12), for checking a layout against it. */
+export async function withPlugins(ctx: Ctx, theme: InstalledTheme) {
+  const locale = (await must<{ locale: string }>(ctx, `SELECT locale FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant')).locale;
+  return withPluginSections(theme, await pluginSectionSchemas(ctx, locale));
+}
+
 export async function getTheme(ctx: Ctx, installed: InstalledTheme[], id: string) {
-  const theme = find(installed, id);
+  const theme = await withPlugins(ctx, find(installed, id));
   const s = await current(ctx);
   const saved = savedThemeSettings(s, id);
   return {
@@ -124,7 +136,7 @@ export async function updateThemeContent(ctx: Ctx, installed: InstalledTheme[], 
 
 /** Saves the home layout (theme API 1.3). `null` goes back to the theme's default layout. */
 export async function updateThemeSections(ctx: Ctx, installed: InstalledTheme[], id: string, layout: unknown[] | null) {
-  const theme = find(installed, id);
+  const theme = await withPlugins(ctx, find(installed, id));
   const raw = await settingsForUpdate(ctx);
   const all = { ...(raw.theme_sections ?? {}) };
   if (layout === null) delete all[id];

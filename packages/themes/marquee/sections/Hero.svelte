@@ -29,7 +29,9 @@
   const alt = $derived(s.image ? (s.alt ?? '') : (featured?.images[0]?.alt ?? featured?.name ?? ''));
 </script>
 
-<section class="mb-16 grid items-start gap-14 pt-4 md:mb-24 md:pt-10 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:gap-16">
+<section
+  class="mb-16 grid items-start gap-14 pt-4 md:mb-24 md:pt-10 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:gap-16"
+>
   <div class="flex min-w-0 flex-col gap-8 md:gap-10">
     <h1 class={[display, 'break-words']}>
       {#each lines as l, i (i)}<span class={['block', i % 2 === 1 && 'mq-outline']}>{l}</span>{/each}
@@ -41,7 +43,10 @@
   </div>
   {#if featured || photo}
     <div class="relative mx-auto w-full max-w-[34rem] px-3 pt-4 lg:mt-6">
-      <div class="mq-checker absolute bottom-[18%] -left-1 h-[52%] w-[34%] -rotate-3 md:-left-6" aria-hidden="true"></div>
+      <div
+        class="mq-checker absolute bottom-[18%] -left-1 h-[52%] w-[34%] -rotate-3 md:-left-6"
+        aria-hidden="true"
+      ></div>
       <a
         class="mq-poster group relative block border border-(--mq-ink) bg-white p-3 text-(--mq-ink) md:p-4"
         href={featured ? rt.url.product(featured.slug) : (rt.url.search?.() ?? rt.url.home())}

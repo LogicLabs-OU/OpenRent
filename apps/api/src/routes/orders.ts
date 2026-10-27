@@ -3,7 +3,7 @@ import { orders, payments, documents, notifications, AppError, ORDER_ACTIONS } f
 import type { Router } from '../http.ts';
 import { expandOf, ifMatchOf, parseList } from '../http.ts';
 import { sendSheet } from '../spreadsheets.ts';
-import { DepositPolicy, ExportQuery, Id, IdParams, LineInput, ListQuery, Nullable, Order, OrderInput, Page, PriceQuote, QuoteInput, QuoteOptions, Type, UnitsBody, ok } from '../schemas.ts';
+import { BillingDetails, DepositPolicy, ExportQuery, Id, IdParams, LineInput, ListQuery, Nullable, Order, OrderInput, Page, PriceQuote, QuoteInput, QuoteOptions, Type, UnitsBody, ok } from '../schemas.ts';
 
 const ActionParams = Type.Object({ id: Id });
 const ExpandQuery = Type.Object({ expand: Type.Optional(Type.String({ description: 'customer,location,payments,payment_requests,deposits,documents,damage_charges,notifications' })) });
@@ -25,6 +25,16 @@ export function registerOrders(r: Router) {
     reply.header('ETag', `W/"${o.version}"`);
     return o;
   });
+  r.post(
+    '/orders/:id/actions/reschedule',
+    { permission: 'orders:write', tags: O, summary: 'Move a reserved order that is not picked up yet to other dates; priced again, dry_run answers with the price and whether the dates are free', params: IdParams, body: Type.Object({ starts_at: Type.String({ format: 'date-time' }), ends_at: Type.String({ format: 'date-time' }), dry_run: Type.Optional(Type.Boolean()), notify: Type.Optional(Type.Boolean()) }, { additionalProperties: false }), status: 200 },
+    async (ctx, req) => orders.rescheduleOrder(ctx, req.params.id, req.body),
+  );
+  r.put(
+    '/orders/:id/billing',
+    { permission: 'orders:write', tags: O, summary: 'Set the billing details printed on the order (until an invoice is issued); null uses the customer’s own', params: IdParams, body: Type.Object({ billing: Nullable(BillingDetails) }, { additionalProperties: false }), response: ok(Order) },
+    async (ctx, req) => orders.setOrderBilling(ctx, req.params.id, req.body.billing),
+  );
   r.get('/orders/:id', { permission: 'orders:read', tags: O, summary: 'Get an order by id or number (#1042)', params: IdParams, querystring: ExpandQuery, response: ok(Order) }, async (ctx, req, reply) => {
     const o = await orders.getOrder(ctx, req.params.id, expandOf(req.query));
     reply.header('ETag', `W/"${o.version}"`);

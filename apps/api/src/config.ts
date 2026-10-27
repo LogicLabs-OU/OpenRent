@@ -12,7 +12,8 @@ export interface Config {
   port: number;
   host: string;
   logLevel: string;
-  trustProxy: boolean;
+  /** Which proxies may name the client's address (X-Forwarded-For): true, false or addresses/CIDRs. */
+  trustProxy: boolean | string;
   autoMigrate: boolean;
   pluginsDir: string;
   pluginsConfig: string | null;
@@ -24,6 +25,10 @@ export interface Config {
   adminDist: string | null;
   widgetDist: string | null;
   operatorKey: string | null;
+  /** Managed cloud: anyone may open a shop (`OPENRENT_SIGNUP=1`, multi-shop installs only). */
+  signup: boolean;
+  /** Limits for shops opened by sign-up (`OPENRENT_DEFAULT_LIMITS`, JSON). */
+  defaultLimits: string | null;
   /** Requests per minute per API key or session (default 600). */
   rateLimitPerMinute: number;
   corsOrigins: string[];
@@ -31,6 +36,9 @@ export interface Config {
   pdfRenderer: 'none' | 'playwright';
   dbPoolMax: number;
 }
+
+/** Proxies whose X-Forwarded-For is believed by default: loopback and private networks. */
+const PRIVATE_PROXIES = '127.0.0.1/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7';
 
 export class ConfigError extends Error {
   constructor(readonly problems: string[]) {
@@ -85,16 +93,20 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port,
     host: env.HOST ?? '0.0.0.0',
     logLevel: env.LOG_LEVEL ?? 'info',
-    trustProxy: (env.TRUST_PROXY ?? 'true') === 'true',
+    // Default: proxies on private networks (Caddy, a load balancer), never a client on the internet.
+    trustProxy: env.TRUST_PROXY === 'true' ? true : env.TRUST_PROXY === 'false' ? false : env.TRUST_PROXY || PRIVATE_PROXIES,
     autoMigrate: (env.AUTO_MIGRATE ?? 'true') === 'true',
     pluginsDir: env.PLUGINS_DIR ?? '/plugins',
     pluginsConfig: env.PLUGINS_CONFIG ?? null,
-    allowPluginUpload: (env.OPENRENT_ALLOW_PLUGIN_UPLOAD ?? 'false') === 'true',
+    // Uploaded plugins run in the shared process: never on a multi-shop installation, where any shop owner could upload one.
+    allowPluginUpload: (env.OPENRENT_ALLOW_PLUGIN_UPLOAD ?? 'false') === 'true' && mode !== 'multi_tenant',
     themesConfig: env.THEMES_CONFIG ?? null,
     themesDir: env.THEMES_DIR || null,
     adminDist: env.ADMIN_DIST ?? null,
     widgetDist: env.WIDGET_DIST ?? null,
     operatorKey: env.OPENRENT_OPERATOR_KEY || null,
+    signup: env.OPENRENT_SIGNUP === '1' && mode === 'multi_tenant',
+    defaultLimits: env.OPENRENT_DEFAULT_LIMITS || null,
     rateLimitPerMinute: Math.max(1, Number(env.RATE_LIMIT_PER_MINUTE) || 600),
     corsOrigins: (env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     livemode: (env.OPENRENT_LIVEMODE ?? 'false') === 'true',

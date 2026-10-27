@@ -9,6 +9,7 @@ export function registerAuthRoutes(r: Router) {
   const { deps } = r;
   const secure = deps.config.publicUrl.startsWith('https://');
   const cookieOpts = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure, maxAge: coreAuth.SESSION_TTL_DAYS * 86400 };
+  const failures = new Map<string, { count: number; until: number }>();
   const setSession = (reply: any, token: string) => {
     reply.setCookie(SESSION_COOKIE, token, cookieOpts);
     const csrf = newCsrfToken();
@@ -29,7 +30,22 @@ export function registerAuthRoutes(r: Router) {
     },
     async (_c, req, reply) => {
       const b = req.body as { email: string; password: string; totp?: string };
-      const { token, session } = await withSystem(deps.db, (c) => coreAuth.login(c, { ...b, ip: req.ip, userAgent: req.headers['user-agent'] }));
+      // Besides the per-address limit: at most 10 failed sign-ins per email in 15 minutes, from anywhere.
+      const who = b.email.trim().toLowerCase();
+      const f = failures.get(who);
+      if (f && f.until > Date.now() && f.count >= 10) throw new AppError('login_locked', 429, serverT('error.login_locked'));
+      let out;
+      try {
+        out = await withSystem(deps.db, (c) => coreAuth.login(c, { ...b, ip: req.ip, userAgent: req.headers['user-agent'] }));
+      } catch (err) {
+        if (err instanceof AppError && (err.code === 'invalid_credentials' || err.code === 'invalid_totp')) {
+          if (failures.size > 50_000) failures.clear();
+          failures.set(who, f && f.until > Date.now() ? { count: f.count + 1, until: f.until } : { count: 1, until: Date.now() + 15 * 60_000 });
+        }
+        throw err;
+      }
+      failures.delete(who);
+      const { token, session } = out;
       const csrf = setSession(reply, token);
       return { object: 'session', user_id: session.userId, tenant_id: session.tenantId, csrf_token: csrf };
     },
@@ -64,10 +80,10 @@ export function registerAuthRoutes(r: Router) {
 
   r.post(
     '/auth/magic_link/verify',
-    { public: true, tx: 'none', tags: ['Auth'], summary: 'Exchange a sign-in link token for a session', body: Type.Object({ token: Type.String() }), status: 200 },
+    { public: true, tx: 'none', tags: ['Auth'], summary: 'Exchange a sign-in link token for a session; with an authenticator app, its code too', body: Type.Object({ token: Type.String(), totp: Type.Optional(Type.String()) }), rateLimit: { max: 10, timeWindow: '1 minute' }, status: 200 },
     async (_c, req, reply) => {
-      const { token } = req.body as { token: string };
-      const { token: sess, session } = await withSystem(deps.db, (c) => coreAuth.consumeLoginToken(c, token, { ip: req.ip, userAgent: req.headers['user-agent'] }));
+      const { token, totp } = req.body as { token: string; totp?: string };
+      const { token: sess, session } = await withSystem(deps.db, (c) => coreAuth.consumeLoginToken(c, token, { ip: req.ip, userAgent: req.headers['user-agent'] }, totp));
       const csrf = setSession(reply, sess);
       return { object: 'session', user_id: session.userId, tenant_id: session.tenantId, csrf_token: csrf };
     },
@@ -80,7 +96,7 @@ export function registerAuthRoutes(r: Router) {
     const out = await withSystem(deps.db, async (c) => {
       const user = (await c.query(`SELECT id, email, name, locale, totp_secret IS NOT NULL AS totp_enabled, password_hash IS NOT NULL AS has_password FROM users WHERE id = $1`, [a.userId])).rows[0];
       const memberships = await coreAuth.membershipsOf(c, a.userId!);
-      const tenant = a.tenantId ? (await c.query(`SELECT id, slug, name, currency, timezone, locale, branding FROM tenants WHERE id = $1`, [a.tenantId])).rows[0] : null;
+      const tenant = a.tenantId ? (await c.query(`SELECT id, slug, name, currency, timezone, locale, branding, status, suspended_reason FROM tenants WHERE id = $1`, [a.tenantId])).rows[0] : null;
       return { user, memberships, tenant };
     });
     // Rotate a CSRF cookie if the browser lost it.
@@ -174,6 +190,37 @@ export function registerAuthRoutes(r: Router) {
   });
 
   // --- First run (PRD §10.3) ---------------------------------------------
+
+  // --- Self-serve sign-up (managed cloud; OPENRENT_SIGNUP=1 on multi-shop installs) ------------------
+
+  r.get('/signup', { public: true, tx: 'none', tags: ['Setup'], summary: 'Whether anyone may open a shop here' }, async () => ({ object: 'signup_status', enabled: deps.config.signup }));
+
+  r.post(
+    '/signup',
+    {
+      public: true,
+      tx: 'none',
+      tags: ['Setup'],
+      summary: 'Open a new shop with its owner and first location, and sign the owner in',
+      body: Type.Object({
+        owner: Type.Object({ email: Type.String({ format: 'email' }), password: Type.String({ minLength: 8 }), name: Type.String({ minLength: 1 }) }),
+        tenant: Type.Object({ name: Type.String({ minLength: 1, maxLength: 120 }), currency: Type.String({ pattern: '^[A-Z]{3}$' }), timezone: Type.String(), locale: Type.Optional(Type.String()) }),
+        location: Type.Object({ name: Type.String({ minLength: 1, maxLength: 120 }) }),
+      }),
+      rateLimit: { max: 5, timeWindow: '1 hour' },
+    },
+    async (_c, req, reply) => {
+      if (!deps.config.signup) throw new AppError('signup_disabled', 404, serverT('error.signup_disabled'));
+      const body = req.body as any;
+      const result = await withSystem(deps.db, (c) => tenancy.runSignup(c, body, { livemode: deps.config.livemode, limits: tenancy.defaultLimits(deps.config.defaultLimits) }));
+      const { token } = await withSystem(deps.db, async (c) => {
+        const user = (await c.query(`SELECT * FROM users WHERE id = $1`, [result.userId])).rows[0];
+        return coreAuth.createSession(c, user, { ip: req.ip, userAgent: req.headers['user-agent'] }, result.tenantId);
+      });
+      const csrf = setSession(reply, token);
+      return { object: 'signup_result', tenant_id: result.tenantId, slug: result.slug, location_id: result.locationId, publishable_key: result.publishableKey, csrf_token: csrf };
+    },
+  );
 
   r.get('/setup', { public: true, tx: 'none', tags: ['Setup'], summary: 'Whether first-run setup is still needed' }, async () => {
     const done = await withSystem(deps.db, (c) => tenancy.isSetupComplete(c));

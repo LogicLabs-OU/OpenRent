@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
 
 /** A small PNG made in the browser, so the test needs no image files. */
 async function pngBytes(page: Page, colour: string): Promise<Buffer> {

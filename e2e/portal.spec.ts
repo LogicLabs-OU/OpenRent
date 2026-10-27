@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { ADMIN, STORE, collectErrors, hydrated, randomOffset, signIn, weekday } from './helpers.ts';
+import { test, messageHtml, ADMIN, STORE, collectErrors, hydrated, randomOffset, signIn, weekday } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -30,7 +30,7 @@ test('staff send an account link; the customer sees what is owed and uploads an 
   await expect(page.getByText(`Account link sent to ${email}`)).toBeVisible();
   const log = await call(page, 'GET', '/notifications?limit=50');
   const msg = log.data.find((n: any) => n.template === 'portal_invitation' && n.recipient === email);
-  const html: string = (await call(page, 'GET', `/notifications/${msg.id}`)).body_html.replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
+  const html: string = (await messageHtml(msg.id)).replace(/&#x3D;/g, '=').replace(/&amp;/g, '&');
   const token = new URL(/href="([^"]*\/account\/verify\?token=[\w-]+)"/.exec(html)![1]!).searchParams.get('token')!;
 
   const shopper = await (await browser.newContext()).newPage();

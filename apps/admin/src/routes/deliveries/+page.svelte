@@ -95,7 +95,11 @@
   }
 
   const addressText = (a: any) => [a?.line1, a?.line2, a?.postal_code, a?.city].filter(Boolean).join(', ');
-  const mapUrl = (a: any) => (Number.isFinite(Number(a?.lat)) ? `https://www.openstreetmap.org/?mlat=${a.lat}&mlon=${a.lng}#map=17/${a.lat}/${a.lng}` : `https://www.openstreetmap.org/search?query=${encodeURIComponent(addressText(a))}`);
+  // The geocoder's point when the shop has one (FR-PR-8), else coordinates typed in, else a search.
+  const mapUrl = (d: any) => {
+    const p = d.map ?? (Number.isFinite(Number(d.address?.lat)) ? { lat: d.address.lat, lon: d.address.lng } : null);
+    return p ? `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}` : `https://www.openstreetmap.org/search?query=${encodeURIComponent(addressText(d.address))}`;
+  };
   const time = (iso: string) => dt(iso, session.tz, { timeStyle: 'short' });
 </script>
 
@@ -144,7 +148,7 @@
             <Card.Action><StatusBadge status={d.status} label={t(`deliveries.status.${d.status}` as any)} /></Card.Action>
           </Card.Header>
           <Card.Content class="flex flex-col gap-2 text-sm">
-            {#if addressText(d.address)}<a class="flex w-fit items-center gap-1.5 hover:underline" href={mapUrl(d.address)} target="_blank" rel="noopener"><MapPinIcon class="size-4" />{addressText(d.address)}</a>{/if}
+            {#if addressText(d.address)}<a class="flex w-fit items-center gap-1.5 hover:underline" href={mapUrl(d)} target="_blank" rel="noopener"><MapPinIcon class="size-4" />{addressText(d.address)}</a>{/if}
             {#if d.contact?.phone}<a class="flex w-fit items-center gap-1.5 hover:underline" href={`tel:${d.contact.phone}`}><PhoneIcon class="size-4" />{d.contact.phone}</a>{/if}
             {#if d.notes}<p class="text-muted-foreground">{d.notes}</p>{/if}
             {#if d.failure_reason}<p class="text-destructive">{t('deliveries.failed_because', { reason: d.failure_reason })}</p>{/if}

@@ -20,7 +20,8 @@
 	--muted-foreground: oklch(0.52 0 0); /* 0.556 gave 4.4:1 on --muted; WCAG AA needs 4.5:1 */
 	--accent: oklch(0.97 0 0);
 	--accent-foreground: oklch(0.205 0 0);
-	--destructive: oklch(0.577 0.245 27.325);
+	/* Darker than the stock red: 4.5:1 also on its own 10 % tint (destructive buttons and badges). */
+	--destructive: oklch(0.505 0.213 27.518);
 	--border: oklch(0.922 0 0);
 	--input: oklch(0.922 0 0);
 	--ring: oklch(0.708 0 0);

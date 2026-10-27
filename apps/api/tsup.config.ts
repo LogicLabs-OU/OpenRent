@@ -4,7 +4,7 @@ import { cpSync } from 'node:fs';
 
 // Bundles workspace packages into dist; third-party dependencies stay in node_modules.
 export default defineConfig({
-  entry: { server: 'src/server.ts', spec: 'scripts/spec.ts' },
+  entry: { server: 'src/server.ts', migrate: 'src/migrate-cli.ts', spec: 'scripts/spec.ts' },
   format: ['esm'],
   platform: 'node',
   target: 'node22',

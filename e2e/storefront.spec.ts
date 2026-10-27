@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { STORE, collectErrors, hydrated, pickDay, randomOffset, shot, weekday } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, STORE, collectErrors, hydrated, pickDay, randomOffset, shot, weekday } from './helpers.ts';
 
 test('a customer books a bike online @mobile', async ({ page }, info) => {
   const errors = collectErrors(page);

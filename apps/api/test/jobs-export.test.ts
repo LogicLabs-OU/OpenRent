@@ -92,7 +92,7 @@ suite('background jobs, the full data export and backups', () => {
         ),
       )
     ).rows;
-    const leaks = rows.filter((r) => !EXPORT_DENYLIST.includes(r.table_name) && !REDACTED_COLUMNS.has(r.column_name) && !['secret_rotated_at', 'verification_token', 'file_hashes'].includes(r.column_name));
+    const leaks = rows.filter((r) => !EXPORT_DENYLIST.includes(r.table_name) && !REDACTED_COLUMNS.has(r.column_name) && !['secret_rotated_at', 'verification_token', 'file_hashes', 'totp_last_step'].includes(r.column_name));
     expect(leaks).toEqual([]);
     // Every left-out table still exists, so the list does not go stale.
     const tables = (await withSystem(t.deps.db, (db) => db.query<{ table_name: string }>(`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`))).rows.map((r) => r.table_name);

@@ -220,9 +220,13 @@
         <Alert.Root variant="destructive"><CircleAlertIcon /><Alert.Description class="[overflow-wrap:anywhere]">{viewing.error}</Alert.Description></Alert.Root>
       {/if}
       {#if viewing.channel === 'email'}
-        <iframe title={t('email.preview')} sandbox="" class="h-96 w-full rounded-md border bg-white" srcdoc={viewing.body_html}></iframe>
+        {#if viewing.content_hidden}
+          <p class="text-muted-foreground text-sm" data-testid="email-content-hidden">{t('email.content_hidden')}</p>
+        {:else}
+          <iframe title={t('email.preview')} sandbox="" class="h-96 w-full rounded-md border bg-white" srcdoc={viewing.body_html}></iframe>
+        {/if}
       {:else}
-        <p class="rounded-md border p-3 text-sm whitespace-pre-wrap" data-testid="text-message-body">{viewing.text}</p>
+        <p class="rounded-md border p-3 text-sm whitespace-pre-wrap" data-testid="text-message-body">{viewing.content_hidden ? t('email.content_hidden') : viewing.text}</p>
       {/if}
       <Dialog.Footer>
         {#if canRetry(viewing)}

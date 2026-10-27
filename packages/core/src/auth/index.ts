@@ -3,7 +3,7 @@ import type { Queryable, Role } from '../context.ts';
 import { AppError, invalid } from '../errors.ts';
 import { newId, randomToken, sha256 } from '../ids.ts';
 import { hashPassword, verifyPassword } from './passwords.ts';
-import { newTotpSecret, totpUri, verifyTotp } from './totp.ts';
+import { newTotpSecret, totpStep, totpUri, verifyTotp } from './totp.ts';
 import { PERMISSIONS } from '../permissions.ts';
 
 export { hashPassword, verifyPassword, newTotpSecret, totpUri, verifyTotp };
@@ -58,10 +58,13 @@ export interface LoginInput {
   userAgent?: string;
 }
 
+let dummy: Promise<string> | null = null;
+const dummyHash = () => (dummy ??= hashPassword(randomToken(16)));
+
 export async function login(db: Queryable, input: LoginInput): Promise<{ token: string; session: SessionInfo }> {
   const user = await findUserByEmail(db, input.email);
-  // Verify even when the user is missing to keep timing uniform.
-  const ok = await verifyPassword(user?.password_hash ?? '$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQ$1111111111111111111111', input.password);
+  // Verify even when the user is missing, against a real hash, so both take as long.
+  const ok = await verifyPassword(user?.password_hash ?? (await dummyHash()), input.password);
   if (!user || !ok || user.status !== 'active') {
     throw new AppError('invalid_credentials', 401, msg('error.email_or_password_is_incorrect'));
   }
@@ -69,7 +72,10 @@ export async function login(db: Queryable, input: LoginInput): Promise<{ token: 
   await assertNoSsoRequired(db, user.email);
   if (user.totp_secret) {
     if (!input.totp) throw new AppError('totp_required', 401, msg('error.enter_the_code_from_your_authenticator_app'));
-    if (!verifyTotp(user.totp_secret, input.totp)) throw new AppError('invalid_totp', 401, msg('error.the_authenticator_code_is_incorrect'));
+    // Each code works once: a code seen over someone's shoulder is spent.
+    const step = totpStep(user.totp_secret, input.totp);
+    if (step === null || (user.totp_last_step != null && step <= Number(user.totp_last_step))) throw new AppError('invalid_totp', 401, msg('error.the_authenticator_code_is_incorrect'));
+    await db.query(`UPDATE users SET totp_last_step = $2 WHERE id = $1`, [user.id, step]);
   }
   return createSession(db, user, input);
 }
@@ -130,16 +136,25 @@ export async function createLoginToken(db: Queryable, email: string, ttlMinutes 
   return { token, user };
 }
 
-export async function consumeLoginToken(db: Queryable, token: string, meta: { ip?: string; userAgent?: string }) {
-  const r = await db.query(
-    `UPDATE login_tokens SET used_at = now()
-      WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
-      RETURNING user_id`,
-    [sha256(token)],
-  );
-  const userId = r.rows[0]?.user_id;
-  if (!userId) throw new AppError('invalid_token', 401, msg('error.this_sign_in_link_is_invalid_or'));
-  const user = (await db.query(`SELECT * FROM users WHERE id = $1`, [userId])).rows[0];
+/**
+ * Exchanges a sign-in link for a session. Someone with an authenticator app also gives its code: the
+ * link alone is only one factor. The link stays valid until the code is right (or it expires).
+ */
+export async function consumeLoginToken(db: Queryable, token: string, meta: { ip?: string; userAgent?: string }, totp?: string) {
+  const row = (await db.query(`SELECT user_id FROM login_tokens WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`, [sha256(token)])).rows[0];
+  if (!row) throw new AppError('invalid_token', 401, msg('error.this_sign_in_link_is_invalid_or'));
+  const user = (await db.query(`SELECT * FROM users WHERE id = $1`, [row.user_id])).rows[0];
+  if (!user || user.status !== 'active') throw new AppError('invalid_token', 401, msg('error.this_sign_in_link_is_invalid_or'));
+  const { assertNoSsoRequired } = await import('../sso/index.ts');
+  await assertNoSsoRequired(db, user.email);
+  if (user.totp_secret) {
+    if (!totp) throw new AppError('totp_required', 401, msg('error.enter_the_code_from_your_authenticator_app'));
+    const step = totpStep(user.totp_secret, totp);
+    if (step === null || (user.totp_last_step != null && step <= Number(user.totp_last_step))) throw new AppError('invalid_totp', 401, msg('error.the_authenticator_code_is_incorrect'));
+    await db.query(`UPDATE users SET totp_last_step = $2 WHERE id = $1`, [user.id, step]);
+  }
+  const used = await db.query(`UPDATE login_tokens SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL RETURNING 1`, [sha256(token)]);
+  if (!used.rowCount) throw new AppError('invalid_token', 401, msg('error.this_sign_in_link_is_invalid_or'));
   return createSession(db, user, meta);
 }
 

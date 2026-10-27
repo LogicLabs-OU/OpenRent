@@ -55,7 +55,7 @@ const TOTALS = `<table class="totals">
   <tr class="grand"><td>{{t "doc.total"}}</td><td class="num">{{money totals.total}}</td></tr>
   {{#if totals.paid}}<tr><td>{{t "doc.paid"}}</td><td class="num">{{money totals.paid}}</td></tr><tr><td>{{t "doc.balance_due"}}</td><td class="num">{{money totals.balance}}</td></tr>{{/if}}
   {{#if totals.deposit}}<tr><td class="muted">{{t "doc.deposit_refundable"}}</td><td class="num muted">{{money totals.deposit}}</td></tr>{{/if}}
-</table>`;
+</table>{{#if totals.tax_note}}<p class="muted">{{localized totals.tax_note}}</p>{{/if}}`;
 
 /** `title` is a catalogue key for built-in templates. */
 export const DEFAULT_TEMPLATES: Record<string, { title: string; body: string }> = {

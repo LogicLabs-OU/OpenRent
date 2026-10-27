@@ -26,6 +26,8 @@ export interface CheckoutResult {
 export interface Runtime {
   shop: Shop;
   setDates(from: string | null, to: string | null): Promise<void>;
+  /** Picks the location the visitor rents from (theme API 1.9): stock, opening hours and the cart follow it. */
+  setLocation?(locationId: string): Promise<void>;
   addToCart(variantId: string, quantity: number): Promise<void>;
   setQuantity(variantId: string, quantity: number): Promise<void>;
   applyCoupon(code: string): Promise<void>;

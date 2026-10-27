@@ -1,6 +1,6 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { ADMIN, collectErrors, shot, signIn } from './helpers.ts';
+import { test, ADMIN, collectErrors, shot, signIn } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -23,6 +23,8 @@ test('staff connect an integration, send earlier invoices, read the log and disc
   // Accounting systems have their own page now.
   await expect(page.locator('[data-integration="xero"]')).toHaveCount(0);
   await expect(page.getByTestId('accounting-link')).toBeVisible();
+  // OAuth integrations not connected yet show what to enter as the redirect URL at the provider.
+  await expect(page.getByTestId('integration-redirect').first()).toContainText('/api/v1/integrations/oauth/callback');
 
   const ledger = page.locator('[data-integration="e2e-ledger"]');
   await ledger.getByRole('button', { name: 'Connect' }).click();

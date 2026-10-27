@@ -14,6 +14,7 @@ import { registerAuth } from './auth.ts';
 import { errorHandler, problem } from './errors.ts';
 import { Router } from './http.ts';
 import { registerSystem } from './routes/system.ts';
+import { registerOperator } from './routes/operator.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerTenant } from './routes/tenant.ts';
 import { registerCatalog } from './routes/catalog.ts';
@@ -35,6 +36,8 @@ import { registerDocuments } from './routes/documents.ts';
 import { registerWebhooks } from './routes/webhooks.ts';
 import { registerReports } from './routes/reports.ts';
 import { registerStorefront } from './routes/storefront.ts';
+import { registerStorefrontPages } from './routes/storefront-pages.ts';
+import { registerBillingProfiles } from './routes/billing-profiles.ts';
 import { registerInbound } from './routes/inbound.ts';
 import { registerExtensions } from './routes/extensions.ts';
 import { registerFiles, MAX_UPLOAD_MB } from './routes/files.ts';
@@ -89,7 +92,15 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
     global: true,
     max: deps.config.rateLimitPerMinute,
     timeWindow: '1 minute',
-    keyGenerator: (req) => req.headers.authorization?.slice(0, 40) ?? req.cookies?.or_session?.slice(0, 16) ?? req.ip,
+    // After credentials are resolved: a key or session that really exists gets its own bucket; anything
+    // else (anonymous, an unknown cookie, a made-up header) counts against its address.
+    hook: 'preHandler',
+    keyGenerator: (req) => {
+      const a = req.auth;
+      if (a?.kind === 'secret_key' || a?.kind === 'publishable') return `key:${a.actor.id}`;
+      if (a?.kind === 'session') return `ses:${a.sessionId}`;
+      return `ip:${req.ip}`;
+    },
     addHeadersOnExceeding: { 'x-ratelimit-limit': false, 'x-ratelimit-remaining': false, 'x-ratelimit-reset': false },
     addHeaders: { 'x-ratelimit-limit': false, 'x-ratelimit-remaining': false, 'x-ratelimit-reset': false, 'retry-after': true },
     errorResponseBuilder: (req, ctx) => ({ ...problem(429, 'rate_limited', `Rate limit of ${ctx.max} per ${ctx.after} exceeded`, req), statusCode: 429 }),
@@ -132,6 +143,7 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
   registerAuth(app, deps);
   const r = new Router(app, deps);
   registerSystem(r);
+  registerOperator(r);
   registerAuthRoutes(r);
   registerTenant(r);
   registerCatalog(r);
@@ -152,6 +164,8 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
   registerWebhooks(r);
   registerReports(r);
   registerStorefront(r);
+  registerStorefrontPages(r);
+  registerBillingProfiles(r);
   registerPortal(r);
   registerExtensions(r);
   registerFiles(r);

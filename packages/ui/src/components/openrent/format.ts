@@ -19,6 +19,7 @@ export type StatusTone = 'neutral' | 'info' | 'violet' | 'success' | 'warning' |
 
 const TONES: Record<string, StatusTone> = {
   draft: 'neutral',
+  published: 'success',
   quote: 'info',
   reserved: 'info',
   prepared: 'violet',

@@ -84,10 +84,23 @@ interface Package {
 function readPackage(zip: Buffer, installed: InstalledTheme[]): Package {
   if (zip.length > MAX_ZIP) throw refuse(t('themes.package.too_large', { mb: MAX_ZIP / 1024 / 1024 }));
   let entries: Record<string, Uint8Array>;
+  // Limits on what the package unpacks to, so a small ZIP cannot fill the server's memory.
+  let unpacked = 0;
+  let count = 0;
+  let tooBig = false;
   try {
-    entries = unzipSync(new Uint8Array(zip), { filter: (f) => !f.name.endsWith('/') && f.originalSize <= MAX_ASSET * 2 });
+    entries = unzipSync(new Uint8Array(zip), {
+      filter: (f) => {
+        unpacked += f.originalSize;
+        if (++count > 500 || unpacked > 40 * 1024 * 1024) {
+          tooBig = true;
+          throw new Error('too large');
+        }
+        return !f.name.endsWith('/') && f.originalSize <= MAX_ASSET * 2;
+      },
+    });
   } catch {
-    throw refuse(t('themes.package.not_a_zip'));
+    throw refuse(tooBig ? t('themes.package.too_large', { mb: 40 }) : t('themes.package.not_a_zip'));
   }
   // A single top folder (a zipped theme folder) is accepted as well as files at the root.
   const names = Object.keys(entries);

@@ -23,7 +23,14 @@
 
   async function load() {
     request = (await api.get(`/orders/${order.id}/extension_request`)).request;
-    preview = request?.status === 'pending' ? await api.post(`/orders/${order.id}/actions/extend`, { ends_at: request.requested_ends_at, dry_run: true }).catch(() => null) : null;
+    // A request for other dates altogether is checked as a move; one for a later return as an extension.
+    const moving = request?.requested_starts_at;
+    preview =
+      request?.status !== 'pending'
+        ? null
+        : moving
+          ? await api.post(`/orders/${order.id}/actions/reschedule`, { starts_at: request.requested_starts_at, ends_at: request.requested_ends_at, dry_run: true }).catch(() => null)
+          : await api.post(`/orders/${order.id}/actions/extend`, { ends_at: request.requested_ends_at, dry_run: true }).catch(() => null);
   }
   onMount(() => {
     load().catch(notifyError);
@@ -48,9 +55,13 @@
 {#if request?.status === 'pending'}
   <Alert.Root class="mb-6 border-amber-500/40 bg-amber-50 dark:bg-amber-950" data-testid="extension-request">
     <CalendarClockIcon />
-    <Alert.Title>{t('extension.title')}</Alert.Title>
+    <Alert.Title>{request.requested_starts_at ? t('extension.move_title') : t('extension.title')}</Alert.Title>
     <Alert.Description class="flex flex-col gap-3">
-      <p>{t('extension.description', { when: rel(request.created_at), until: dt(request.requested_ends_at, order.timezone), reason: request.reason || t('cancellation.no_reason') })}</p>
+      {#if request.requested_starts_at}
+        <p>{t('extension.move_description', { when: rel(request.created_at), from: dt(request.requested_starts_at, order.timezone), until: dt(request.requested_ends_at, order.timezone), reason: request.reason || t('cancellation.no_reason') })}</p>
+      {:else}
+        <p>{t('extension.description', { when: rel(request.created_at), until: dt(request.requested_ends_at, order.timezone), reason: request.reason || t('cancellation.no_reason') })}</p>
+      {/if}
       {#if preview}
         <p>
           {#if preview.available}{t('extension.would_cost')} <Money value={preview.amount} />{:else}{t('extension.unavailable')}{/if}

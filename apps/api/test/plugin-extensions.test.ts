@@ -81,7 +81,7 @@ suite('plugin extensions: admin slots, storefront fields and badges, install', (
       { key: 'gates.gate_code', type: 'text', required: true, label: 'Torcode', help: null, options: [] },
       { key: 'gates.trailer', type: 'select', required: false, label: 'Trailer', help: null, options: [{ value: 'small', label: 'Small' }] },
     ]);
-    expect(settings.extensions.scripts).toEqual([{ plugin: 'gates', src: 'https://stats.example/s.js', consent: 'analytics' }]);
+    expect(settings.extensions.scripts).toEqual([{ plugin: 'gates', src: 'https://stats.example/s.js', consent: 'analytics', attrs: {}, connect: [] }]);
     expect(settings.csp.script).toContain('https://stats.example');
     const product = (await sf('GET', '/catalog/products?locale=de')).body.data.find((x: any) => x.name === 'Trailer');
     expect(product.badges).toEqual([{ label: 'Umweltfreundlich', tone: 'success' }]);

@@ -2,7 +2,8 @@
  * Live check of the accounting plugins against the real Xero, QuickBooks Online and Zoho Books APIs
  * (ADR 0009). Opt-in: a system is checked only when its variables are set, ideally for a sandbox or
  * demo company. For each one it refreshes the sign-in, reads the organisation's accounts and tax rates,
- * sends one DRAFT test invoice at 0 % tax and voids it again. Nothing else is written.
+ * sends one DRAFT test invoice at 0 % tax and voids it again. The invoice's contact or customer
+ * ("OpenRent live check …") stays behind in the test company.
  *
  *   XERO_CLIENT_ID, XERO_CLIENT_SECRET, XERO_REFRESH_TOKEN, XERO_TENANT_ID
  *   QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_REFRESH_TOKEN, QUICKBOOKS_REALM_ID   (sandbox companies)

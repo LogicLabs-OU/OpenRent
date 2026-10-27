@@ -9,6 +9,10 @@
   import { Switch } from '@openrent/ui/switch';
   import { getRuntime } from '@openrent/theme-sdk';
   import { t } from './i18n/index.ts';
+  import BillingBook from './BillingBook.svelte';
+  import BookAgain from './BookAgain.svelte';
+  import SelfService from './SelfService.svelte';
+  import InvoicePay from './InvoicePay.svelte';
 
   /**
    * The account page's portal extras (FR-CUS-6), shown by the `account.extra` slot in every theme: what
@@ -104,6 +108,7 @@
         </Card.Content>
       </Card.Root>
     {/if}
+    <InvoicePay />
     {#if data.me.b2b}
       <Card.Root data-testid="account-business">
         <Card.Header><Card.Title>{tr('account.business.title')}</Card.Title><Card.Description>{tr('account.business.terms', { days: data.me.b2b.payment_terms_days })}</Card.Description></Card.Header>
@@ -137,6 +142,9 @@
         </Card.Content>
       </Card.Root>
     {/if}
+    <SelfService />
+    <BookAgain />
+    <BillingBook />
     <Card.Root data-testid="account-insurance">
       <Card.Header><Card.Title>{tr('account.insurance.title')}</Card.Title><Card.Description>{tr('account.insurance.hint')}</Card.Description></Card.Header>
       <Card.Content class="flex flex-col gap-4">

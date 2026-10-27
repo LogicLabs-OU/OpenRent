@@ -6,6 +6,7 @@
   import * as Field from '@openrent/ui/field';
   import * as Empty from '@openrent/ui/empty';
   import { Input } from '@openrent/ui/input';
+  import { Textarea } from '@openrent/ui/textarea';
   import { Button } from '@openrent/ui/button';
   import { Badge } from '@openrent/ui/badge';
   import { Spinner } from '@openrent/ui/spinner';
@@ -19,10 +20,11 @@
   import { LOCALE_NAMES, type Locale } from '@openrent/i18n';
   import { api, t, toast, notifyError, fieldErrors, confirmAction, session } from '#lib';
   import { shopLocales } from '#lib/components/shop-locales.svelte.ts';
+  import LanguageTabs from '#lib/components/language-tabs.svelte';
 
   /** Storefront categories: order, names and their translations. */
   let categories = $state<any[] | null>(null);
-  let edit = $state<{ id: string | null; name: string; slug: string; translations: Record<string, string> } | null>(null);
+  let edit = $state<{ id: string | null; name: string; slug: string; translations: Record<string, string>; seo: Record<string, { title: string; description: string }> } | null>(null);
   let errors = $state<Record<string, string>>({});
   let saving = $state(false);
 
@@ -40,6 +42,10 @@
       name: c?.name ?? '',
       slug: c?.slug ?? '',
       translations: Object.fromEntries(shopLocales.others.map((l) => [l, c?.translations?.[l]?.name ?? ''])),
+      // Search engine texts: the default language's in `seo`, the others' beside the translated name.
+      seo: Object.fromEntries(
+        shopLocales.list.map((l, i) => [l, i === 0 ? { title: c?.seo?.title ?? '', description: c?.seo?.description ?? '' } : { title: c?.translations?.[l]?.seo_title ?? '', description: c?.translations?.[l]?.seo_description ?? '' }]),
+      ),
     };
   }
 
@@ -50,11 +56,15 @@
     errors = {};
     const current = categories?.find((c) => c.id === edit!.id);
     const translations = { ...(current?.translations ?? {}) };
-    for (const [l, name] of Object.entries(edit.translations)) {
-      if (name.trim()) translations[l] = { ...(translations[l] ?? {}), name: name.trim() };
+    for (const l of shopLocales.others) {
+      const own: Record<string, string> = { name: edit.translations[l]?.trim() ?? '', seo_title: edit.seo[l]?.title.trim() ?? '', seo_description: edit.seo[l]?.description.trim() ?? '' };
+      const kept = Object.fromEntries(Object.entries({ ...(translations[l] ?? {}), ...own }).filter(([, v]) => typeof v !== 'string' || v));
+      if (Object.keys(kept).length) translations[l] = kept;
       else delete translations[l];
     }
-    const body = { name: edit.name, ...(edit.slug ? { slug: edit.slug } : {}), translations };
+    const base = edit.seo[shopLocales.default] ?? { title: '', description: '' };
+    const seo = { ...(base.title.trim() ? { title: base.title.trim() } : {}), ...(base.description.trim() ? { description: base.description.trim() } : {}) };
+    const body = { name: edit.name, ...(edit.slug ? { slug: edit.slug } : {}), translations, seo };
     try {
       if (edit.id) await api.patch(`/categories/${edit.id}`, body);
       else await api.post('/categories', { ...body, position: categories?.length ?? 0 });
@@ -151,7 +161,7 @@
 {/if}
 
 <Dialog.Root open={!!edit} onOpenChange={(v) => !v && (edit = null)}>
-  <Dialog.Content>
+  <Dialog.Content class="max-h-[90svh] overflow-y-auto">
     {#if edit}
       <form class="flex flex-col gap-4" onsubmit={save}>
         <Dialog.Header>
@@ -174,6 +184,25 @@
               <Input id={`cat-${l}`} lang={l} placeholder={edit.name} bind:value={edit.translations[l]} />
             </Field.Field>
           {/each}
+          <Field.Set>
+            <Field.Legend variant="label">{t('seo.search_engines')}</Field.Legend>
+            <LanguageTabs locales={shopLocales.list}>
+              {#snippet children(l, isDefault)}
+                <Field.Group>
+                  <Field.Field data-invalid={(isDefault && !!errors['seo.title']) || undefined}>
+                    <Field.Label for={`cat-seo-t-${l}`}>{t('product.seo_title')}</Field.Label>
+                    <Input id={`cat-seo-t-${l}`} lang={l} maxlength={70} placeholder={isDefault ? edit!.name : edit!.translations[l] || edit!.name} bind:value={edit!.seo[l]!.title} />
+                    {#if isDefault && errors['seo.title']}<Field.Error>{errors['seo.title']}</Field.Error>{/if}
+                  </Field.Field>
+                  <Field.Field data-invalid={(isDefault && !!errors['seo.description']) || undefined}>
+                    <Field.Label for={`cat-seo-d-${l}`}>{t('product.seo_description')}</Field.Label>
+                    <Textarea id={`cat-seo-d-${l}`} lang={l} maxlength={160} bind:value={edit!.seo[l]!.description} />
+                    {#if isDefault && errors['seo.description']}<Field.Error>{errors['seo.description']}</Field.Error>{:else}<Field.Description>{t('product.seo_hint', { count: edit!.seo[l]!.description.length })}</Field.Description>{/if}
+                  </Field.Field>
+                </Field.Group>
+              {/snippet}
+            </LanguageTabs>
+          </Field.Set>
         </Field.Group>
         <Dialog.Footer>
           <Button type="button" variant="outline" onclick={() => (edit = null)}>{t('common.cancel')}</Button>

@@ -19,19 +19,26 @@
   const css = $derived(
     retroCss(shop.settings.accent || shop.tenant.branding.primary_color, shop.settings.highlight),
   );
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
   const address = $derived([loc?.address?.line1, loc?.address?.city].filter(Boolean).join(', '));
   // The home page carries the date search in its hero; checkout and orders do not need it.
   // `path` includes the language prefix (/de/...), so compare with the runtime's URLs.
-  const showDates = $derived(path !== rt.url.home() && !path.startsWith(rt.url.order('')) && !path.startsWith(rt.url.checkout()));
+  const showDates = $derived(
+    path !== rt.url.home() && !path.startsWith(rt.url.order('')) && !path.startsWith(rt.url.checkout()),
+  );
   const cartLabel = $derived(shop.cartCount ? `${rt.t('nav.cart')} (${shop.cartCount})` : rt.t('nav.cart'));
   let menu = $state(false);
 
   // The header bar lists categories only (the shop name links home); the menu and footer list everything.
-  const links = $derived([
-    { href: rt.url.home(), label: rt.t('nav.all') },
-    ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
-  ]);
+  // The shop's own header menu (theme API 1.9) takes the place of the categories when it has links.
+  const links = $derived(
+    shop.navigation?.header.length
+      ? shop.navigation.header.map((l) => ({ href: l.href, label: l.label }))
+      : [
+          { href: rt.url.home(), label: rt.t('nav.all') },
+          ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
+        ],
+  );
 </script>
 
 <svelte:head>
@@ -168,6 +175,10 @@
         <a class="w-fit underline-offset-4 hover:underline" href={rt.url.page('terms')}
           >{rt.t('footer.terms')}</a
         >
+        {#each shop.navigation?.footer ?? [] as l (l.href)}<a
+            class="w-fit underline-offset-4 hover:underline"
+            href={l.href}>{l.label}</a
+          >{/each}
         {#if shop.settings.show_powered_by !== false}<a
             class="w-fit underline-offset-4 hover:underline"
             href="https://openrent.dev"

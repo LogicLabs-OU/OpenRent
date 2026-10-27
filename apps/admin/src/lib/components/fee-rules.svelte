@@ -21,11 +21,11 @@
 
   /** Fees added by rule (FR-PR-8): delivery, cleaning and damage waiver in quotes; extension and late fees on those actions. */
   const KINDS = ['delivery', 'cleaning', 'damage_waiver', 'extension', 'late'] as const;
-  const CALCS = ['flat', 'per_unit', 'percent', 'per_period', 'zone'] as const;
+  const CALCS = ['flat', 'per_unit', 'percent', 'per_period', 'zone', 'per_km'] as const;
   const UNITS = ['hour', 'day', 'week', 'month'] as const;
   type Draft = {
     id: string | null; name: string; kind: (typeof KINDS)[number]; calculation: (typeof CALCS)[number]; amount: string | number; period_unit: string;
-    zones: { postcodes: string; amount: string | number }[]; mode: 'auto' | 'optional'; product_ids: string[]; category_ids: string[]; tax_profile_id: string; active: boolean;
+    zones: { postcodes: string; amount: string | number }[]; bands: { up_to_km: string | number; amount: string | number }[]; mode: 'auto' | 'optional'; product_ids: string[]; category_ids: string[]; tax_profile_id: string; active: boolean;
   };
 
   let rules = $state<any[] | null>(null);
@@ -56,14 +56,22 @@
       amount: r ? (r.calculation === 'percent' ? String(r.amount / 100) : majorFromMinor(r.amount)) : '',
       period_unit: r?.period_unit ?? 'day',
       zones: (r?.zones ?? []).map((z: any) => ({ postcodes: z.postcodes.join(', '), amount: majorFromMinor(z.amount) })),
+      bands: (r?.distance_bands ?? []).map((b: any) => ({ up_to_km: b.up_to_km ?? '', amount: majorFromMinor(b.amount) })),
       mode: r?.mode ?? 'auto',
       product_ids: [...(r?.product_ids ?? [])],
       category_ids: [...(r?.category_ids ?? [])],
       tax_profile_id: r?.tax_profile_id ?? '',
       active: r?.active ?? true,
     };
-    if (edit.calculation === 'zone' && !edit.zones.length) edit.zones = [{ postcodes: '', amount: '' }];
+    fillRows();
   }
+
+  /** A zone or distance fee starts with one empty row to fill. */
+  function fillRows() {
+    if (edit?.calculation === 'zone' && !edit.zones.length) edit.zones = [{ postcodes: '', amount: '' }];
+    if (edit?.calculation === 'per_km' && !edit.bands.length) edit.bands = [{ up_to_km: '', amount: '' }];
+  }
+  const byRows = (c: string) => c === 'zone' || c === 'per_km';
 
   async function save(e: SubmitEvent) {
     e.preventDefault();
@@ -74,9 +82,11 @@
       const x = edit;
       const body = {
         name: x.name, kind: x.kind, calculation: x.calculation,
-        amount: x.calculation === 'zone' ? 0 : x.calculation === 'percent' ? Math.round(Number(x.amount || 0) * 100) : minorFromInput(x.amount || 0),
+        amount: byRows(x.calculation) ? 0 : x.calculation === 'percent' ? Math.round(Number(x.amount || 0) * 100) : minorFromInput(x.amount || 0),
         period_unit: x.calculation === 'per_period' ? x.period_unit : null,
         zones: x.calculation === 'zone' ? x.zones.map((z) => ({ postcodes: String(z.postcodes).split(/[,\s]+/).filter(Boolean), amount: minorFromInput(z.amount || 0) })).filter((z) => z.postcodes.length) : [],
+        // An empty "up to" is the last band: any distance beyond the others.
+        distance_bands: x.calculation === 'per_km' ? x.bands.filter((b) => String(b.up_to_km).trim() !== '' || String(b.amount).trim() !== '').map((b) => ({ up_to_km: String(b.up_to_km).trim() === '' ? null : Number(b.up_to_km), amount: minorFromInput(b.amount || 0) })) : [],
         mode: x.kind === 'extension' || x.kind === 'late' ? 'auto' : x.mode,
         product_ids: x.product_ids, category_ids: x.category_ids, tax_profile_id: x.tax_profile_id || null, active: x.active,
       };
@@ -113,7 +123,7 @@
     }
   }
 
-  /** "€15.00", "€3.00 per item", "10% of the rental", "€5.00 per day", "2 zones". */
+  /** "€15.00", "€3.00 per item", "10% of the rental", "€5.00 per day", "2 zones", "3 distance bands". */
   function price(r: any): string {
     switch (r.calculation) {
       case 'flat':
@@ -124,6 +134,8 @@
         return t('fees.price_percent', { percent: percent(r.amount) });
       case 'per_period':
         return t('fees.price_per_period', { amount: money(r.amount), unit: t(`fees.unit.${r.period_unit}` as any) });
+      case 'per_km':
+        return t('fees.price_bands', { count: r.distance_bands.length });
       default:
         return t('fees.price_zones', { count: r.zones.length });
     }
@@ -215,12 +227,12 @@
           <div class="grid gap-4 sm:grid-cols-2">
             <Field.Field data-invalid={!!errors.calculation || undefined}>
               <Field.Label for="fee-calc">{t('fees.calculation')}</Field.Label>
-              <NativeSelect id="fee-calc" class="w-full" bind:value={edit.calculation} onchange={() => edit && edit.calculation === 'zone' && !edit.zones.length && (edit.zones = [{ postcodes: '', amount: '' }])}>
+              <NativeSelect id="fee-calc" class="w-full" bind:value={edit.calculation} onchange={fillRows}>
                 {#each CALCS as c (c)}<NativeSelectOption value={c}>{t(`fees.calc.${c}` as any)}</NativeSelectOption>{/each}
               </NativeSelect>
               {#if errors.calculation}<Field.Error>{errors.calculation}</Field.Error>{/if}
             </Field.Field>
-            {#if edit.calculation !== 'zone'}
+            {#if !byRows(edit.calculation)}
               <Field.Field data-invalid={!!errors.amount || undefined}>
                 <Field.Label for="fee-amount">{edit.calculation === 'percent' ? t('pricing.percent') : t('fees.amount', { currency: session.currency })}</Field.Label>
                 <Input id="fee-amount" type="number" min="0" step="0.01" bind:value={edit.amount} aria-invalid={!!errors.amount} />
@@ -256,6 +268,31 @@
               {/each}
               <Button type="button" variant="outline" size="sm" class="w-fit" onclick={() => edit && (edit.zones = [...edit.zones, { postcodes: '', amount: '' }])}><PlusIcon />{t('fees.zone_add')}</Button>
               {#if errors.zones}<Field.Error>{errors.zones}</Field.Error>{/if}
+            </Field.Set>
+          {/if}
+          {#if edit.calculation === 'per_km'}
+            <Field.Set data-invalid={!!errors.distance_bands || undefined}>
+              <Field.Legend variant="label">{t('fees.bands')}</Field.Legend>
+              <Field.Description>{t('fees.bands_hint')}</Field.Description>
+              {#each edit.bands as b, i (i)}
+                {@const kmError = errors[`distance_bands[${i}].up_to_km`]}
+                {@const amountError = errors[`distance_bands[${i}].amount`]}
+                <div class="grid grid-cols-[1fr_8rem_auto] items-start gap-2">
+                  <Field.Field data-invalid={!!kmError || undefined}>
+                    <Field.Label for={`fee-band-${i}`}>{t('fees.band_km', { n: i + 1 })}</Field.Label>
+                    <Input id={`fee-band-${i}`} type="number" min="0" step="0.1" placeholder={t('fees.band_any')} bind:value={b.up_to_km} aria-invalid={!!kmError} />
+                    {#if kmError}<Field.Error>{kmError}</Field.Error>{/if}
+                  </Field.Field>
+                  <Field.Field data-invalid={!!amountError || undefined}>
+                    <Field.Label for={`fee-band-amount-${i}`}>{t('fees.amount', { currency: session.currency })}</Field.Label>
+                    <Input id={`fee-band-amount-${i}`} type="number" min="0" step="0.01" bind:value={b.amount} aria-invalid={!!amountError} />
+                    {#if amountError}<Field.Error>{amountError}</Field.Error>{/if}
+                  </Field.Field>
+                  <Button type="button" variant="ghost" size="icon" class="mt-6" aria-label={t('fees.band_remove', { n: i + 1 })} onclick={() => edit && (edit.bands = edit.bands.filter((_, j) => j !== i))}><XIcon /></Button>
+                </div>
+              {/each}
+              <Button type="button" variant="outline" size="sm" class="w-fit" onclick={() => edit && (edit.bands = [...edit.bands, { up_to_km: '', amount: '' }])}><PlusIcon />{t('fees.band_add')}</Button>
+              {#if errors.distance_bands}<Field.Error>{errors.distance_bands}</Field.Error>{/if}
             </Field.Set>
           {/if}
           <Field.Field>

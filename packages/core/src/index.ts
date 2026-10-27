@@ -21,6 +21,8 @@ export * as payments from './payments/index.ts';
 export * as documents from './documents/index.ts';
 export * as notifications from './notifications/index.ts';
 export * as webhooks from './webhooks/index.ts';
+export * as net from './net/guard.ts';
+export { guardedFetch, guardAllFetches } from './net/guard.ts';
 export * as storefront from './storefront/index.ts';
 export * as reports from './reports/index.ts';
 export * as scans from './scans/index.ts';

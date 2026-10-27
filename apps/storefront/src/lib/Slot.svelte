@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { invalidateAll } from '$app/navigation';
   import * as Field from '@openrent/ui/field';
   import { Input } from '@openrent/ui/input';
   import { Checkbox } from '@openrent/ui/checkbox';
@@ -10,6 +11,13 @@
   import AccountExtra from './AccountExtra.svelte';
   import BundlePicker from './BundlePicker.svelte';
   import Accessories from './Accessories.svelte';
+  import ContactSection from './ContactSection.svelte';
+  import LocationsSection from './LocationsSection.svelte';
+  import BillingPicker from './BillingPicker.svelte';
+  import LocationPicker from './LocationPicker.svelte';
+  import ElsewhereHint from './ElsewhereHint.svelte';
+  import DeliveryChoice from './DeliveryChoice.svelte';
+  import OrderActions from './OrderActions.svelte';
 
   /**
    * Extension points in theme layouts (FR-PLG-6). `header.after` and `footer.before` show the shop's
@@ -21,6 +29,13 @@
   const html = $derived(name === 'header.after' ? page.data.code?.header_html : name === 'footer.before' ? page.data.code?.footer_html : '');
   const fields = $derived<CheckoutFieldDef[]>(name === 'checkout.extra_fields' ? (page.data.extensions?.checkout_fields ?? []) : []);
   const b2b = $derived(name === 'checkout.extra_fields' && page.data.b2b?.on_account ? page.data.b2b : null);
+  // Prices in other currencies (FR-I18N-7): the choice under the header, a word at checkout and on products.
+  const dc = $derived(page.data.shop?.displayCurrency as { base: string; shown: string; choices: string[] } | undefined);
+  async function chooseCurrency(code: string) {
+    await fetch('/_or/currency', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ currency: code }) });
+    await invalidateAll();
+  }
+  const taxHint = $derived(name === 'product.before_add' && page.data.shop ? (page.data.shop.displayPricesIncludingTax ? 'product.prices_incl_tax' : 'product.prices_excl_tax') : null);
   // Booking updates by SMS or WhatsApp, when the shop sends them (FR-NOT-4).
   const texts = $derived((name === 'checkout.extra_fields' ? (['sms', 'whatsapp'] as const).filter((k) => page.data.messaging?.[k]) : []) as ('sms' | 'whatsapp')[]);
   const locale = $derived(page.data.shop?.locale);
@@ -30,13 +45,50 @@
   const TONE: Record<string, string> = { success: 'bg-emerald-700 text-white', warning: 'bg-amber-500 text-black' };
 </script>
 
+{#if name === 'order.actions' && context.order}
+  <OrderActions order={context.order as any} />
+{/if}
+{#if name === 'dates.after'}
+  <LocationPicker />
+{/if}
+{#if name === 'product.before_add' && context.product}
+  <ElsewhereHint product={context.product as any} />
+{/if}
 {#if name === 'product.before_add' && (context.product as any)?.bundle?.slots?.length}
   <BundlePicker product={context.product as any} />
 {/if}
 {#if name === 'product.before_add' && ((context.product as any)?.accessories?.length || (context.product as any)?.related?.length)}
   <Accessories product={context.product as any} />
 {/if}
-{#if name === 'account.extra'}
+{#if name === 'header.after' && dc && dc.choices.length > 1}
+  <div class="mx-auto flex w-full max-w-6xl items-center justify-end gap-2 px-4 pt-2 text-sm" data-testid="currency-switcher">
+    <label for="or-currency" class="opacity-70">{t('currency.label', {}, locale)}</label>
+    <NativeSelect id="or-currency" size="sm" value={dc.shown} onchange={(e) => chooseCurrency((e.currentTarget as HTMLSelectElement).value)}>
+      {#each dc.choices as c (c)}<NativeSelectOption value={c}>{c}</NativeSelectOption>{/each}
+    </NativeSelect>
+    {#if dc.shown !== dc.base}<span class="opacity-70">{t('currency.approx', { base: dc.base }, locale)}</span>{/if}
+  </div>
+{/if}
+{#if name === 'checkout.extra_fields'}
+  <DeliveryChoice />
+{/if}
+{#if name === 'checkout.extra_fields' && Array.isArray(page.data.billingProfiles)}
+  <BillingPicker profiles={page.data.billingProfiles} />
+{/if}
+{#if name === 'checkout.extra_fields' && dc && dc.shown !== dc.base}
+  <p class="text-sm opacity-80" data-testid="checkout-currency-note">{t('currency.checkout_note', { base: dc.base, shown: dc.shown }, locale)}</p>
+{/if}
+{#if taxHint}
+  <p class="text-xs opacity-70" data-testid="price-tax-hint">{t(taxHint, {}, locale)}</p>
+{/if}
+{#if name === 'section.plugin' && (context.section as any)?.type === 'plugin:openrent:contact'}
+  <ContactSection section={context.section as any} />
+{:else if name === 'section.plugin' && (context.section as any)?.type === 'plugin:openrent:locations'}
+  <LocationsSection section={context.section as any} />
+{:else if name === 'section.plugin'}
+  <!-- A plugin's home page section (FR-THM-12): HTML the API rendered and cleaned. -->
+  <div data-slot="section.plugin" data-plugin-section={(context.section as any)?.type}>{@html page.data.pluginSections?.[(context.section as any)?.id] ?? ''}</div>
+{:else if name === 'account.extra'}
   <AccountExtra />
 {:else if b2b}
   <Field.Set data-testid="checkout-on-account">

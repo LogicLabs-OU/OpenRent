@@ -112,19 +112,32 @@ export async function deleteProvider(ctx: Ctx, id: string) {
 // Signing in (system database access: no shop is known yet)
 // ---------------------------------------------------------------------------
 
-/** Providers that vouch for this email's domain, for the sign-in page. */
+/**
+ * Providers that vouch for this email's domain, for the sign-in page: only those of shops the person
+ * belongs to. Any shop may name any domain, so on a multi-shop installation another shop's provider
+ * must never be offered (or trusted) for someone else's staff. With one shop, a newcomer sees its
+ * providers too; on a multi-shop installation newcomers use the shop's own sign-in link.
+ */
 export async function providersForEmail(db: Queryable, email: string) {
   const r = await db.query(
     `SELECT p.id, p.name, t.name AS tenant_name FROM sso_providers p JOIN tenants t ON t.id = p.tenant_id
-      WHERE p.active AND p.deleted_at IS NULL AND $1 = ANY(p.allowed_domains) ORDER BY t.name, p.name`,
-    [domainOf(email)],
+      WHERE p.active AND p.deleted_at IS NULL AND $1 = ANY(p.allowed_domains)
+        AND (EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.tenant_id = p.tenant_id AND lower(u.email) = $2)
+             OR (NOT EXISTS (SELECT 1 FROM users WHERE lower(email) = $2) AND (SELECT count(*) FROM tenants) = 1))
+      ORDER BY t.name, p.name`,
+    [domainOf(email), email.trim().toLowerCase()],
   );
   return r.rows as { id: string; name: string; tenant_name: string }[];
 }
 
 /** Refuses a password or emailed link for people whose domain must use single sign-on. */
 export async function assertNoSsoRequired(db: Queryable, email: string) {
-  const r = await db.query(`SELECT 1 FROM sso_providers WHERE active AND enforce_sso AND deleted_at IS NULL AND $1 = ANY(allowed_domains) LIMIT 1`, [domainOf(email)]);
+  // Only a shop the person belongs to may require single sign-on of them.
+  const r = await db.query(
+    `SELECT 1 FROM sso_providers p WHERE p.active AND p.enforce_sso AND p.deleted_at IS NULL AND $1 = ANY(p.allowed_domains)
+        AND EXISTS (SELECT 1 FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.tenant_id = p.tenant_id AND lower(u.email) = $2) LIMIT 1`,
+    [domainOf(email), email.trim().toLowerCase()],
+  );
   if (r.rows.length) throw new AppError('sso_required', 403, msg('error.sso_required'));
 }
 
@@ -150,6 +163,11 @@ export async function completeSsoLogin(
   if (!p.allowedDomains.includes(domainOf(email))) throw new AppError('sso_domain_not_allowed', 403, msg('error.sso_domain_not_allowed', { domain: domainOf(email) }));
   let user = (await db.query(`SELECT * FROM users WHERE lower(email) = $1`, [email])).rows[0];
   if (user && user.status !== 'active') throw new AppError('sso_user_disabled', 403, msg('error.member_disabled'));
+  // A shop's identity provider speaks only for that shop: someone who also belongs to another shop
+  // signs in another way, or the provider could hand out a session for that other shop.
+  if (user && (await db.query(`SELECT 1 FROM memberships WHERE user_id = $1 AND tenant_id <> $2 LIMIT 1`, [user.id, p.tenantId])).rows.length) {
+    throw new AppError('sso_other_shop', 403, msg('error.sso_other_shop'));
+  }
   if (!user) {
     user = (await db.query(`INSERT INTO users (id, email, name, status) VALUES ($1,$2,$3,'active') RETURNING *`, [newId('usr'), email, typeof claims.name === 'string' ? claims.name.slice(0, 200) : ''])).rows[0];
   }

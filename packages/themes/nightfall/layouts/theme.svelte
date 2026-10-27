@@ -20,7 +20,7 @@
   const rt = getRuntime();
   const shop = $derived(rt.shop);
   const css = $derived(nightfallCss(shop.settings));
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
   const notice = $derived(String(shop.settings.announcement ?? '').trim());
   // The home page carries the date search in its hero; checkout and orders do not need it.
   // `path` includes the language prefix (/de/...), so compare with the runtime's URLs.
@@ -36,10 +36,15 @@
   let menu = $state(false);
   /** The bar holds a few links like the reference site; the menu lists the rest. */
   const BAR_LINKS = 5;
-  const links = $derived([
-    { href: rt.url.home(), label: rt.t('nav.all') },
-    ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
-  ]);
+  // The shop's own header menu (theme API 1.9) takes the place of the categories when it has links.
+  const links = $derived(
+    shop.navigation?.header.length
+      ? shop.navigation.header.map((l) => ({ href: l.href, label: l.label }))
+      : [
+          { href: rt.url.home(), label: rt.t('nav.all') },
+          ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
+        ],
+  );
   const off = (key: string) => (shop.settings[key] === false ? 'off' : undefined);
   // The floating pill leads to the cart or to the questions; it stays out of the way on cart and checkout.
   const floating = $derived.by(() => {
@@ -74,11 +79,15 @@
   {#if notice}<p
       class="flex items-center justify-center gap-2 border-b border-white/10 bg-[#0b0a12] px-4 py-2.5 text-center text-[0.8125rem] text-white/80"
     >
-      <span class="size-1.5 shrink-0 rounded-full bg-(--nf-accent) shadow-[0_0_10px_var(--nf-accent)]" aria-hidden="true"
+      <span
+        class="size-1.5 shrink-0 rounded-full bg-(--nf-accent) shadow-[0_0_10px_var(--nf-accent)]"
+        aria-hidden="true"
       ></span>{notice}
     </p>{/if}
 
-  <header class="sticky top-0 z-30 border-b border-white/10 bg-black/70 backdrop-blur-xl backdrop-saturate-150">
+  <header
+    class="sticky top-0 z-30 border-b border-white/10 bg-black/70 backdrop-blur-xl backdrop-saturate-150"
+  >
     <div class={cn(wrap, 'flex h-14 items-center gap-3 md:h-16 xl:grid xl:grid-cols-[1fr_auto_1fr]')}>
       <a class="flex min-w-0 items-center gap-2.5" href={rt.url.home()}>
         {#if shop.tenant.branding.logo_url}<img
@@ -88,7 +97,8 @@
           />{:else}<span
             class="grid size-8 shrink-0 place-items-center rounded-[10px] bg-gradient-to-b from-white to-white/70 text-sm font-bold text-black"
             aria-hidden="true">{shop.tenant.name.slice(0, 1).toUpperCase()}</span
-          ><span class="truncate text-[0.9375rem] font-semibold tracking-[-0.01em]">{shop.tenant.name}</span>{/if}
+          ><span class="truncate text-[0.9375rem] font-semibold tracking-[-0.01em]">{shop.tenant.name}</span
+          >{/if}
       </a>
       <nav class="hidden items-center gap-1 xl:flex" aria-label={rt.t('nav.categories')}>
         {#each links.slice(0, BAR_LINKS) as l (l.href)}
@@ -119,7 +129,13 @@
             href={account}
             aria-label={accountLabel}><UserIcon /></Button
           >{/if}
-        <Button variant="ghost" size="icon" class={cn(iconBtn, 'relative')} href={rt.url.cart()} aria-label={cartLabel}>
+        <Button
+          variant="ghost"
+          size="icon"
+          class={cn(iconBtn, 'relative')}
+          href={rt.url.cart()}
+          aria-label={cartLabel}
+        >
           <ShoppingCartIcon />{#if shop.cartCount}<span
               class="absolute -top-0.5 -right-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-(--nf-accent) px-1 text-[0.6875rem] font-bold text-white tabular-nums"
               aria-hidden="true">{shop.cartCount}</span
@@ -190,22 +206,35 @@
           </p>{/if}
       </div>
       <nav class="flex flex-col gap-3 text-sm" aria-labelledby="nf-footer-shop">
-        <h2 id="nf-footer-shop" class="mb-1 text-[0.9375rem] font-semibold text-white">{rt.t('footer.shop')}</h2>
-        {#each links.slice(0, 8) as l (l.href)}<a class="w-fit text-white/60 transition-colors hover:text-white" href={l.href}
-            >{l.label}</a
+        <h2 id="nf-footer-shop" class="mb-1 text-[0.9375rem] font-semibold text-white">
+          {rt.t('footer.shop')}
+        </h2>
+        {#each links.slice(0, 8) as l (l.href)}<a
+            class="w-fit text-white/60 transition-colors hover:text-white"
+            href={l.href}>{l.label}</a
           >{/each}
       </nav>
       <nav class="flex flex-col gap-3 text-sm" aria-labelledby="nf-footer-info">
-        <h2 id="nf-footer-info" class="mb-1 text-[0.9375rem] font-semibold text-white">{rt.t('footer.info')}</h2>
+        <h2 id="nf-footer-info" class="mb-1 text-[0.9375rem] font-semibold text-white">
+          {rt.t('footer.info')}
+        </h2>
         <a class="w-fit text-white/60 transition-colors hover:text-white" href={rt.url.page('terms')}
           >{rt.t('footer.terms')}</a
         >
-        {#if rt.url.search}<a class="w-fit text-white/60 transition-colors hover:text-white" href={rt.url.search()}
-            >{rt.t('search.title')}</a
+        {#each shop.navigation?.footer ?? [] as l (l.href)}<a
+            class="w-fit text-white/60 transition-colors hover:text-white"
+            href={l.href}>{l.label}</a
+          >{/each}
+        {#if rt.url.search}<a
+            class="w-fit text-white/60 transition-colors hover:text-white"
+            href={rt.url.search()}>{rt.t('search.title')}</a
           >{/if}
-        {#if account}<a class="w-fit text-white/60 transition-colors hover:text-white" href={account}>{accountLabel}</a
+        {#if account}<a class="w-fit text-white/60 transition-colors hover:text-white" href={account}
+            >{accountLabel}</a
           >{/if}
-        <a class="w-fit text-white/60 transition-colors hover:text-white" href={rt.url.cart()}>{rt.t('nav.cart')}</a>
+        <a class="w-fit text-white/60 transition-colors hover:text-white" href={rt.url.cart()}
+          >{rt.t('nav.cart')}</a
+        >
       </nav>
     </div>
     <div class={wrap}>

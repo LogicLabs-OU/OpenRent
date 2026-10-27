@@ -1,6 +1,7 @@
 import { t } from '../i18n/index.ts';
 import { invalid } from '../errors.ts';
 import { isPrivateHost } from '../webhooks/sign.ts';
+import { guardedFetch, readCapped } from '../net/guard.ts';
 import { normaliseHeader, type ImportEntity } from './spec.ts';
 import type { Sheet } from './index.ts';
 
@@ -39,13 +40,17 @@ export function checkBaseUrl(raw: string, field = 'base_url') {
 async function getJson(url: string, headers: Record<string, string>, what: string) {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { accept: 'application/json', ...headers }, signal: AbortSignal.timeout(30_000) });
+    // Through the network guard (unless the installation allows private sources): redirects and DNS
+    // answers are checked too, not just the address typed in.
+    const get = allowPrivateImports() ? fetch : guardedFetch;
+    res = await get(url, { headers: { accept: 'application/json', ...headers }, signal: AbortSignal.timeout(30_000) });
   } catch (e) {
     throw new Error(t('imports.source_unreachable', { source: what, error: String((e as Error).message ?? e) }), { cause: e });
   }
   if (res.status === 401 || res.status === 403) throw new Error(t('imports.source_refused', { source: what }));
   if (!res.ok) throw new Error(t('imports.source_error', { source: what, status: res.status }));
-  return res.json();
+  const raw = await readCapped(res, 25 * 1024 * 1024);
+  return JSON.parse(raw);
 }
 
 // --- Shelf.nu ------------------------------------------------------------------------------

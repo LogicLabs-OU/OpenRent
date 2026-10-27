@@ -3,7 +3,7 @@
  * Licensed Apache-2.0 so plugin authors take on no AGPL obligations.
  */
 
-export const PLUGIN_API_VERSION = '1.6.0';
+export const PLUGIN_API_VERSION = '1.8.0';
 
 export interface Logger {
   info(obj: unknown, msg?: string): void;
@@ -281,7 +281,14 @@ export interface StorageProvider {
 
 export interface TaxRateRequest {
   currency: string;
-  customer: { id: string | null; country: string | null; taxId: string | null; address: Record<string, unknown> | null } | null;
+  customer: {
+    id: string | null;
+    country: string | null;
+    taxId: string | null;
+    address: Record<string, unknown> | null;
+    /** The last check of `taxId` this provider made, kept on the customer (plugin API 1.8). */
+    taxIdCheck?: TaxIdCheck | null;
+  } | null;
   /** Where the rental is picked up: the shop location. */
   origin: { country: string | null; address: Record<string, unknown> | null };
   lines: { key: string; type: string; productId: string | null; variantId: string | null; taxCode: string | null; defaultRateBp: number }[];
@@ -294,7 +301,37 @@ export interface TaxRateRequest {
 export interface TaxProvider {
   id: string;
   isConfigured(ctx: ProviderContext): boolean;
-  rates(ctx: ProviderContext, req: TaxRateRequest): Promise<Record<string, number>>;
+  /** Rates by line key; or (plugin API 1.8) with a note the documents print, e.g. for the reverse charge. */
+  rates(ctx: ProviderContext, req: TaxRateRequest): Promise<Record<string, number> | TaxRates>;
+  /**
+   * Checks a customer's tax number (plugin API 1.8): when it is saved, at checkout and on request.
+   * `fresh` asks the register again instead of a kept answer (staff checking again).
+   */
+  checkTaxId?(ctx: ProviderContext, taxId: string, opts?: { fresh?: boolean }): Promise<TaxIdCheck>;
+}
+
+export interface TaxRates {
+  rates: Record<string, number>;
+  /** Printed under the totals of quotes and invoices, in the document's language. */
+  note?: LocalizedText;
+}
+
+/**
+ * The result of checking a tax number (plugin API 1.8). `unavailable` means the register could not
+ * answer: the number is neither accepted nor refused, and tax is charged.
+ */
+export interface TaxIdCheck {
+  status: 'valid' | 'invalid' | 'unavailable';
+  /** ISO country of the number. */
+  country: string | null;
+  /** The registered name and address, when the register gives them. */
+  name?: string | null;
+  address?: string | null;
+  /** The register's reference for this check (VIES consultation number). */
+  ref?: string | null;
+  checked_at: string;
+  /** Why it is invalid or unavailable: `format`, or the register's own code. */
+  reason?: string;
 }
 
 export interface IdentityCheckResult {
@@ -316,6 +353,28 @@ export interface SearchProvider {
   id: string;
   isConfigured(ctx: ProviderContext): boolean;
   search(ctx: ProviderContext, req: { q: string; locale: string | null; limit: number }): Promise<string[]>;
+}
+
+/**
+ * Exchange rates for showing prices in other currencies (plugin API 1.7, FR-I18N-7). `rates` returns
+ * how much of each currency one unit of `base` buys; currencies it does not know are left out.
+ */
+export interface RatesProvider {
+  id: string;
+  isConfigured(ctx: ProviderContext): boolean;
+  rates(ctx: ProviderContext, base: string, currencies: string[]): Promise<{ rates: Record<string, number>; date: string }>;
+}
+
+/**
+ * Addresses on the map and the distance between them (plugin API 1.7, FR-PR-8), for delivery fees by
+ * distance and route exports. `route` gives the road distance; without it, core uses a straight line
+ * times the shop's road factor.
+ */
+export interface Geocoder {
+  id: string;
+  isConfigured(ctx: ProviderContext): boolean;
+  geocode(ctx: ProviderContext, address: string): Promise<{ lat: number; lon: number } | null>;
+  route?(ctx: ProviderContext, from: { lat: number; lon: number }, to: { lat: number; lon: number }): Promise<{ km: number } | null>;
 }
 
 /** Electronic signatures on issued documents (filled by the built-in provider or a plugin). */
@@ -764,16 +823,54 @@ export interface ProductBadge {
 }
 
 /** A script the storefront loads, only after the visitor agreed to its consent category. */
+/**
+ * A script the storefront loads for a plugin, once the visitor's consent allows it (FR-PLG-5). From
+ * plugin API 1.7, `src` and `attrs` may name plugin settings as `{setting}` (an id, a domain), and the
+ * script is left out while `requires` is not set.
+ */
 export interface StorefrontScript {
   src: string;
   consent: 'necessary' | 'analytics' | 'marketing';
+  /** `data-*` attributes for the script tag (plugin API 1.7). */
+  attrs?: Record<string, string>;
+  /** A plugin setting that must be set for the script to load (plugin API 1.7). */
+  requires?: string;
+  /** Origins the script sends to, added to the page's connect-src and img-src (plugin API 1.7). */
+  connect?: string[];
 }
 
 /** Declarative storefront extensions: data only, rendered by the storefront itself (FR-PLG-5). */
+/** A setting of a plugin section, in the theme section format (shown in Admin → Themes → Sections). */
+export interface PluginSectionSetting {
+  id: string;
+  type: 'text' | 'textarea' | 'range' | 'checkbox' | 'select';
+  label: string;
+  default?: unknown;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: { value: string; label: string }[];
+}
+
+/**
+ * A home page section type a plugin adds (plugin API 1.7, FR-THM-12). Themes that declare the
+ * `section.register` extension point offer it in their section editor. `render` returns HTML for one
+ * section; it is cleaned like the shop's own HTML and must be quick, as it runs while the page loads.
+ */
+export interface PluginSection {
+  /** Lowercase letters, digits and dashes; unique within the plugin. */
+  type: string;
+  name: LocalizedText;
+  settings?: PluginSectionSetting[];
+  render(ctx: ProviderContext & { locale: string }, settings: Record<string, unknown>): Promise<string> | string;
+}
+
 export interface StorefrontExtensions {
   checkoutFields?: CheckoutField[];
   productBadges?: ProductBadge[];
   scripts?: StorefrontScript[];
+  /** Home page section types (plugin API 1.7). */
+  sections?: PluginSection[];
 }
 
 export interface SettingsField {
@@ -783,6 +880,8 @@ export interface SettingsField {
   options?: string[];
   required?: boolean;
   help?: string;
+  /** What the admin form shows before the shop saves a value (plugin API 1.8); the plugin applies it itself too. */
+  default?: string | number | boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +896,10 @@ export interface PluginSetupApi {
   registerTaxProvider(p: TaxProvider): void;
   registerIdentityProvider(p: IdentityProvider): void;
   registerSearchProvider(p: SearchProvider): void;
+  /** Exchange rates for prices shown in other currencies (plugin API 1.7). */
+  registerRatesProvider(p: RatesProvider): void;
+  /** Addresses on the map and distances (plugin API 1.7). */
+  registerGeocoder(p: Geocoder): void;
   registerSignatureProvider(p: SignatureProvider): void;
   /** A connection to another system (plugin API 1.2), shown on the admin's Integrations page. */
   registerIntegration(p: IntegrationProvider): void;
@@ -857,8 +960,13 @@ export interface PluginRuntime {
   notificationChannels(channel: MessageChannelKind): NotificationChannel[];
   storageProvider(): StorageProvider | undefined;
   taxProvider(): TaxProvider | undefined;
+  /** Every registered tax plugin, in load order (plugin API 1.8). */
+  taxProviders(): TaxProvider[];
   identityProvider(): IdentityProvider | undefined;
   searchProvider(): SearchProvider | undefined;
+  /** Every exchange rate provider, in load order (a shop picks one). */
+  ratesProviders(): RatesProvider[];
+  geocoder(): Geocoder | undefined;
   signatureProvider(): SignatureProvider | undefined;
   integrations(): IntegrationProvider[];
   integration(id: string): IntegrationProvider | undefined;
@@ -880,8 +988,11 @@ export const emptyRuntime: PluginRuntime = {
   notificationChannels: () => [],
   storageProvider: () => undefined,
   taxProvider: () => undefined,
+  taxProviders: () => [],
   identityProvider: () => undefined,
   searchProvider: () => undefined,
+  ratesProviders: () => [],
+  geocoder: () => undefined,
   signatureProvider: () => undefined,
   integrations: () => [],
   integration: () => undefined,

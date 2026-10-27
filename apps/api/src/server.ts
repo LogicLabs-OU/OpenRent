@@ -1,4 +1,4 @@
-import { accounting } from '@openrent/core';
+import { accounting, guardAllFetches } from '@openrent/core';
 import { loadDotEnv, withSystem, withTenant } from '@openrent/db';
 import { systemCtx } from './context.ts';
 import { ConfigError, loadConfig } from './config.ts';
@@ -19,6 +19,8 @@ try {
 }
 
 const bootLogger = { info: (...a: unknown[]) => console.log('[boot]', ...a), warn: (...a: unknown[]) => console.warn('[boot]', ...a), error: (...a: unknown[]) => console.error('[boot]', ...a), debug: () => undefined };
+// A multi-shop installation: no request a shop's setting chose may reach the operator's network.
+if (config.mode === 'multi_tenant') guardAllFetches();
 const deps = await bootstrap(config, bootLogger);
 const app = await buildApp(deps);
 

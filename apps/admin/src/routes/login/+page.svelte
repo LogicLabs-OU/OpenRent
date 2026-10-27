@@ -12,9 +12,13 @@
   import { api, ApiError, session, t, fieldErrors } from '#lib';
   import { to } from '#lib/nav.ts';
 
+  // Managed installations let anyone open a shop (OPENRENT_SIGNUP=1).
+  let signupOpen = $state(false);
   let email = $state('');
   let password = $state('');
   let totp = $state('');
+  // A sign-in link from an email (?magic=…).
+  const magic = page.url.searchParams.get('magic');
   let needTotp = $state(false);
   let error = $state('');
   let errors = $state<Record<string, string>>({});
@@ -44,19 +48,21 @@
   onMount(async () => {
     const ssoError = page.url.searchParams.get('sso_error');
     if (ssoError) error = SSO_ERRORS.includes(ssoError) ? t(`login.${ssoError}` as any) : t('login.sso_failed');
-    const magic = page.url.searchParams.get('magic');
     if (magic) {
       try {
         await api.post('/auth/magic_link/verify', { token: magic });
         await session.load();
         goto(next());
       } catch (e) {
-        error = (e as Error).message;
+        // With an authenticator app the link also needs its code: the form below asks for it.
+        if (e instanceof ApiError && e.code === 'totp_required') needTotp = true;
+        else error = (e as Error).message;
       }
       return;
     }
     const s = await api.get('/setup').catch(() => null);
     if (s?.required) goto(to('/setup'));
+    signupOpen = !!(await api.get('/signup').catch(() => null))?.enabled;
   });
 
   async function submit(e: SubmitEvent) {
@@ -65,7 +71,8 @@
     error = '';
     errors = {};
     try {
-      await api.post('/auth/login', { email, password, ...(needTotp ? { totp } : {}) });
+      if (magic) await api.post('/auth/magic_link/verify', { token: magic, totp });
+      else await api.post('/auth/login', { email, password, ...(needTotp ? { totp } : {}) });
       await session.load();
       goto(next());
     } catch (err) {
@@ -106,6 +113,7 @@
               <Alert.Root variant="destructive"><CircleAlertIcon /><Alert.Title>{error}</Alert.Title></Alert.Root>
             {/if}
             {#if info}<Alert.Root><Alert.Title>{info}</Alert.Title></Alert.Root>{/if}
+            {#if !magic}
             <Field.Field data-invalid={!!errors.email || undefined}>
               <Field.Label for="email">{t('field.email')}</Field.Label>
               <Input id="email" type="email" autocomplete="username" required bind:value={email} oninput={findProviders} aria-invalid={!!errors.email || undefined} />
@@ -116,6 +124,7 @@
               <Input id="password" type="password" autocomplete="current-password" required bind:value={password} aria-invalid={!!errors.password || undefined} />
               {#if errors.password}<Field.Error>{errors.password}</Field.Error>{/if}
             </Field.Field>
+            {/if}
             {#if needTotp}
               <Field.Field>
                 <Field.Label for="totp">{t('login.totp')}</Field.Label>
@@ -133,6 +142,7 @@
           </Field.Group>
         </form>
       </Card.Content>
+      {#if signupOpen}<Card.Footer class="text-sm text-muted-foreground">{t('login.new_shop')}<Button variant="link" class="px-1" href={to('/signup')}>{t('login.signup')}</Button></Card.Footer>{/if}
     </Card.Root>
   </div>
 </div>

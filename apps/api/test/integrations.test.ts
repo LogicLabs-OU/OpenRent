@@ -221,12 +221,12 @@ suite('integrations framework', () => {
   });
 
   it('writes a balanced double-entry journal', async () => {
-    const j = (await admin.get(`/api/v1/accounting/journal?from=${encodeURIComponent(isoIn(-1))}&to=${encodeURIComponent(isoIn(1))}`)).body.data;
+    const j = (await admin.get(`/api/v1/accounting/journal?from=${encodeURIComponent(isoIn(-1))}&to=${encodeURIComponent(isoIn(2))}`)).body.data;
     const debit = j.reduce((s: number, r: any) => s + r.debit, 0);
     const credit = j.reduce((s: number, r: any) => s + r.credit, 0);
     expect(debit).toBe(credit);
     expect(j.filter((r: any) => r.entry.startsWith('INV')).map((r: any) => [r.account, r.debit, r.credit])).toEqual([['1200', 12000, 0], ['4000', 0, 10000], ['2200', 0, 2000]]);
-    const csv = await admin.get(`/api/v1/accounting/journal?from=${encodeURIComponent(isoIn(-1))}&to=${encodeURIComponent(isoIn(1))}&format=csv`);
+    const csv = await admin.get(`/api/v1/accounting/journal?from=${encodeURIComponent(isoIn(-1))}&to=${encodeURIComponent(isoIn(2))}&format=csv`);
     expect(String(csv.body)).toContain('1200');
     expect(String(csv.body)).toContain('120.00');
   });

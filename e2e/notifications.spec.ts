@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, collectErrors, randomOffset, shot, signIn, weekday } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, collectErrors, randomOffset, shot, signIn, weekday } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 const day = 86400_000;
@@ -41,7 +41,7 @@ test('staff see new online bookings in the bell and choose what they are told ab
   await bell.click();
   await page.getByTestId('notification-preferences').click();
   const dialog = page.getByRole('dialog', { name: 'Notification settings' });
-  await expect(dialog.getByTestId('notification-pref')).toHaveCount(13);
+  await expect(dialog.getByTestId('notification-pref')).toHaveCount(17);
   try {
     await dialog.getByRole('switch', { name: 'Low availability: Email' }).click();
     await expect.poll(async () => (await call(page, 'GET', '/me/notification_preferences')).kinds.find((k: any) => k.kind === 'staff_low_availability').email).toBe(false);

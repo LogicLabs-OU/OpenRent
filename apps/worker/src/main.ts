@@ -1,3 +1,4 @@
+import { guardAllFetches } from '@openrent/core';
 import { PgBoss } from 'pg-boss';
 import pg from 'pg';
 import { loadDotEnv } from '@openrent/db';
@@ -29,6 +30,8 @@ function sanitize(o: Record<string, unknown>) {
 }
 const logger: WorkerLogger = { info: log('info'), warn: log('warn'), error: log('error'), debug: log('debug') };
 
+// A multi-shop installation: no request a shop's setting chose may reach the operator's network.
+if (config.mode === 'multi_tenant') guardAllFetches();
 const deps = await bootstrap(config, logger, { migrate: false, poolSize: 5, themes: false });
 // Invoices and payments from before the accounting triggers are booked once (idempotent).
 await backfillAccounting(deps, logger).catch((err) => logger.error({ err }, 'accounting backfill failed'));

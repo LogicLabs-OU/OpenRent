@@ -4,6 +4,7 @@ import { newId, sha256 } from '../ids.ts';
 import { t } from '../i18n/index.ts';
 import { exec, many, one } from '../sql.ts';
 import { audit, emit } from '../events.ts';
+import { assertWithinLimit } from '../tenancy/operator.ts';
 import { pluginConfig } from '../plugins/index.ts';
 
 export interface FileRow {
@@ -69,6 +70,7 @@ export async function purgeStored(ctx: Ctx, f: { storage: string; key: string })
 
 /** Stores a file. A document PDF is unique per document: storing it again replaces it. */
 export async function putFile(ctx: Ctx, input: PutFileInput): Promise<FileRow> {
+  await assertWithinLimit(ctx, 'storage', input.body.length);
   const id = newId('fil');
   const ext = await external(ctx);
   const replaced = input.kind === 'pdf' ? await one<FileRow>(ctx, `SELECT ${META} FROM files WHERE owner_type = $1 AND owner_id = $2 AND kind = 'pdf'`, [input.ownerType ?? null, input.ownerId ?? null]) : null;

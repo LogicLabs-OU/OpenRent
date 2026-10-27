@@ -10,7 +10,7 @@ export const EXPORT_TABLES = [
   'tenants', 'locations', 'location_blackouts', 'memberships', 'tax_profiles', 'price_structures', 'categories', 'products', 'product_categories',
   'variants', 'stock_items', 'stock_levels', 'stock_adjustments', 'bundles', 'bundle_components', 'customers', 'coupons', 'orders', 'order_lines',
   'order_line_units', 'order_events', 'allocations', 'downtimes', 'documents', 'document_templates', 'payments', 'deposits', 'damage_charges',
-  'notification_templates', 'notifications', 'webhook_endpoints', 'webhook_events', 'audit_log', 'plugins',
+  'notification_templates', 'notifications', 'webhook_endpoints', 'webhook_events', 'audit_log', 'plugins', 'storefront_pages',
 ];
 
 const SECRET_COLUMNS = new Set(['secret_encrypted', 'previous_secret_encrypted', 'config_encrypted', 'client_secret_encrypted', 'credentials_encrypted', 'oauth_verifier_encrypted']);

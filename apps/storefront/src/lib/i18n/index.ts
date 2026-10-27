@@ -5,10 +5,11 @@ import fr from './fr.json';
 import es from './es.json';
 import et from './et.json';
 import ja from './ja.json';
+import nl from './nl.json';
 
 export type MessageKey = keyof typeof en;
 
-const catalogs = { en, de, fr, es, et, ja } as unknown as Record<Locale, Catalog>;
+const catalogs = { en, de, fr, es, et, ja, nl } as unknown as Record<Locale, Catalog>;
 
 /** Storefront strings outside the theme (errors, payment form). Falls back to English. */
 export function t(key: MessageKey, params: Record<string, string | number> = {}, locale: string = BASE_LOCALE): string {

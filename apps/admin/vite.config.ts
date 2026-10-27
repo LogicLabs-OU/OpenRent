@@ -6,6 +6,9 @@ import { defineConfig } from 'vite';
 const api = process.env.OPENRENT_API_URL ?? 'http://localhost:7070';
 
 export default defineConfig({
+  // A second dev server in this folder (a test stack) needs its own dependency cache, or each one's
+  // re-optimising leaves the other serving stale modules (a blank page).
+  cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
   plugins: [
     tailwindcss(),
     sveltekit({

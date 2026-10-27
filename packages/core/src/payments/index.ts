@@ -247,7 +247,8 @@ export async function refundPayment(ctx: Ctx, paymentId: string, input: { amount
   let ref: string | null = null;
   if (p.provider !== 'manual') {
     const pc = await providerContext(ctx, p.provider);
-    const r = await pc.provider.refund(pc.pctx, p.provider_ref, amount);
+    // A part of an invoice payment is refunded on the provider's payment it came from.
+    const r = await pc.provider.refund(pc.pctx, p.metadata?.provider_payment_ref ?? p.provider_ref, amount);
     status = r.status === 'failed' ? 'failed' : r.status === 'pending' ? 'pending' : 'succeeded';
     ref = r.ref;
   }
@@ -745,6 +746,11 @@ export async function applyProviderEvent(ctx: Ctx, provider: string, ev: Provide
             )
           )[0];
       await exec(ctx, `UPDATE payment_intents SET status = 'succeeded' WHERE provider = $1 AND provider_ref = $2`, [provider, ev.ref]);
+      // A monthly invoice paid as a whole: the other bookings on it get their share.
+      for (const part of await shareInvoicePayment(ctx, row, ev.paymentRequestId ?? null)) {
+        await recomputePaymentStatus(ctx, part.order_id);
+        await emit(ctx, 'payment.succeeded', { type: 'payment', id: part.id }, paymentToApi(part));
+      }
       if (ev.customerRef && order.customer_id) {
         await exec(ctx, `UPDATE customers SET provider_refs = provider_refs || $2 WHERE id = $1`, [order.customer_id, json({ [provider]: ev.customerRef })]);
       }
@@ -902,6 +908,45 @@ export async function cancelPaymentRequest(ctx: Ctx, orderId: string, id: string
 }
 
 /** Marks the request a payment settles: the one named in its metadata, else the open one with the same amount. */
+/**
+ * Shares a payment for a monthly invoice out over the invoice's bookings by what each still owes,
+ * oldest first (ADR 0012). The first booking keeps the provider's payment and any rest; the others
+ * get parts that name it (`<ref>:part<n>`, `metadata.provider_payment_ref`), so refunds and the
+ * reconciliation still find the payment at the provider. Returns the new parts.
+ */
+async function shareInvoicePayment(ctx: Ctx, payment: any, requestId: string | null) {
+  const req = requestId ? await one<any>(ctx, `SELECT invoice_id FROM payment_requests WHERE id = $1`, [requestId]) : null;
+  if (!req?.invoice_id || !payment.provider_ref) return [];
+  const orders = await many<any>(ctx, `SELECT id, totals FROM orders WHERE invoice_id = $1 ORDER BY starts_at, number`, [req.invoice_id]);
+  let left = Number(payment.amount);
+  const share = (o: any) => {
+    const n = Math.max(0, Math.min(left, Number(o.totals?.balance ?? 0)));
+    left -= n;
+    return n;
+  };
+  const own = share(orders.find((o) => o.id === payment.order_id) ?? { totals: { balance: 0 } });
+  const parts: any[] = [];
+  let i = 0;
+  for (const o of orders) {
+    if (o.id === payment.order_id) continue;
+    const amount = share(o);
+    if (amount <= 0) continue;
+    i++;
+    parts.push(
+      (
+        await many(
+          ctx,
+          `INSERT INTO payments (id, tenant_id, order_id, provider, kind, purpose, method, amount, currency, status, provider_ref, metadata)
+           VALUES ($1,$2,$3,$4,'charge','rental',$5,$6,$7,'succeeded',$8,$9) RETURNING *`,
+          [newId('pay'), ctx.tenantId, o.id, payment.provider, payment.method, amount, payment.currency, `${payment.provider_ref}:part${i}`, json({ ...(payment.metadata ?? {}), provider_payment_ref: payment.provider_ref, invoice_id: req.invoice_id })],
+        )
+      )[0],
+    );
+  }
+  if (parts.length) await exec(ctx, `UPDATE payments SET amount = $2, metadata = metadata || $3 WHERE id = $1`, [payment.id, own + left, json({ invoice_id: req.invoice_id })]);
+  return parts;
+}
+
 async function settlePaymentRequest(ctx: Ctx, orderId: string, requestId: string | null, amount: number, paymentId: string) {
   const row = requestId
     ? (await many(ctx, `UPDATE payment_requests SET status = 'paid', paid_at = now(), payment_id = $3 WHERE id = $1 AND order_id = $2 AND status = 'open' RETURNING *`, [requestId, orderId, paymentId]))[0]
@@ -955,10 +1000,15 @@ export function reconciliationIssueToApi(r: any) {
  * Nightly: compares recent online payments with what the provider says. Differences become open issues
  * (one per payment and kind) and staff are told; a provider that cannot be reached is skipped until next time.
  */
+/** What a provider payment came to here: itself plus the parts an invoice payment was shared into. */
+async function recordedAmount(ctx: Ctx, p: any) {
+  return Number((await one<{ n: string }>(ctx, `SELECT coalesce(sum(amount), 0)::bigint AS n FROM payments WHERE provider = $1 AND (provider_ref = $2 OR provider_ref LIKE $2 || ':part%') AND kind = 'charge'`, [p.provider, p.provider_ref]))!.n);
+}
+
 export async function reconcilePayments(ctx: Ctx, opts: { days?: number; limit?: number } = {}) {
   const rows = await many<any>(
     ctx,
-    `SELECT * FROM payments WHERE provider <> 'manual' AND provider_ref IS NOT NULL AND kind = 'charge' AND provider_ref NOT LIKE '%:capture'
+    `SELECT * FROM payments WHERE provider <> 'manual' AND provider_ref IS NOT NULL AND kind = 'charge' AND provider_ref NOT LIKE '%:capture' AND provider_ref NOT LIKE '%:part%'
         AND created_at > now() - make_interval(days => $1) ORDER BY created_at LIMIT $2`,
     [opts.days ?? 3, opts.limit ?? 200],
   );
@@ -974,9 +1024,9 @@ export async function reconcilePayments(ctx: Ctx, opts: { days?: number; limit?:
       if (theirs && theirs !== p.status) {
         kind = 'status_mismatch';
         details = { ours: p.status, theirs };
-      } else if (ev.type === 'payment.succeeded' && ev.amount !== Number(p.amount)) {
+      } else if (ev.type === 'payment.succeeded' && ev.amount !== (await recordedAmount(ctx, p))) {
         kind = 'amount_mismatch';
-        details = { ours: Number(p.amount), theirs: ev.amount };
+        details = { ours: await recordedAmount(ctx, p), theirs: ev.amount };
       }
     } catch (err: any) {
       const status = err?.statusCode ?? err?.status ?? err?.raw?.statusCode;

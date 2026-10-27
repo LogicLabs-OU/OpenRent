@@ -120,3 +120,57 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS accounting_entry_lines_balance ON accounting_entry_lines;
 CREATE CONSTRAINT TRIGGER accounting_entry_lines_balance AFTER INSERT ON accounting_entry_lines DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION openrent_entry_balances();
+
+-- Erasing a shop (managed cloud): only the openrent_maintenance role may remove rows from the
+-- append-only tables, and only for the shop named in openrent.erasing_tenant (packages/db/src/erase.ts).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_maintenance') THEN
+    CREATE ROLE openrent_maintenance NOLOGIN;
+  END IF;
+  EXECUTE format('GRANT openrent_maintenance TO %I', current_user);
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'openrent_maintenance could not be created or granted; erasing shops needs it';
+END $$;
+
+CREATE OR REPLACE FUNCTION openrent_erasing(t text) RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT coalesce(current_setting('openrent.erasing_tenant', true), '') = t
+     AND EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_maintenance')
+     AND pg_has_role(current_user, 'openrent_maintenance', 'MEMBER')
+$$;
+
+CREATE OR REPLACE FUNCTION openrent_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND openrent_erasing(OLD.tenant_id) THEN RETURN OLD; END IF;
+  RAISE EXCEPTION '% rows cannot be changed or removed', TG_TABLE_NAME USING HINT = 'append_only';
+END $$;
+
+CREATE OR REPLACE FUNCTION openrent_audit_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' AND openrent_erasing(OLD.tenant_id) THEN RETURN OLD; END IF;
+  RAISE EXCEPTION 'audit_log is append-only' USING ERRCODE = 'P0001', HINT = 'audit_append_only';
+END $$;
+
+CREATE OR REPLACE FUNCTION openrent_documents_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.issued_at IS NOT NULL AND NOT openrent_erasing(OLD.tenant_id) THEN
+      RAISE EXCEPTION 'issued documents cannot be deleted' USING ERRCODE = 'P0001', HINT = 'document_immutable';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF OLD.issued_at IS NOT NULL AND
+     (to_jsonb(NEW) - 'status' - 'voided_by_id' - 'updated_at') IS DISTINCT FROM
+     (to_jsonb(OLD) - 'status' - 'voided_by_id' - 'updated_at') THEN
+    RAISE EXCEPTION 'issued documents are immutable' USING ERRCODE = 'P0001', HINT = 'document_immutable';
+  END IF;
+  NEW.updated_at := now();
+  RETURN NEW;
+END $$;
+
+-- Whether a staff account also belongs to another shop. Memberships are row-level secured, so a shop
+-- cannot see this itself; it needs it to leave such accounts' password and name alone.
+CREATE OR REPLACE FUNCTION openrent_user_in_other_shops(uid text, current_tenant text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (SELECT 1 FROM memberships WHERE user_id = uid AND tenant_id <> current_tenant)
+$$;

@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, shot, signIn, weekday, randomOffset } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, STORE, collectErrors, hydrated, shot, signIn, weekday, randomOffset } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -50,11 +50,20 @@ test('staff work in German, and customers shop in their own language', async ({ 
     // The choice is saved: a reload stays in German.
     await staff.reload();
     await expect(staff.getByRole('heading', { name: 'Heute', exact: true })).toBeVisible();
+    // Dutch too (a PRD launch language).
+    await staff.getByRole('button', { name: /Lang Tester/ }).click();
+    await staff.getByTestId('admin-language').click();
+    await staff.getByRole('menuitemradio', { name: 'Nederlands' }).click();
+    await expect(staff.locator('html')).toHaveAttribute('lang', 'nl');
+    await expect(sidebar.getByRole('link', { name: 'Boekingen' })).toBeVisible();
+    await staff.keyboard.press('Escape');
+    await staff.keyboard.press('Escape');
+    await expect(staff.getByRole('heading', { name: 'Vandaag', exact: true })).toBeVisible();
 
     // The shop turns on German, Estonian and Japanese.
     await page.goto(`${ADMIN}/settings`);
     const langs = page.getByTestId('language-settings');
-    for (const name of ['Deutsch', 'Eesti', '日本語']) await langs.getByLabel(name).check();
+    for (const name of ['Deutsch', 'Eesti', '日本語', 'Nederlands']) await langs.getByLabel(name).check();
     await langs.getByRole('button', { name: 'Save' }).click();
     await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'Saved' }).last()).toBeVisible();
 
@@ -95,6 +104,14 @@ test('staff work in German, and customers shop in their own language', async ({ 
     // English stays at the plain address.
     await shopper.goto(`${STORE}/p/sea-kayak`);
     await expect(shopper.getByRole('heading', { name: 'Sea kayak' })).toBeVisible();
+
+    // A Dutch browser goes to /nl, in Dutch.
+    const dutch = await (await browser.newContext({ locale: 'nl-NL' })).newPage();
+    await dutch.goto(STORE);
+    await expect(dutch).toHaveURL(/\/nl\/?$/);
+    await expect(dutch.locator('html')).toHaveAttribute('lang', 'nl');
+    await expect(dutch.getByRole('link', { name: 'Winkelwagen' })).toBeVisible();
+    await shot(dutch, 'sf-dutch-home');
 
     // First visit with an Estonian browser goes to /et; choosing English sticks after a reload.
     const visitor = await (await browser.newContext({ locale: 'et-EE' })).newPage();

@@ -23,7 +23,7 @@ import { notifyCustomer, notifyStaff } from '../notifications/index.ts';
 import { ensureDeposit, recomputePaymentStatus, refundPayment, releaseDeposit, paymentToApi, paymentRequestToApi, depositToApi, listDamageCharges, createDamageCharge } from '../payments/index.ts';
 import { getLocation } from '../tenancy/index.ts';
 import { resolveSettings, type TenantSettings } from '../tenancy/settings.ts';
-import { customerToApi } from '../customers/index.ts';
+import { customerToApi, checkedBilling, type BillingProfileInput, type BillingSnapshot } from '../customers/index.ts';
 import { checkAccountBooking } from '../customers/b2b.ts';
 import { BILLING_CYCLES, billOnReturn, billOrderNow } from './recurring.ts';
 
@@ -31,6 +31,7 @@ export { billRecurring, nextPeriodStart } from './recurring.ts';
 import { documentToApi } from '../documents/index.ts';
 import { notificationToApi } from '../notifications/index.ts';
 import { priceQuote, type QuoteRequestLine } from './quote.ts';
+import { assertWithinLimit } from '../tenancy/operator.ts';
 import { feeAmount, type QuoteBreakdown, type QuoteOptions } from '../pricing/engine.ts';
 import { activeFeeRules } from '../catalog/index.ts';
 import { availableActions, evaluate, HOLDING, transitionFor, type OrderAction, type OrderFacts, type OrderStatus } from './state.ts';
@@ -98,6 +99,7 @@ function totalsToApi(t: any, currency: string) {
     coupon_errors: t?.coupon_errors ?? [],
     optional_fees: (t?.optional_fees ?? []).map((x: any) => ({ ...x, amount: money(x.amount, currency) })),
     fee_errors: t?.fee_errors ?? [],
+    tax_note: t?.tax_note ?? null,
   };
 }
 
@@ -141,7 +143,7 @@ export async function orderToApi(ctx: Ctx, o: any, expand: string[] = []): Promi
     id: o.id, object: 'order', number: o.number, status: o.status, payment_status: o.payment_status, source: o.source,
     customer_id: o.customer_id, location_id: o.location_id, starts_at: o.starts_at, ends_at: o.ends_at, timezone: o.timezone, currency,
     totals: totalsToApi(o.totals, currency), deposit_policy: o.deposit_policy, coupon_codes: o.coupon_codes, options: o.options ?? {}, terms_acceptance: o.terms_acceptance,
-    quote_expires_at: o.quote_expires_at, notes: o.notes, tags: o.tags, custom_fields: o.custom_fields, po_number: o.po_number ?? null, invoice_id: o.invoice_id ?? null,
+    quote_expires_at: o.quote_expires_at, notes: o.notes, tags: o.tags, custom_fields: o.custom_fields, po_number: o.po_number ?? null, billing: o.billing ?? null, invoice_id: o.invoice_id ?? null,
     billing_cycle: o.billing_cycle ?? null, billed_until: o.billed_until ?? null, public_token: o.public_token, public_url: `${ctx.config.storefrontUrl.replace(/\/$/, '')}/order/${o.public_token}`,
     version: o.version, closed_at: o.closed_at, cancelled_at: o.cancelled_at, cancel_reason: o.cancel_reason,
     lines: parents.map((p) => lineToApi(p, currency, lines.filter((c) => c.parent_line_id === p.id))),
@@ -240,6 +242,8 @@ export interface CreateOrderInput {
   source?: 'storefront' | 'admin' | 'api';
   /** Optional fees chosen and the delivery postcode (FR-PR-8). */
   options?: QuoteOptions;
+  /** The billing details chosen at checkout (ADR 0012); without them the customer's own apply. */
+  billing?: BillingSnapshot | null;
 }
 
 async function nextOrderNumber(ctx: Ctx): Promise<number> {
@@ -353,6 +357,7 @@ export async function reprice(ctx: Ctx, orderId: string) {
     starts_at: o.starts_at,
     ends_at: o.ends_at,
     customer_id: o.customer_id,
+    billing: o.billing ?? null,
     coupon_codes: o.coupon_codes,
     options: o.options ?? {},
     deposit: o.deposit_policy?.mode && o.deposit_policy.mode !== 'auto' ? o.deposit_policy : null,
@@ -382,7 +387,7 @@ export async function reprice(ctx: Ctx, orderId: string) {
     ...(o.totals ?? {}),
     subtotal: breakdown.subtotal, discount: breakdown.discount, fees: breakdown.fees, tax: breakdown.tax, total: breakdown.total, deposit: breakdown.deposit,
     tax_breakdown: breakdown.tax_breakdown, coupons_applied: breakdown.coupons_applied, coupon_errors: breakdown.coupon_errors,
-    optional_fees: breakdown.optional_fees, fee_errors: breakdown.fee_errors,
+    optional_fees: breakdown.optional_fees, fee_errors: breakdown.fee_errors, tax_note: breakdown.tax_note ?? null,
   };
   await exec(ctx, `UPDATE orders SET totals = $2 WHERE id = $1`, [orderId, json(totals)]);
   await recomputePaymentStatus(ctx, orderId);
@@ -474,6 +479,7 @@ export async function availabilityCheck(ctx: Ctx, o: any) {
 }
 
 export async function createOrder(ctx: Ctx, input: CreateOrderInput): Promise<Record<string, any>> {
+  await assertWithinLimit(ctx, 'orders');
   await ctx.plugins.runHook('before', 'orders.create', input, hookContext(ctx));
   const loc = await getLocation(ctx, input.location_id);
   const startsAt = new Date(input.starts_at);
@@ -486,11 +492,11 @@ export async function createOrder(ctx: Ctx, input: CreateOrderInput): Promise<Re
   const number = await nextOrderNumber(ctx);
   await exec(
     ctx,
-    `INSERT INTO orders (id, tenant_id, number, customer_id, location_id, starts_at, ends_at, timezone, currency, deposit_policy, coupon_codes, source, public_token, notes, tags, custom_fields, created_by, options, po_number)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+    `INSERT INTO orders (id, tenant_id, number, customer_id, location_id, starts_at, ends_at, timezone, currency, deposit_policy, coupon_codes, source, public_token, notes, tags, custom_fields, created_by, options, po_number, billing)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [id, ctx.tenantId, number, input.customer_id ?? null, loc.id, startsAt, endsAt, loc.timezone, tenant.currency, json(input.deposit ?? { mode: 'auto' }),
       input.coupon_codes ?? [], input.source ?? (ctx.actor.type === 'api_key' ? 'api' : 'admin'), randomToken(24), json(input.notes ?? {}), input.tags ?? [],
-      json(input.custom_fields ?? {}), ctx.actor.id, json(cleanOptions(input.options)), cleanPo(input.po_number)],
+      json(input.custom_fields ?? {}), ctx.actor.id, json(cleanOptions(input.options)), cleanPo(input.po_number), input.billing ? json(input.billing) : null],
   );
   if (input.billing_cycle) await setBillingCycle(ctx, { id, status: 'draft' }, input.billing_cycle);
   const order = { id, location_id: loc.id };
@@ -529,6 +535,25 @@ async function setBillingCycle(ctx: Ctx, o: { id: string; status: string }, cycl
 
 /** A purchase order number as typed, trimmed; empty means none. */
 const cleanPo = (po?: string | null) => (po?.trim() ? po.trim().slice(0, 100) : null);
+
+/**
+ * The billing details printed on an order (ADR 0012), changed by staff until an invoice is issued.
+ * A draft or quote is priced again, so the tax follows; later the price stays as booked. `null` goes
+ * back to the customer's own details.
+ */
+export async function setOrderBilling(ctx: Ctx, ref: string, input: BillingProfileInput | null) {
+  const before = await orderRow(ctx, ref);
+  const issued = await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND issued_at IS NOT NULL AND status <> 'voided' LIMIT 1`, [before.id]);
+  if (issued) throw new AppError('billing_locked', 409, msg('error.billing_details_invoiced'));
+  const billing = input ? await checkedBilling(ctx, input, before.billing) : null;
+  await exec(ctx, `UPDATE orders SET billing = $2 WHERE id = $1`, [before.id, billing ? json(billing) : null]);
+  if (['draft', 'quote'].includes(before.status)) await reprice(ctx, before.id);
+  const row = await orderRow(ctx, before.id);
+  await audit(ctx, { entity_type: 'order', entity_id: before.id, action: 'update_billing', before: { billing: before.billing }, after: { billing } });
+  const api = await orderToApi(ctx, row);
+  await emit(ctx, 'order.updated', { type: 'order', id: before.id }, api);
+  return api;
+}
 
 export async function updateOrder(ctx: Ctx, ref: string, patch: Record<string, any>, ifMatch?: number | null): Promise<Record<string, any>> {
   const before = await orderRow(ctx, ref);
@@ -780,7 +805,8 @@ const HANDLERS: Record<OrderAction, Handler> = {
     await recomputePaymentStatus(ctx, o.id);
     if (body?.notify !== false) {
       const doc = await issueDocument(ctx, o.id, 'confirmation');
-      await notifyCustomer(ctx, o.id, 'order_confirmed', {}, undefined, { attachments: [doc.id] });
+      // The confirmation PDF and the pickup and return for the customer's calendar.
+      await notifyCustomer(ctx, o.id, 'order_confirmed', {}, undefined, { attachments: [doc.id, `ics:${o.id}`] });
       if (o.source === 'storefront') await notifyStaff(ctx, o.id, 'staff_new_order');
     }
     return api;
@@ -1195,7 +1221,7 @@ async function changeEnd(ctx: Ctx, ref: string, kind: 'extend' | 'return_early',
   // What the change costs: rental lines priced for both periods, before coupons; an extension fee rule replaces that.
   const lines = await lineRows(ctx, o.id);
   const rental = lines.filter((l) => !l.parent_line_id && l.type === 'rental' && l.variant_id);
-  const req = { location_id: o.location_id, customer_id: o.customer_id, deposit: { mode: 'none' as const }, lines: rental.map((l) => ({ type: 'rental' as const, variant_id: l.variant_id, quantity: l.quantity })) };
+  const req = { location_id: o.location_id, customer_id: o.customer_id, billing: o.billing ?? null, deposit: { mode: 'none' as const }, lines: rental.map((l) => ({ type: 'rental' as const, variant_id: l.variant_id, quantity: l.quantity })) };
   let net = 0;
   let tax = 0;
   let rate = 0;
@@ -1308,6 +1334,142 @@ async function changeEnd(ctx: Ctx, ref: string, kind: 'extend' | 'return_early',
 export const extendOrder = (ctx: Ctx, ref: string, input: EndChangeInput) => changeEnd(ctx, ref, 'extend', input);
 export const returnEarly = (ctx: Ctx, ref: string, input: EndChangeInput) => changeEnd(ctx, ref, 'return_early', input);
 
+export interface RescheduleInput {
+  starts_at: string;
+  ends_at: string;
+  dry_run?: boolean;
+  notify?: boolean;
+}
+
+/**
+ * Moves a booking that is not picked up yet to other dates (ADR 0012). Its bookings move through the
+ * availability primitives (each by the change in start and end, so delivery cover stays as it was),
+ * the new dates follow the shop's rules, and the rental is priced again: a dearer change adds a fee
+ * line, a cheaper one a credit line, invoiced orders get an invoice or credit note for the difference,
+ * and what was paid beyond the new total is refunded. Deliveries move along. A dry run answers with
+ * what would happen, "not available" included.
+ */
+export async function rescheduleOrder(ctx: Ctx, ref: string, input: RescheduleInput) {
+  const o = await orderRow(ctx, ref, true);
+  if (!['reserved', 'prepared'].includes(o.status) || o.billing_cycle) throw new AppError('order_locked', 409, msg('error.reschedule_not_allowed', { status: o.status }));
+  const oldStart = new Date(o.starts_at);
+  const oldEnd = new Date(o.ends_at);
+  const newStart = new Date(input.starts_at);
+  const newEnd = new Date(input.ends_at);
+  const field = (f: string, message: string) => invalid(message, [{ field: f, code: 'invalid', message }]);
+  if (Number.isNaN(newStart.getTime())) throw field('starts_at', msg('error.field.invalid_date_time'));
+  if (Number.isNaN(newEnd.getTime())) throw field('ends_at', msg('error.field.invalid_date_time'));
+  if (!(newEnd > newStart)) throw field('ends_at', msg('error.the_return_must_be_after_the_pickup'));
+  if (!(newStart > ctx.now)) throw field('starts_at', msg('error.reschedule_in_past'));
+  const lines = await lineRows(ctx, o.id);
+  const rental = lines.filter((l) => !l.parent_line_id && l.type === 'rental' && l.variant_id);
+  // The shop's rules for the new dates: opening hours, notice, durations, closed days.
+  const problems: FieldError[] = [];
+  for (const l of rental) problems.push(...(await availability.assertBookable(ctx, { variantId: l.variant_id, locationId: o.location_id, startsAt: newStart, endsAt: newEnd, strict: true })));
+  if (problems.length) throw invalid(msg('error.these_dates_cannot_be_booked'), problems);
+
+  // What the change costs: rental lines priced for both periods, before coupons.
+  const req = { location_id: o.location_id, customer_id: o.customer_id, billing: o.billing ?? null, deposit: { mode: 'none' as const }, lines: rental.map((l) => ({ type: 'rental' as const, variant_id: l.variant_id, quantity: l.quantity })) };
+  let net = 0;
+  let tax = 0;
+  let rate = 0;
+  if (rental.length) {
+    const before = (await priceQuote(ctx, { ...req, starts_at: oldStart, ends_at: oldEnd })).breakdown;
+    const after = (await priceQuote(ctx, { ...req, starts_at: newStart, ends_at: newEnd })).breakdown;
+    net = after.subtotal - before.subtotal;
+    tax = after.tax - before.tax;
+    rate = before.lines[0]?.tax_rate_bp ?? 0;
+  }
+
+  // Availability: every booking of the order moves by the change in start and in end.
+  await ctx.db.query('SAVEPOINT reschedule');
+  let problem: { code: string; message: string; shortages?: unknown } | null = null;
+  try {
+    const ds = newStart.getTime() - oldStart.getTime();
+    const de = newEnd.getTime() - oldEnd.getTime();
+    const allocs = await many<{ id: string; s: Date; e: Date | null }>(ctx, `SELECT id, lower(period) AS s, upper(period) AS e FROM allocations WHERE order_id = $1 AND kind = 'reservation'`, [o.id]);
+    await availability.resizeAllocations(ctx, allocs.map((a) => ({ allocationId: a.id, from: new Date(a.s.getTime() + ds), to: a.e ? new Date(a.e.getTime() + de) : null })));
+  } catch (err) {
+    if (!(err instanceof AppError) || !['exceeds_availability', 'unit_unavailable'].includes(err.code)) {
+      await ctx.db.query('ROLLBACK TO SAVEPOINT reschedule');
+      throw err;
+    }
+    problem = { code: err.code, message: err.message, shortages: (err.extra as any)?.shortages };
+  }
+  const currency = String(o.currency).trim();
+  const proposal = {
+    object: 'reschedule', from: { starts_at: oldStart.toISOString(), ends_at: oldEnd.toISOString() }, to: { starts_at: newStart.toISOString(), ends_at: newEnd.toISOString() },
+    available: !problem, problem, net: money(net, currency), tax: money(tax, currency), amount: money(net + tax, currency),
+  };
+  if (input.dry_run || problem) {
+    await ctx.db.query('ROLLBACK TO SAVEPOINT reschedule');
+    if (problem && !input.dry_run) throw new AppError(problem.code, 409, problem.message, { extra: { shortages: problem.shortages } });
+    return proposal;
+  }
+  await ctx.db.query('RELEASE SAVEPOINT reschedule');
+
+  await exec(ctx, `UPDATE orders SET starts_at = $2, ends_at = $3 WHERE id = $1`, [o.id, newStart, newEnd]);
+  // Deliveries and collections keep their place relative to pickup and return.
+  for (const d of await many<any>(ctx, `SELECT id, kind, window_start, window_end FROM deliveries WHERE order_id = $1 AND status = 'scheduled'`, [o.id])) {
+    const shift = d.kind === 'collection' ? newEnd.getTime() - oldEnd.getTime() : newStart.getTime() - oldStart.getTime();
+    await exec(ctx, `UPDATE deliveries SET window_start = $2, window_end = $3 WHERE id = $1`, [d.id, new Date(new Date(d.window_start).getTime() + shift), new Date(new Date(d.window_end).getTime() + shift)]);
+  }
+  const locale = await orderLocale(ctx, o.id);
+  const when = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: o.timezone }).format(newStart);
+  if (net !== 0) {
+    const pos = (await one<{ n: number }>(ctx, `SELECT coalesce(max(position), 0) + 1 AS n FROM order_lines WHERE order_id = $1`, [o.id]))!.n;
+    const snapshot = { kind: 'reschedule', tax_rate_bp: rate, from: proposal.from, to: proposal.to };
+    const description = msg('order.line.reschedule', { date: when }, locale);
+    const amount = Math.abs(net);
+    const lineTax = Math.abs(tax);
+    if (net > 0) {
+      await exec(ctx, `INSERT INTO order_lines (id, tenant_id, order_id, type, quantity, description, price_snapshot, unit_price, subtotal, tax, total, position) VALUES ($1,$2,$3,'fee',1,$4,$5,$6,$6,$7,$8,$9)`, [
+        newId('oln'), ctx.tenantId, o.id, description, json(snapshot), amount, lineTax, amount + lineTax, pos,
+      ]);
+    } else {
+      await exec(ctx, `INSERT INTO order_lines (id, tenant_id, order_id, type, quantity, description, price_snapshot, unit_price, subtotal, discount, tax, total, position) VALUES ($1,$2,$3,'discount',1,$4,$5,$6,0,$6,$7,$8,$9)`, [
+        newId('oln'), ctx.tenantId, o.id, description, json(snapshot), amount, -lineTax, -(amount + lineTax), pos,
+      ]);
+    }
+    await recalcTotalsFromLines(ctx, o.id);
+    const invoiced = await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND status = 'issued' LIMIT 1`, [o.id]);
+    if (invoiced) {
+      await issueDocument(ctx, o.id, net > 0 ? 'invoice' : 'credit_note', {
+        overrides: {
+          lines: [{ name: description, type: 'fee', quantity: 1, unit_price: amount, discount: 0, tax_rate_bp: rate, tax: lineTax, total: amount + lineTax, units: [] }],
+          totals: { subtotal: amount, discount: 0, fees: 0, tax: lineTax, total: amount + lineTax, deposit: 0 },
+          tax_breakdown: [{ rate_bp: rate, net: amount, tax: lineTax }],
+        },
+      });
+    }
+    if (net < 0) await refundOverpaid(ctx, o.id, description);
+  }
+  await event(ctx, o.id, 'rescheduled', o.status, o.status, { from: proposal.from, to: proposal.to, amount: proposal.amount });
+  const fresh = await orderRow(ctx, o.id);
+  await audit(ctx, { entity_type: 'order', entity_id: o.id, action: 'reschedule', before: o, after: fresh });
+  const api = await orderToApi(ctx, fresh);
+  await emit(ctx, 'order.rescheduled', { type: 'order', id: o.id }, api);
+  if (input.notify !== false && o.customer_id) await notifyCustomer(ctx, o.id, 'order_rescheduled', { previous_start: proposal.from.starts_at });
+  return { ...proposal, order: api };
+}
+
+/** Refunds what the customer paid beyond the order's total, newest payments first. */
+async function refundOverpaid(ctx: Ctx, orderId: string, reason: string) {
+  const o = await must<any>(ctx, `SELECT totals FROM orders WHERE id = $1`, [orderId], 'order', orderId);
+  const paid = Number((await one<{ n: string }>(ctx, `SELECT coalesce(sum(CASE WHEN kind = 'refund' THEN -amount ELSE amount END), 0)::bigint AS n FROM payments WHERE order_id = $1 AND status = 'succeeded' AND purpose IN ('rental', 'late_fee') AND kind IN ('charge', 'manual', 'refund')`, [orderId]))!.n);
+  let over = paid - Number(o.totals?.total ?? 0);
+  if (over <= 0) return;
+  for (const p of await many<any>(ctx, `SELECT * FROM payments WHERE order_id = $1 AND kind IN ('charge', 'manual') AND status = 'succeeded' AND purpose = 'rental' ORDER BY created_at DESC`, [orderId])) {
+    if (over <= 0) break;
+    const done = Number((await one<{ n: string }>(ctx, `SELECT coalesce(sum(amount), 0)::bigint AS n FROM payments WHERE parent_payment_id = $1 AND kind = 'refund' AND status <> 'failed'`, [p.id]))!.n);
+    const amount = Math.min(over, Number(p.amount) - done);
+    if (amount <= 0) continue;
+    await refundPayment(ctx, p.id, { amount, reason });
+    over -= amount;
+  }
+  await recomputePaymentStatus(ctx, orderId);
+}
+
 // ---------------------------------------------------------------------------
 // Unit swap mid-rental (FR-OR-10)
 // ---------------------------------------------------------------------------
@@ -1407,3 +1569,5 @@ export async function reassignUnit(ctx: Ctx, ref: string, input: { from_stock_it
   await emit(ctx, 'order.unit_reassigned', { type: 'order', id: o.id }, { ...api, reassign: { from_stock_item_id: input.from_stock_item_id, to_stock_item_id: to.id } });
   return api;
 }
+
+export { orderCalendar } from './calendar.ts';

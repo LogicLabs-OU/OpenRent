@@ -9,7 +9,9 @@ export const load: PageServerLoad = async (event) => {
     const account = await sf(event, '/account');
     // The portal's extras (FR-CUS-6): what is owed, business terms, insurance, signatures waiting.
     const me = await portal(event, '/me').catch(() => null);
-    return { account, portal: me ? { me } : null };
+    // Saved billing details and addresses (ADR 0012), for the account's billing card.
+    const [profiles, addresses] = await Promise.all([sf(event, '/account/billing_profiles').catch(() => ({ data: [] })), sf(event, '/account/addresses').catch(() => ({ data: [] }))]);
+    return { account, portal: me ? { me } : null, billing: { profiles: profiles.data, addresses: addresses.data } };
   } catch (e) {
     if (e instanceof SfError && e.status === 401) {
       setAccount(event.cookies, null, event.url.protocol === 'https:');

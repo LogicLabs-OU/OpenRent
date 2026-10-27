@@ -22,7 +22,20 @@ export const setCart = (cookies: Cookies, id: string | null, secure: boolean) =>
 
 /** The storefront language a visitor last saw; once set, the first-visit redirect stops. */
 export const langCookie = (cookies: Cookies) => cookies.get('or_lang') ?? null;
+/** The currency the visitor chose to see prices in (FR-I18N-7). */
+export const readCurrency = (cookies: Cookies) => {
+  const c = cookies.get('or_currency');
+  return c && /^[A-Z]{3}$/.test(c) ? c : null;
+};
+export const setCurrency = (cookies: Cookies, code: string, secure: boolean) => cookies.set('or_currency', code, { ...opts, httpOnly: false, secure, maxAge: 60 * 60 * 24 * 365 });
 export const setLangCookie = (cookies: Cookies, locale: string, secure: boolean) => cookies.set('or_lang', locale, { ...opts, httpOnly: false, secure, maxAge: 60 * 60 * 24 * 365 });
+
+/** The location the visitor picks up from; the API uses it for stock, opening hours and the cart. */
+export const readLocation = (cookies: Cookies) => {
+  const c = cookies.get('or_location');
+  return c && /^loc_[0-9A-Za-z]+$/.test(c) ? c : null;
+};
+export const setLocation = (cookies: Cookies, id: string, secure: boolean) => cookies.set('or_location', id, { ...opts, secure, maxAge: 60 * 60 * 24 * 365 });
 
 /** Customer account session (email-link sign-in), kept server-side only. */
 export const accountToken = (cookies: Cookies) => cookies.get('or_account') ?? null;

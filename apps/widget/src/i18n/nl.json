@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "machine_draft": true,
+    "source": "en",
+    "language": "nl"
+  },
+  "book": "Nu boeken",
+  "pickup": "Ophalen",
+  "return": "Terugbrengen",
+  "quantity": "Aantal",
+  "total": "Totaal",
+  "deposit": "+ {amount} borg (krijg je terug)",
+  "loading": "Laden…",
+  "request_failed": "Verzoek mislukt",
+  "category_empty": "Hier staan nog geen producten",
+  "checkout_title": "Boeken",
+  "close": "Sluiten",
+  "booked_title": "Boeking ontvangen",
+  "booked_number": "Boeking #{number}",
+  "booked_paid": "Bedankt, je betaling is gelukt. Je krijgt een bevestiging per e-mail.",
+  "booked_email": "Bedankt. Je krijgt een bevestiging per e-mail.",
+  "view_booking": "Boeking bekijken",
+  "name": "Naam",
+  "email": "E-mail",
+  "phone": "Telefoon (optioneel)",
+  "terms": "Huurvoorwaarden",
+  "accept_terms": "Ik ga akkoord met de huurvoorwaarden",
+  "book_and_pay": "Boeken en betalen"
+}

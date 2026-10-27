@@ -200,5 +200,7 @@
       </div>
     </div>
     <p class="mq-perf px-5 py-4 text-center text-lg font-semibold uppercase">{rt.t('order.show_qr')}</p>
+    <!-- Calendar links (theme API 1.9). -->
+    <rt.components.Slot name="order.actions" context={{ order: o }} />
   </section>
 </div>

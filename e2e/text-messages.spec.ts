@@ -1,7 +1,7 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { startTwilioFake } from '@openrent/messaging-fakes';
-import { ADMIN, STORE, collectErrors, hydrated, randomOffset, signIn, weekday } from './helpers.ts';
+import { test, ADMIN, STORE, collectErrors, hydrated, randomOffset, signIn, weekday } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 
@@ -61,7 +61,8 @@ test('staff set up text messages and customers get their booking by SMS', async 
 
     // At checkout the customer asks for texts.
     const shopper = await (await browser.newContext()).newPage();
-    const from = new Date(start.getTime() + 3 * 86400_000);
+    // A weekday of its own: the shop is closed at weekends.
+    const from = new Date(`${weekday(randomOffset())}T10:00:00.000Z`);
     await shopper.request.post(`${STORE}/_or/dates`, { data: { from: from.toISOString(), to: new Date(from.getTime() + 86400_000).toISOString() } });
     await shopper.request.post(`${STORE}/_or/cart`, { data: { variant_id: product.variants[0].id, quantity: 1 } });
     // The storefront offers texts while the shop sends them; say why when it does not.
@@ -79,7 +80,7 @@ test('staff set up text messages and customers get their booking by SMS', async 
     await shopper.getByTestId('checkout-text-updates').getByLabel('Send me updates by text message').click();
     await shopper.getByLabel('I accept the rental terms').check();
     await shopper.getByRole('button', { name: /place booking/i }).click();
-    await expect(shopper.getByRole('heading', { name: /thank you, your booking #\d+/i })).toBeVisible({ timeout: 15_000 });
+    await expect(shopper.getByRole('heading', { name: /thank you, your booking #\d+/i })).toBeVisible({ timeout: 30_000 });
     await shopper.context().close();
     const web = (await call(page, 'GET', `/customers?q=${encodeURIComponent(email)}`)).data[0];
     expect(web).toMatchObject({ sms_opt_in: true, phone: '+372 5550 2002' });

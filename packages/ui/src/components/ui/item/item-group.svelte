@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { cn, type WithElementRef } from "#ui/utils.js";
 	import type { HTMLAttributes } from "svelte/elements";
+	import { setContext } from "svelte";
 
 	let {
 		ref = $bindable(null),
@@ -8,6 +9,8 @@
 		children,
 		...restProps
 	}: WithElementRef<HTMLAttributes<HTMLDivElement>> = $props();
+	// Items inside a group are its list items (role="list" needs them).
+	setContext("item-group", true);
 </script>
 
 <div

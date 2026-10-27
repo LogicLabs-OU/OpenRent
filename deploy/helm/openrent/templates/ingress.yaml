@@ -1,0 +1,30 @@
+{{- if .Values.ingress.enabled }}
+{{- $full := include "openrent.fullname" . }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $full }}
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- range $p := list "/api" "/admin" "/docs" "/webhooks" "/widget" }}
+          - path: {{ $p }}
+            pathType: Prefix
+            backend: { service: { name: {{ $full }}-api, port: { name: http } } }
+          {{- end }}
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ $full }}-storefront, port: { name: http } } }
+{{- end }}

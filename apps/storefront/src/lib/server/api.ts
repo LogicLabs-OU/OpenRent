@@ -68,6 +68,12 @@ async function call<T>(event: RequestEvent, path: string, init: { method?: strin
   if (preview) headers['X-Theme-Preview'] = preview;
   const account = event.cookies.get('or_account');
   if (account) headers['X-Customer-Session'] = account;
+  // The currency the visitor sees prices in (FR-I18N-7); only catalogue answers use it.
+  // The location the visitor picked (stock, hours and the cart follow it).
+  const location = event.cookies.get('or_location');
+  if (location && /^loc_[0-9A-Za-z]+$/.test(location)) headers['X-Storefront-Location'] = location;
+  const currency = event.cookies.get('or_currency');
+  if (currency && /^[A-Z]{3}$/.test(currency)) headers['X-Display-Currency'] = currency;
   // A FormData body sets its own multipart content type.
   const form = init.body instanceof FormData;
   if (init.body !== undefined && !form) headers['Content-Type'] = 'application/json';
@@ -110,6 +116,8 @@ export async function relay(fn: () => Promise<unknown>) {
 }
 
 export function fail(e: unknown): never {
+  // A suspended shop (managed cloud) is, for its customers, simply not available.
+  if (e instanceof SfError && e.code === 'shop_suspended') error(503, t('error.unavailable'));
   if (e instanceof SfError) error(e.status === 401 ? 404 : e.status, e.message);
   throw e;
 }

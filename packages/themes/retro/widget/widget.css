@@ -1,0 +1,13 @@
+/* Retro in the embeddable widget: black ink on paper, the pink accent for focus. */
+:host {
+  --openrent-font: 'DM Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --card: #f4f4f0;
+  --card-foreground: #000000;
+  --foreground: #000000;
+  --muted-foreground: #3d3d3d;
+  --border: #000000;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --ring: {{ settings.accent | #ff90e8 }};
+  --radius: 0.25rem;
+}

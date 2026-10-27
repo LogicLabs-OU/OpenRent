@@ -5,10 +5,11 @@ import fr from './fr.json';
 import es from './es.json';
 import et from './et.json';
 import ja from './ja.json';
+import nl from './nl.json';
 
 export type MessageKey = keyof typeof en;
 
-const catalogs = { en, de, fr, es, et, ja } as unknown as Record<Locale, Catalog>;
+const catalogs = { en, de, fr, es, et, ja, nl } as unknown as Record<Locale, Catalog>;
 
 /**
  * The widget's language: its `lang` attribute, else the host page's `<html lang>`, else English.

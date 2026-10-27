@@ -20,6 +20,13 @@ const checks: { name: string; channel: NotificationChannel; vars: string[]; conf
   { name: 'MessageBird', channel: messageBirdChannel(), vars: ['MESSAGEBIRD_ACCESS_KEY', 'MESSAGEBIRD_ORIGINATOR'], config: { access_key: env('MESSAGEBIRD_ACCESS_KEY'), originator: env('MESSAGEBIRD_ORIGINATOR') } },
 ];
 
+// Real credentials send real, paid texts: only with a clear yes.
+const real = (env('TWILIO_ACCOUNT_SID') && env('TWILIO_FROM') !== '+15005550006') || (env('MESSAGEBIRD_ACCESS_KEY') && !env('MESSAGEBIRD_ACCESS_KEY').startsWith('test_'));
+if (real && process.env.LIVE_CHECK_SEND_REAL_TEXTS !== '1') {
+  console.error('These are not test credentials: the check would send a real, paid text. Set LIVE_CHECK_SEND_REAL_TEXTS=1 to go ahead.');
+  process.exit(1);
+}
+
 let ran = 0;
 let failed = 0;
 for (const c of checks) {

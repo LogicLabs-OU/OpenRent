@@ -1,0 +1,1 @@
+ALTER TABLE "categories" ADD COLUMN "seo" jsonb DEFAULT '{}'::jsonb NOT NULL;

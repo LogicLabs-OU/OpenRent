@@ -1,0 +1,14 @@
+/* Ink Green in the embeddable widget: its light sage cards, ink buttons with the highlight colour. */
+:host {
+  --openrent-font: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --card: #eef2e3;
+  --card-foreground: {{ settings.ink | #043f2e }};
+  --foreground: {{ settings.ink | #043f2e }};
+  --muted-foreground: #4b6a5d;
+  --border: rgba(4, 63, 46, 0.2);
+  --input: rgba(4, 63, 46, 0.35);
+  --primary: {{ settings.ink | #043f2e }};
+  --primary-foreground: {{ settings.highlight | #c8f169 }};
+  --ring: {{ settings.highlight | #c8f169 }};
+  --radius: 0.375rem;
+}

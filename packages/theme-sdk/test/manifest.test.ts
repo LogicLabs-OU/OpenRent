@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contentField, themeCatalogs, resolveSections, resolveSettings, satisfies, validateSections, validateTheme, translator, type ThemeModule } from '../src/manifest.ts';
+import { contentField, themeCatalogs, resolveSections, resolveSettings, satisfies, validateSections, validateTheme, translator, type ThemeModule, fillWidgetCss } from '../src/manifest.ts';
 
 const base: ThemeModule = {
   manifest: { id: 'x', name: 'X', version: '1.0.0', author: 'a', license: 'MIT', compat: '^1.0.0', locales: ['en'] },
@@ -91,5 +91,18 @@ describe('languages', () => {
 describe('themeCatalogs', () => {
   it('drops metadata from catalogue files', () => {
     expect(themeCatalogs({ de: { _meta: { machine_draft: true }, hi: 'Hallo' } })).toEqual({ de: { hi: 'Hallo' } });
+  });
+});
+
+describe('widget CSS (theme API 1.8)', () => {
+  const tpl = ':host { --primary: {{ settings.accent | branding.primary_color | #0891b2 }}; --primary-foreground: {{ contrast: settings.accent | branding.primary_color }}; --radius: {{ settings.radius }}px; }';
+  it('takes the first set value and the readable text colour', () => {
+    expect(fillWidgetCss(tpl, { settings: { accent: '#ffcc00', radius: 4 }, branding: {} })).toBe(':host { --primary: #ffcc00; --primary-foreground: #0a0a0a; --radius: 4px; }');
+    expect(fillWidgetCss(tpl, { settings: {}, branding: { primary_color: '#123456' } })).toBe(':host { --primary: #123456; --primary-foreground: #ffffff; }');
+  });
+  it('never lets a setting break out of its declaration', () => {
+    const out = fillWidgetCss(tpl, { settings: { accent: 'red;} body{display:none', radius: '1px; } * {x' }, branding: {} });
+    expect(out).toBe(':host { --primary: #0891b2; }');
+    expect(fillWidgetCss('a{b:{{settings.x}}}</style><script>', { settings: { x: '1' }, branding: {} })).toBe('a{b:1}><script>');
   });
 });

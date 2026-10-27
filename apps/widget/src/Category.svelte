@@ -10,13 +10,18 @@
   import { Button } from '@openrent/ui/button';
   import { Spinner } from '@openrent/ui/spinner';
   import { call, config, openCheckout } from './api.ts';
-  import { css, registerProperties } from './styles.ts';
+  import { css, registerProperties, themeCss } from './styles.ts';
   import { t } from './i18n/index.ts';
 
   /** A category's products as cards; "Book" opens the checkout drawer, or the storefront with checkout="storefront". */
   let { category = '', shop = '', pk = '', api = '', storefront = '', lang = '', limit = 12, checkout = 'inline' }: { category?: string; shop?: string; pk?: string; api?: string; storefront?: string; lang?: string; limit?: number; checkout?: string } = $props();
   registerProperties();
   const cfg = $derived(config({ api, shop, pk, storefront, lang }));
+  // The shop's theme look (FR-THM-10), after the widget's own styles.
+  let themeStyle = $state('');
+  $effect(() => {
+    if (cfg.api) void themeCss(cfg).then((c) => (themeStyle = c));
+  });
   let products = $state<any[] | null>(null);
   let error = $state('');
   let opening = $state('');
@@ -43,7 +48,7 @@
   }
 </script>
 
-{@html css}
+{@html css}{@html themeStyle}
 <div class="text-foreground grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-4 text-sm" part="grid">
   {#if products}
     {#each products as p (p.id)}

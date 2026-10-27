@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { collectErrors, hydrated, localInput, randomOffset, shot, weekday } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, collectErrors, hydrated, localInput, randomOffset, shot, weekday } from './helpers.ts';
 
 const WIDGET = process.env.WIDGET_URL ?? 'http://localhost:7073';
 
@@ -8,6 +8,8 @@ test('the embedded widget prices a booking and hands it to the storefront cart',
   await page.goto(WIDGET);
   const widget = page.locator('openrent-product');
   await expect(widget.getByText('Sea kayak')).toBeVisible();
+  // It wears the live storefront theme (FR-THM-10), whichever theme that is.
+  await expect.poll(() => widget.evaluate((el) => el.shadowRoot?.querySelector('style[data-openrent-theme]')?.textContent ?? '')).toContain('--radius:');
   const start = randomOffset() * 24 * 60;
   await widget
     .getByLabel('Pickup')

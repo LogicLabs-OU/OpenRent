@@ -73,7 +73,7 @@ export function registerCatalog(r: Router) {
     r.delete(`/${path}/:id`, { permission: `${perm}:write` as any, tags: [tag], summary: `Delete`, params: IdParams }, async (ctx, req) => svc.remove(ctx, req.params.id));
   };
 
-  crud('categories', catalog.categories, 'Categories', Type.Object({ name: Type.String({ minLength: 1 }), slug: Type.Optional(Type.String()), parent_id: Type.Optional(Nullable(Id)), position: Type.Optional(Type.Integer()), translations: Type.Optional(Json) }, { additionalProperties: false }), 'catalog');
+  crud('categories', catalog.categories, 'Categories', Type.Object({ name: Type.String({ minLength: 1 }), slug: Type.Optional(Type.String()), parent_id: Type.Optional(Nullable(Id)), position: Type.Optional(Type.Integer()), translations: Type.Optional(Json), seo: Type.Optional(Type.Object({ title: Type.Optional(Type.String({ maxLength: 70 })), description: Type.Optional(Type.String({ maxLength: 160 })) }, { additionalProperties: false })) }, { additionalProperties: false }), 'catalog');
   crud('price_structures', catalog.priceStructures, 'Pricing', PriceStructureInput, 'pricing');
   crud('tax_profiles', catalog.taxProfiles, 'Pricing', Type.Object({ name: Type.String({ minLength: 1 }), rates: Type.Array(Type.Object({ name: Type.String(), rate_bp: Type.Integer({ minimum: 0, maximum: 10000 }) })), is_default: Type.Optional(Type.Boolean()) }, { additionalProperties: false }), 'pricing');
   crud(
@@ -132,10 +132,13 @@ export function registerCatalog(r: Router) {
       {
         name: Type.String({ minLength: 1, maxLength: 120 }),
         kind: Type.Union(['delivery', 'cleaning', 'damage_waiver', 'extension', 'late'].map((k) => Type.Literal(k))),
-        calculation: Type.Union(['flat', 'per_unit', 'percent', 'per_period', 'zone'].map((k) => Type.Literal(k))),
+        calculation: Type.Union(['flat', 'per_unit', 'percent', 'per_period', 'zone', 'per_km'].map((k) => Type.Literal(k))),
         amount: Type.Optional(Type.Integer({ minimum: 0, description: 'Minor units; basis points for percent (1000 = 10%)' })),
         period_unit: Type.Optional(Nullable(Type.Union(['hour', 'day', 'week', 'month'].map((k) => Type.Literal(k))))),
         zones: Type.Optional(Type.Array(Type.Object({ postcodes: Type.Array(Type.String({ minLength: 1, maxLength: 20 }), { maxItems: 200 }), amount: Type.Integer({ minimum: 0 }) }), { maxItems: 50 })),
+        distance_bands: Type.Optional(
+          Type.Array(Type.Object({ up_to_km: Nullable(Type.Number({ description: 'Up to this many kilometres; null for any distance' })), amount: Type.Integer({ minimum: 0 }) }), { maxItems: 20, description: 'per_km: the first band the distance fits' }),
+        ),
         mode: Type.Optional(Type.Union([Type.Literal('auto'), Type.Literal('optional')], { description: 'optional: the customer chooses it at checkout' })),
         product_ids: Type.Optional(Type.Array(Id)),
         category_ids: Type.Optional(Type.Array(Id)),

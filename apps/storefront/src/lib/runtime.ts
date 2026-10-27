@@ -43,6 +43,9 @@ export function switchLocalePath(target: string, defaultLocale: string, pathWith
  * The runtime handed to themes, for one storefront language. `getShop` returns the latest shop data
  * after navigation; `currentPath` gives the page path during server rendering.
  */
+/** Pages that show what is charged: amounts there stay in the shop's currency. */
+const CHARGED = ['checkout', 'order', 'account', 'sign'];
+
 export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides: Record<string, Record<string, string>> = {}, currentPath: () => string = () => '/'): Runtime {
   const shop0 = getShop();
   const defaultLocale = shop0.locales?.[0] ?? shop0.locale;
@@ -58,15 +61,23 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
     const fallback = getShop().strings?.[key] ?? lookup(key, shop0.locale);
     return fallback ? fallback.replace(/\{(\w+)\}/g, (_, k: string) => String(params[k] ?? `{${k}}`)) : key;
   };
-  const tz = shop0.locations[0]?.timezone ?? shop0.tenant.timezone;
-  const zone = makeZone(tz, shop0.locations[0]?.opening_hours ?? {});
+  // Times and opening hours of the location the visitor picks up from.
+  const here = shop0.location ?? shop0.locations[0];
+  const tz = here?.timezone ?? shop0.tenant.timezone;
+  const zone = makeZone(tz, here?.opening_hours ?? {});
   const money = new Intl.NumberFormat(shop0.locale, { style: 'currency', currency: shop0.tenant.currency });
+  const formats = new Map<string, Intl.NumberFormat>();
+  const fmtIn = (code: string) => formats.get(code) ?? formats.set(code, new Intl.NumberFormat(shop0.locale, { style: 'currency', currency: code })).get(code)!;
   const dfmt = new Intl.DateTimeFormat(shop0.locale, { dateStyle: 'medium', timeZone: tz });
   const dtfmt = new Intl.DateTimeFormat(shop0.locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: tz });
   const tfmt = new Intl.DateTimeFormat(shop0.locale, { timeStyle: 'short', timeZone: tz });
   return {
     get shop() {
       return getShop();
+    },
+    async setLocation(id) {
+      await call(shop0.locale, 'POST', 'location', { location_id: id });
+      await invalidateAll();
     },
     async setDates(from, to) {
       await call(shop0.locale, 'POST', 'dates', { from, to });
@@ -77,6 +88,8 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
       // Accessories ticked with it come along, one each (FR-CAT-7).
       for (const accessory of accessoryChoices[variantId] ?? []) await call(shop0.locale, 'POST', 'cart', { variant_id: accessory, quantity: 1, mode: 'add' });
       accessoryChoices[variantId] = [];
+      // For the analytics events (FR-SF-8).
+      window.dispatchEvent(new CustomEvent('openrent:cart-added', { detail: { variantId, quantity } }));
       await invalidateAll();
     },
     async setQuantity(variantId, quantity) {
@@ -101,8 +114,12 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
         if (r.payment?.redirect_url) return payOnProviderPage(r.payment.redirect_url);
         return r;
       } catch (err) {
+        if (!(err instanceof RuntimeError)) throw err;
         // Plugin fields show their own errors in the checkout.extra_fields slot.
-        if (err instanceof RuntimeError) checkoutExtra.errors = Object.fromEntries(Object.entries(err.fields).filter(([k]) => k.startsWith('extra.')).map(([k, v]) => [k.slice(6), v]));
+        checkoutExtra.errors = Object.fromEntries(Object.entries(err.fields).filter(([k]) => k.startsWith('extra.')).map(([k, v]) => [k.slice(6), v]));
+        // Problems with no field on the checkout form (the dates, a line) come back as a message the theme shows.
+        const shown = Object.keys(err.fields).filter((k) => k.startsWith('customer.') || k.startsWith('extra.') || k === 'terms_accepted' || k === 'notes');
+        if (!shown.length && Object.keys(err.fields).length) throw new RuntimeError(Object.values(err.fields)[0] || err.message, err.status, err.code);
         throw err;
       }
     },
@@ -153,7 +170,15 @@ export function createRuntime(theme: ThemeModule, getShop: () => Shop, overrides
     },
     t,
     format: {
-      money: (m) => (m ? money.format(m.amount / 100) : ''),
+      money: (m) => {
+        if (!m) return '';
+        // Another currency on browsing pages, marked as approximate; what is charged stays in the shop's (FR-I18N-7).
+        const dc = getShop().displayCurrency;
+        if (dc && dc.shown !== dc.base && m.currency === dc.base && !CHARGED.some((p) => currentPath().startsWith(`${base}/${p}`))) {
+          return `≈ ${fmtIn(dc.shown).format((m.amount / 100) * dc.rate)}`;
+        }
+        return money.format(m.amount / 100);
+      },
       date: (iso) => (iso ? dfmt.format(new Date(iso)) : ''),
       datetime: (iso) => (iso ? dtfmt.format(new Date(iso)) : ''),
       time: (iso) => tfmt.format(new Date(iso)),

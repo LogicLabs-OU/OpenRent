@@ -4,7 +4,7 @@ import type { AppDeps } from './deps.ts';
 
 export function coreConfig(deps: AppDeps): Ctx['config'] {
   return {
-    publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, livemode: deps.config.livemode,
+    publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, storefrontDomain: deps.config.storefrontDomain, livemode: deps.config.livemode, multiTenant: deps.config.mode === 'multi_tenant',
     renderPdf: deps.config.pdfRenderer === 'playwright' ? async (html) => (await import('./pdf.ts')).renderPdf(html) : undefined,
   };
 }

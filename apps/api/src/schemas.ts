@@ -217,6 +217,19 @@ export const Address = Type.Object(
   { additionalProperties: false },
 );
 
+/** Billing details (ADR 0012): private, or a company with its tax number and invoice address. */
+export const BillingDetails = Type.Object(
+  {
+    kind: Type.Optional(Type.Union([Type.Literal('private'), Type.Literal('company')])),
+    name: Type.Optional(Type.String({ maxLength: 200 })),
+    company_name: Type.Optional(Nullable(Type.String({ maxLength: 200 }))),
+    tax_id: Type.Optional(Nullable(Type.String({ maxLength: 40 }))),
+    address: Type.Optional(Nullable(Address)),
+    is_default: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
 export const CustomerFields = {
   type: Type.Optional(Type.Union([Type.Literal('person'), Type.Literal('company')])),
   name: Type.String({ minLength: 1, maxLength: 200 }),

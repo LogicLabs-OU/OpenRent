@@ -32,7 +32,11 @@ export interface CoreConfig {
   publicUrl: string;
   adminUrl: string;
   storefrontUrl: string;
+  /** Shops' own storefront hosts on a multi-shop installation: `{slug}.` this domain (`OPENRENT_STOREFRONT_DOMAIN`). */
+  storefrontDomain?: string | null;
   livemode: boolean;
+  /** A multi-shop installation: shop settings must never reach into the operator's own setup. */
+  multiTenant?: boolean;
   /** Turns a document's HTML into a PDF, when this process can (headless Chromium in the API and worker). */
   renderPdf?: (html: string) => Promise<Buffer>;
 }

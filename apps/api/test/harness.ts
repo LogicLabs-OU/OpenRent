@@ -49,7 +49,7 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export async function startApp(url: string, poolSize: number): Promise<TestApp> {
+export async function startApp(url: string, poolSize: number, env: Record<string, string> = {}): Promise<TestApp> {
   const config = loadConfig({
     DATABASE_URL: url,
     OPENRENT_PUBLIC_URL: 'http://localhost:7070',
@@ -58,6 +58,7 @@ export async function startApp(url: string, poolSize: number): Promise<TestApp> 
     OPENRENT_SESSION_SECRET: 'x'.repeat(40),
     AUTO_MIGRATE: 'false',
     LOG_LEVEL: 'error',
+    ...env,
   });
   const quiet = { info() {}, warn() {}, error: (o: unknown, m?: string) => console.error(m, o), debug() {} };
   const deps = await bootstrap(config, quiet, { migrate: false, poolSize });
@@ -129,9 +130,9 @@ export function isoIn(offsetDays: number, hour = 10) {
  * A fresh database with a shop that is set up and signed in: owner owner@test.dev, one location open
  * all hours, VAT 20 %, Europe/Tallinn. Each test file calls this once, so files do not share state.
  */
-export async function shopForTests(db: { url: string; real: boolean }) {
+export async function shopForTests(db: { url: string; real: boolean }, env: Record<string, string> = {}) {
   await resetDatabase(db.url);
-  const t = await startApp(db.url, db.real ? 20 : 1);
+  const t = await startApp(db.url, db.real ? 20 : 1, env);
   const admin = new Client(t.app);
   const r = await admin.post('/api/v1/setup', {
     owner: { email: 'owner@test.dev', password: 'password123', name: 'Owner' },

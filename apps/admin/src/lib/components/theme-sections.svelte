@@ -33,16 +33,28 @@
     blocks: Block[];
   }
 
-  /** Home page sections of one theme: order, add, remove, edit settings and blocks, with a live preview. */
-  let { theme, onsaved }: { theme: any; onsaved: (theme: any) => void } = $props();
+  /**
+   * Sections of one theme: order, add, remove, edit settings and blocks, with a live preview. The home
+   * page's by default; with `page`, one of the shop's own pages (saved with the page, for this theme).
+   */
+  let {
+    theme,
+    onsaved,
+    page,
+  }: {
+    theme: any;
+    onsaved: (theme: any) => void;
+    page?: { id: string; slug: string; sections: Section[]; onsaved: (page: any) => void };
+  } = $props();
 
   const schemas = $derived((theme.section_schemas ?? []) as Schema[]);
   const schemaOf = (type: string) => schemas.find((s) => s.type === type);
   const copy = (v: unknown) => JSON.parse(JSON.stringify(v ?? []));
   const defaults = (fields: ThemeSetting[]) =>
     Object.fromEntries(fields.filter((f) => f.default !== undefined).map((f) => [f.id, f.default]));
+  // A section whose type is gone (its plugin was turned off) is left out; saving keeps the rest.
   const withDefaults = (list: Section[]): Section[] =>
-    list.map((s) => {
+    list.filter((s) => schemaOf(s.type)).map((s) => {
       const sc = schemaOf(s.type);
       return {
         ...s,
@@ -58,7 +70,7 @@
     });
 
   // svelte-ignore state_referenced_locally
-  let layout = $state<Section[]>(withDefaults(copy(theme.sections ?? theme.sections_default)));
+  let layout = $state<Section[]>(withDefaults(copy(page ? page.sections : (theme.sections ?? theme.sections_default))));
   // svelte-ignore state_referenced_locally
   let saved = $state(JSON.stringify(layout));
   let selected = $state<string | null>(null);
@@ -73,7 +85,9 @@
 
   onMount(async () => {
     try {
-      previewUrl = (await api.post(`/themes/${theme.id}/actions/preview`)).url;
+      const url = new URL((await api.post(`/themes/${theme.id}/actions/preview`)).url);
+      if (page) url.pathname = `/pages/${page.slug}`;
+      previewUrl = url.href;
     } catch (e) {
       notifyError(e);
     }
@@ -106,11 +120,11 @@
     saving = true;
     errors = {};
     try {
-      const updated = await api.put(`/themes/${theme.id}/sections`, { sections: layout });
+      if (page) page.onsaved(await api.put(`/storefront_pages/${page.id}/sections/${theme.id}`, { sections: layout }));
+      else onsaved(await api.put(`/themes/${theme.id}/sections`, { sections: layout }));
       saved = JSON.stringify(layout);
-      onsaved(updated);
       frameKey++;
-      toast.success(t('sections.saved'));
+      toast.success(page ? t('pages.sections_saved') : t('sections.saved'));
     } catch (e) {
       errors = fieldErrors(e);
       if (!Object.keys(errors).length) notifyError(e);
@@ -160,8 +174,8 @@
     <div class="flex flex-col gap-4">
       <Card.Root>
         <Card.Header>
-          <Card.Title>{t('sections.title')}</Card.Title>
-          <Card.Description>{t('sections.description')}</Card.Description>
+          <Card.Title>{page ? t('pages.sections_title') : t('sections.title')}</Card.Title>
+          <Card.Description>{page ? t('pages.sections_description', { theme: theme.name }) : t('sections.description')}</Card.Description>
           <Card.Action>
             <DropdownMenu.Root>
               <DropdownMenu.Trigger>
@@ -226,9 +240,9 @@
           </ol>
         </Card.Content>
         <Card.Footer class="flex-wrap justify-between gap-2">
-          <Button variant="ghost" size="sm" onclick={restoreDefault}
-            ><RotateCcwIcon />{t('sections.reset')}</Button
-          >
+          {#if !page}<Button variant="ghost" size="sm" onclick={restoreDefault}
+              ><RotateCcwIcon />{t('sections.reset')}</Button
+            >{:else}<span></span>{/if}
           <div class="flex gap-2">
             <Button
               variant="outline"

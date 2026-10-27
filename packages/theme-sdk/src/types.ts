@@ -26,6 +26,19 @@ export interface Location {
   timezone: string;
   opening_hours: OpeningHours;
   is_default: boolean;
+  /** Contact details shown with the location (theme API 1.9). */
+  phone?: string | null;
+  email?: string | null;
+  /** Times customers may choose for a delivery or collection, per weekday (theme API 1.9). */
+  delivery_windows?: OpeningHours;
+  /** When it is closed in the next 60 days (theme API 1.9). */
+  closures?: { starts_at: string; ends_at: string; reason: string | null }[];
+}
+
+/** Search engine texts in the page's language; null where the shop wrote none (theme API 1.9). */
+export interface Seo {
+  title: string | null;
+  description: string | null;
 }
 
 export interface Category {
@@ -33,6 +46,7 @@ export interface Category {
   name: string;
   slug: string;
   position: number;
+  seo?: Seo;
 }
 
 export interface VariantPrice {
@@ -40,6 +54,8 @@ export interface VariantPrice {
   period_unit: 'hour' | 'day' | 'week' | 'month';
   amount: Money;
   description: string;
+  /** The price of the shortest rental: `periods` of `period_unit` (a price table's first row), else one (theme API 1.9). */
+  from?: { amount: Money; periods: number };
 }
 
 export interface Variant {
@@ -49,6 +65,8 @@ export interface Variant {
   tracking: 'serialized' | 'bulk' | 'none';
   price: VariantPrice | null;
   available?: number | null;
+  /** On the product page, when none is free at the chosen location: the locations that have it (theme API 1.9). */
+  elsewhere?: { location_id: string; name: string; available: number | null }[];
 }
 
 /** A custom field the shop shows to customers (theme API 1.4); `display` is ready to print. */
@@ -83,6 +101,9 @@ export interface Product {
   min_notice_min: number;
   increment_min: number | null;
   variants: Variant[];
+  /** Search engine texts (theme API 1.9); the storefront puts them in the page head. */
+  seo?: Seo;
+  updated_at?: string;
   /**
    * What always comes with a bundle, and its slots of alternatives (theme API 1.7, FR-CAT-6). The
    * `product.before_add` slot shows the picker; themes may list `components` as "includes".
@@ -134,10 +155,16 @@ export interface PriceQuote {
   deposit: Money;
   coupon_errors: { code: string; reason: string }[];
   coupons_applied: { code: string; amount: Money }[];
-  /** Extras the customer may add, priced for this cart (theme API 1.5); choose them with `rt.setOptions`. */
-  optional_fees?: { id: string; name: string; kind: 'delivery' | 'cleaning' | 'damage_waiver'; amount: Money; selected: boolean }[];
-  /** A chosen delivery that needs a postcode, or one outside every zone (theme API 1.5). */
-  fee_errors?: { fee_id: string; reason: 'postcode_required' | 'postcode_not_served' }[];
+  /**
+   * Extras the customer may add, priced for this cart (theme API 1.5); choose them with `rt.setOptions`.
+   * `priced_by` (theme API 1.8): a delivery priced by postcode zone or by distance to the address.
+   */
+  optional_fees?: { id: string; name: string; kind: 'delivery' | 'cleaning' | 'damage_waiver'; amount: Money; selected: boolean; priced_by?: 'postcode' | 'distance' | null }[];
+  /**
+   * A chosen delivery that needs a postcode, or one outside every zone (theme API 1.5); by distance
+   * (theme API 1.8), one that needs the address, cannot find it, or is too far.
+   */
+  fee_errors?: { fee_id: string; reason: 'postcode_required' | 'postcode_not_served' | 'address_required' | 'address_not_found' | 'address_too_far' }[];
 }
 
 export interface CalendarDay {
@@ -278,9 +305,18 @@ export interface Account extends AccountProfile {
   orders: AccountOrder[];
 }
 
+/** A menu link (theme API 1.9): `href` is ready to use, with the language prefix; `external` opens another site. */
+export interface NavLink {
+  label: string;
+  href: string;
+  external: boolean;
+}
+
 export interface Shop {
   tenant: Tenant;
   locations: Location[];
+  /** The location the visitor rents from: the one they picked, else the default (theme API 1.9). */
+  location?: Location;
   categories: Category[];
   terms: { text: string; version: string; hash: string };
   cancellation_policy: { hours_before: number; refund_pct: number }[];
@@ -295,12 +331,22 @@ export interface Shop {
   /** The shop's wording of storefront texts; `rt.t` applies it (theme API 1.4). */
   strings?: Record<string, string>;
   displayPricesIncludingTax: boolean;
+  /**
+   * The currency prices are shown in (theme API 1.8, FR-I18N-7). `rt.format.money` converts to it on
+   * browsing pages, marked as approximate; checkout and order pages show what is charged, in `base`.
+   */
+  displayCurrency?: { base: string; shown: string; rate: number; choices: string[] };
   /** Languages the shop offers, default first (theme API 1.3); `locale` is the one shown. */
   locales?: string[];
   /** The signed-in customer, or null (theme API 1.3). */
   customer?: { name: string; email: string } | null;
   /** What this storefront can do (theme API 1.3). */
   features?: { document_pdfs: boolean; accounts: boolean };
+  /**
+   * The shop's own menus (theme API 1.9). An empty `header` means the theme's usual menu (the
+   * categories); `footer` links go next to the rental terms.
+   */
+  navigation?: { header: NavLink[]; footer: NavLink[] };
 }
 
 // Template data objects --------------------------------------------------------
@@ -330,7 +376,16 @@ export interface OrderConfirmationData {
 }
 export interface PageData {
   title: string;
+  /** Plain text (the rental terms); pages the shop wrote have `body_html` instead (theme API 1.9). */
   body: string;
+  /** The page's text as cleaned HTML; render it with `{@html}` in a prose block (theme API 1.9). */
+  body_html?: string;
+  /**
+   * The page's sections for this theme (theme API 1.9), as on the home page: render them with the same
+   * section components as `templates/index`. `products` is there for product sections.
+   */
+  sections?: import('./manifest.ts').SectionInstance[];
+  products?: Product[];
 }
 export interface NotFoundData {
   path: string;

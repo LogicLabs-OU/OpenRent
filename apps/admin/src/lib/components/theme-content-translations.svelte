@@ -16,12 +16,22 @@
    * The shop's own texts in a theme (settings and home page sections) per storefront language.
    * Empty fields show the default-language text to customers.
    */
-  let { theme, onsaved }: { theme: any; onsaved: (theme: any) => void } = $props();
+  let {
+    theme,
+    onsaved,
+    page,
+  }: {
+    theme: any;
+    onsaved: (theme: any) => void;
+    /** One of the shop's pages: its section texts for this theme instead of the theme's own. */
+    page?: { id: string; sections: any[]; content: Record<string, Record<string, string>>; onsaved: (page: any) => void };
+  } = $props();
   const TRANSLATABLE = ['text', 'textarea', 'link'];
+  const saved = (l: string): Record<string, string> => (page ? page.content : theme.content_translations)?.[l] ?? {};
   // svelte-ignore state_referenced_locally
   let lang = $state(shopLocales.others[0] ?? '');
   // svelte-ignore state_referenced_locally
-  let values = $state<Record<string, string>>({ ...(theme.content_translations?.[shopLocales.others[0] ?? ''] ?? {}) });
+  let values = $state<Record<string, string>>({ ...saved(shopLocales.others[0] ?? '') });
   let errors = $state<Record<string, string>>({});
   let saving = $state(false);
 
@@ -33,12 +43,12 @@
   }
   const rows = $derived.by(() => {
     const out: Row[] = [];
-    for (const g of theme.settings_schema ?? []) {
+    for (const g of page ? [] : (theme.settings_schema ?? [])) {
       for (const s of g.settings) {
         if (TRANSLATABLE.includes(s.type)) out.push({ path: `settings.${s.id}`, label: `${g.name} › ${s.label}`, base: String(theme.settings?.[s.id] ?? theme.defaults?.[s.id] ?? ''), type: s.type });
       }
     }
-    const layout = theme.sections ?? theme.sections_default ?? [];
+    const layout = page ? page.sections : (theme.sections ?? theme.sections_default ?? []);
     for (const sec of layout) {
       const schema = (theme.section_schemas ?? []).find((x: any) => x.type === sec.type);
       if (!schema) continue;
@@ -57,7 +67,7 @@
 
   function pick(l: string) {
     lang = l;
-    values = { ...(theme.content_translations?.[l] ?? {}) };
+    values = { ...saved(l) };
     errors = {};
   }
 
@@ -67,9 +77,15 @@
     // Send every row so cleared fields are removed too.
     const body = Object.fromEntries(rows.map((r) => [r.path, values[r.path]?.trim() ? values[r.path]! : null]));
     try {
-      const updated = await api.put(`/themes/${theme.id}/content/${lang}`, { values: body });
-      onsaved(updated);
-      values = { ...(updated.content_translations?.[lang] ?? {}) };
+      if (page) {
+        const updated = await api.put(`/storefront_pages/${page.id}/content/${theme.id}/${lang}`, { values: body });
+        page.onsaved(updated);
+        values = { ...(updated.content_translations?.[theme.id]?.[lang] ?? {}) };
+      } else {
+        const updated = await api.put(`/themes/${theme.id}/content/${lang}`, { values: body });
+        onsaved(updated);
+        values = { ...(updated.content_translations?.[lang] ?? {}) };
+      }
       toast.success(t('translations.saved'));
     } catch (e) {
       errors = Object.fromEntries(Object.entries(fieldErrors(e)).map(([k, v]) => [k.replace(/^values\./, ''), v]));
@@ -82,7 +98,7 @@
 
 <Card.Root data-testid="theme-content-translations">
   <Card.Header>
-    <Card.Title>{t('themes.content_title')}</Card.Title>
+    <Card.Title>{page ? t('pages.content_title') : t('themes.content_title')}</Card.Title>
     <Card.Description>{t('themes.content_hint', { language: t(`language.${shopLocales.default}` as any) })}</Card.Description>
     {#if shopLocales.others.length}
       <Card.Action>

@@ -6,10 +6,11 @@ import fr from './fr.json' with { type: 'json' };
 import es from './es.json' with { type: 'json' };
 import et from './et.json' with { type: 'json' };
 import ja from './ja.json' with { type: 'json' };
+import nl from './nl.json' with { type: 'json' };
 
 export type MessageKey = keyof typeof en;
 
-const catalogs = { en, de, fr, es, et, ja } as unknown as Record<Locale, Catalog>;
+const catalogs = { en, de, fr, es, et, ja, nl } as unknown as Record<Locale, Catalog>;
 
 /** The language of the current request (API sets it from the staff user or Accept-Language). */
 const current = new AsyncLocalStorage<Locale>();

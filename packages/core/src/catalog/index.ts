@@ -79,7 +79,7 @@ export const taxProfiles = makeCrud({
 });
 
 export function categoryToApi(r: any) {
-  return { id: r.id, object: 'category', name: r.name, slug: r.slug, parent_id: r.parent_id, position: r.position, translations: r.translations, created_at: r.created_at };
+  return { id: r.id, object: 'category', name: r.name, slug: r.slug, parent_id: r.parent_id, position: r.position, translations: r.translations, seo: r.seo ?? {}, created_at: r.created_at, updated_at: r.updated_at };
 }
 
 export const categories = makeCrud({
@@ -87,7 +87,7 @@ export const categories = makeCrud({
   prefix: 'cat',
   entity: 'category',
   softDelete: true,
-  columns: { name: {}, slug: {}, parent_id: {}, position: {}, translations: { json: true } },
+  columns: { name: {}, slug: {}, parent_id: {}, position: {}, translations: { json: true }, seo: { json: true } },
   list: { filters: { parent_id: 'parent_id' }, sorts: { position: 'position', name: 'name' }, defaultSort: 'position,name', search: ['name'] },
   toApi: categoryToApi,
   beforeWrite: (_ctx, data) => {
@@ -181,6 +181,7 @@ export function feeRuleToApi(r: any) {
   return {
     id: r.id, object: 'fee_rule', name: r.name, kind: r.kind, calculation: r.calculation, amount: Number(r.amount), period_unit: r.period_unit,
     zones: (r.zones ?? []).map((z: any) => ({ postcodes: z.postcodes ?? [], amount: Number(z.amount ?? 0) })), mode: r.mode,
+    distance_bands: (r.distance_bands ?? []).map((b: any) => ({ up_to_km: b.up_to_km == null ? null : Number(b.up_to_km), amount: Number(b.amount ?? 0) })),
     product_ids: r.product_ids ?? [], category_ids: r.category_ids ?? [], tax_profile_id: r.tax_profile_id, translations: r.translations ?? {},
     description: r.description ?? '', position: r.position, active: r.active, created_at: r.created_at, updated_at: r.updated_at,
   };
@@ -190,7 +191,16 @@ export function feeRuleToApi(r: any) {
 function checkFeeRule(r: Record<string, any>) {
   const errors: FieldError[] = [];
   if (r.calculation === 'percent' && !(r.amount > 0 && r.amount <= 10000)) errors.push({ field: 'amount', code: 'invalid', message: msg('error.field.fee_percent') });
-  if (r.calculation !== 'percent' && r.calculation !== 'zone' && !(r.amount > 0)) errors.push({ field: 'amount', code: 'invalid', message: msg('error.field.enter_an_amount') });
+  if (r.calculation !== 'percent' && r.calculation !== 'zone' && r.calculation !== 'per_km' && !(r.amount > 0)) errors.push({ field: 'amount', code: 'invalid', message: msg('error.field.enter_an_amount') });
+  if (r.calculation === 'per_km') {
+    const bands = (r.distance_bands ?? []) as { up_to_km: unknown; amount: unknown }[];
+    if (!bands.length) errors.push({ field: 'distance_bands', code: 'required', message: msg('error.field.fee_distance_bands') });
+    bands.forEach((b, i) => {
+      if (b.up_to_km !== null && !(typeof b.up_to_km === 'number' && b.up_to_km > 0 && b.up_to_km <= 10_000)) errors.push({ field: `distance_bands[${i}].up_to_km`, code: 'invalid', message: msg('error.field.fee_distance_km') });
+      if (!(Number.isInteger(b.amount) && (b.amount as number) >= 0)) errors.push({ field: `distance_bands[${i}].amount`, code: 'invalid', message: msg('error.field.enter_an_amount') });
+    });
+    if (r.kind !== 'delivery') errors.push({ field: 'calculation', code: 'invalid', message: msg('error.field.fee_zone_delivery_only') });
+  }
   if (r.calculation === 'per_period' && !r.period_unit) errors.push({ field: 'period_unit', code: 'required', message: msg('error.field.fee_period_unit') });
   if (r.calculation === 'zone' && !(r.zones ?? []).some((z: any) => z.postcodes?.length)) errors.push({ field: 'zones', code: 'required', message: msg('error.field.fee_zones') });
   if (r.calculation === 'zone' && r.kind !== 'delivery') errors.push({ field: 'calculation', code: 'invalid', message: msg('error.field.fee_zone_delivery_only') });
@@ -205,7 +215,7 @@ export const feeRules = makeCrud({
   event: 'fee_rule',
   softDelete: true,
   columns: {
-    name: {}, kind: {}, calculation: {}, amount: {}, period_unit: {}, zones: { json: true }, mode: {}, product_ids: {}, category_ids: {},
+    name: {}, kind: {}, calculation: {}, amount: {}, period_unit: {}, zones: { json: true }, distance_bands: { json: true }, mode: {}, product_ids: {}, category_ids: {},
     tax_profile_id: {}, translations: { json: true }, description: {}, position: {}, active: {},
   },
   list: { filters: { kind: 'kind', active: 'active', mode: 'mode' }, sorts: { position: 'position', name: 'name' }, defaultSort: 'position,name', search: ['name'] },

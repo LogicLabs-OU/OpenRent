@@ -22,6 +22,7 @@
    * catch up and disconnect. Each integration comes from a plugin.
    */
   let list = $state<any[] | null>(null);
+  let redirectUri = $state<string | null>(null);
   let busy = $state('');
   let fieldsFor = $state<any>(null);
   let creds = $state<Record<string, string>>({});
@@ -35,7 +36,10 @@
 
   async function load() {
     // Accounting systems are set up on the Accounting page (ADR 0009).
-    list = (await api.get('/integrations')).data.filter((i: any) => i.category !== 'accounting');
+    const r = await api.get('/integrations');
+    // What staff enter as the redirect URL in the provider's app settings.
+    redirectUri = r.redirect_uri ?? null;
+    list = r.data.filter((i: any) => i.category !== 'accounting');
     if (open) open = list!.find((i) => i.id === open.id) ?? null;
   }
   onMount(() => {
@@ -134,6 +138,12 @@
             <p class="text-muted-foreground">{t('integrations.not_ready')} <a class="underline" href={to('/plugins')}>{t('nav.plugins')}</a></p>
           {:else}
             <p class="text-muted-foreground">{t('integrations.not_connected')}</p>
+          {/if}
+          {#if i.auth === 'oauth2' && redirectUri && i.connection?.status !== 'connected'}
+            <div class="flex flex-col gap-1" data-testid="integration-redirect">
+              <span class="text-muted-foreground">{t('integrations.redirect_url')}</span>
+              <code class="bg-muted rounded px-2 py-1 text-xs [overflow-wrap:anywhere]">{redirectUri}</code>
+            </div>
           {/if}
         </Card.Content>
         <Card.Footer class="flex flex-wrap gap-2">

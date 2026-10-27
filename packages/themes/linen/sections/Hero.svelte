@@ -30,7 +30,7 @@
       alt: string;
     },
   );
-  const loc = $derived(rt.shop.locations[0]);
+  const loc = $derived(rt.shop.location ?? rt.shop.locations[0]);
   const second = $derived(s.second_link || (next ? `#${next}` : ''));
   const ticker = $derived(
     rt.shop.categories.length
@@ -73,24 +73,35 @@
         </div>
       {/if}
     </div>
-    <div class="ln-intro-clip relative overflow-hidden rounded-[20px] bg-[var(--ln-beige)] p-3 sm:p-6 md:p-10">
-      {#if s.image}<img class="absolute inset-0 size-full object-cover" src={s.image} alt={s.alt ?? ''} />{/if}
+    <div
+      class="ln-intro-clip relative overflow-hidden rounded-[20px] bg-[var(--ln-beige)] p-3 sm:p-6 md:p-10"
+    >
+      {#if s.image}<img
+          class="absolute inset-0 size-full object-cover"
+          src={s.image}
+          alt={s.alt ?? ''}
+        />{/if}
       <div class="relative flex flex-col gap-3">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <span class="inline-flex h-8 items-center gap-2 rounded-full bg-white px-3.5 text-[0.8125rem] font-medium">
-            <span class="size-1.5 rounded-full bg-[#2f9e5b] motion-safe:animate-pulse" aria-hidden="true"></span>{rt.t(
-              'hero.live',
-            )}
+          <span
+            class="inline-flex h-8 items-center gap-2 rounded-full bg-white px-3.5 text-[0.8125rem] font-medium"
+          >
+            <span class="size-1.5 rounded-full bg-[#2f9e5b] motion-safe:animate-pulse" aria-hidden="true"
+            ></span>{rt.t('hero.live')}
           </span>
-          {#if products.length}<span class="ln-mono rounded-full bg-white/70 px-3 py-1.5 text-xs text-[#202020]"
+          {#if products.length}<span
+              class="ln-mono rounded-full bg-white/70 px-3 py-1.5 text-xs text-[#202020]"
               >{rt.t('hero.items', { count: products.length })}</span
             >{/if}
         </div>
         <DateBar variant="panel" />
         {#if loc}
-          <div class="flex items-center gap-3 self-start rounded-2xl bg-white/80 px-4 py-3 text-sm backdrop-blur">
-            <span class="grid size-8 place-items-center rounded-full bg-[var(--ln-signal)]/15" aria-hidden="true"
-              ><span class="ln-square size-2"></span></span
+          <div
+            class="flex items-center gap-3 self-start rounded-2xl bg-white/80 px-4 py-3 text-sm backdrop-blur"
+          >
+            <span
+              class="grid size-8 place-items-center rounded-full bg-[var(--ln-signal)]/15"
+              aria-hidden="true"><span class="ln-square size-2"></span></span
             >
             <span class="flex flex-col leading-tight">
               <span class="font-medium">{loc.name}</span>
@@ -111,7 +122,10 @@
       <div class="ln-ticker overflow-hidden" style:--ln-ticker-time={`${Math.max(18, ticker.length * 3)}s`}>
         <div class="ln-ticker-track">
           {#each [0, 1] as copy (copy)}
-            <ul class={['flex shrink-0 items-center', copy && 'ln-ticker-dup']} aria-hidden={copy ? 'true' : undefined}>
+            <ul
+              class={['flex shrink-0 items-center', copy && 'ln-ticker-dup']}
+              aria-hidden={copy ? 'true' : undefined}
+            >
               {#each ticker as t, i (t.href)}
                 <li>
                   <a

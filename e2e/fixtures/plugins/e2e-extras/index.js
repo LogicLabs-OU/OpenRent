@@ -1,4 +1,5 @@
-// Test-stack plugin: a dashboard card, an optional checkout field, a badge for products tagged e2e-badge
+// Test-stack plugin: a dashboard card, an optional checkout field, a badge for products tagged e2e-badge,
+// a home page section
 // and a "Ledger" integration that connects with an API key (e2e/integrations.spec.ts).
 export default {
   id: 'e2e-extras',
@@ -9,6 +10,15 @@ export default {
     api.storefront({
       checkoutFields: [{ key: 'arrival_note', type: 'text', label: { en: 'Arrival note' } }],
       productBadges: [{ tag: 'e2e-badge', label: { en: 'Staff pick' }, tone: 'success' }],
+      // A home page section type (plugin API 1.7) for themes that take them.
+      sections: [
+        {
+          type: 'staff-note',
+          name: { en: 'Staff note' },
+          settings: [{ id: 'text', type: 'text', label: 'Text', default: 'Hello from a plugin section' }],
+          render: (_ctx, s) => `<p class="staff-note">${String(s.text).replace(/[<>&]/g, '')}</p>`,
+        },
+      ],
     });
     api.registerIntegration({
       id: 'e2e-ledger',

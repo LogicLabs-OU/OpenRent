@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
 
 test('staff reword a storefront text, see it live and restore the original', async ({ page, browser }) => {
   const errors = collectErrors(page);

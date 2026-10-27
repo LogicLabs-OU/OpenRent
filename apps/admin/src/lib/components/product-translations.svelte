@@ -5,6 +5,7 @@
   import * as Field from '@openrent/ui/field';
   import * as Tabs from '@openrent/ui/tabs';
   import { Input } from '@openrent/ui/input';
+  import { Textarea } from '@openrent/ui/textarea';
   import { Button } from '@openrent/ui/button';
   import { Spinner } from '@openrent/ui/spinner';
   import { LOCALE_NAMES, type Locale } from '@openrent/i18n';
@@ -18,7 +19,7 @@
    */
   let { product, images = [], onsaved }: { product: any; images?: any[]; onsaved: () => void } = $props();
   let tab = $state('');
-  let draft = $state<Record<string, { name: string; description: string; variants: Record<string, string>; alts: Record<string, string> }>>({});
+  let draft = $state<Record<string, { name: string; description: string; seo_title: string; seo_description: string; variants: Record<string, string>; alts: Record<string, string> }>>({});
   let saving = $state(false);
 
   function reset() {
@@ -28,6 +29,8 @@
         {
           name: product.translations?.[l]?.name ?? '',
           description: product.translations?.[l]?.description ?? '',
+          seo_title: product.translations?.[l]?.seo_title ?? '',
+          seo_description: product.translations?.[l]?.seo_description ?? '',
           variants: Object.fromEntries(product.variants.map((v: any) => [v.id, v.translations?.[l]?.name ?? ''])),
           alts: Object.fromEntries(images.map((i: any) => [i.id, i.alt?.[l] ?? ''])),
         },
@@ -45,7 +48,7 @@
     saving = true;
     try {
       const translations = { ...(product.translations ?? {}) };
-      for (const [l, d] of Object.entries(draft)) translations[l] = clean({ name: d.name, description: d.description });
+      for (const [l, d] of Object.entries(draft)) translations[l] = clean({ name: d.name, description: d.description, seo_title: d.seo_title, seo_description: d.seo_description });
       await api.patch(`/products/${product.id}`, { translations });
       for (const v of product.variants) {
         const next = { ...(v.translations ?? {}) };
@@ -94,6 +97,15 @@
                 <Field.Field>
                   <Field.Label for={`tr-desc-${l}`}>{t('field.description')}</Field.Label>
                   <RichTextEditor id={`tr-desc-${l}`} lang={l} label={`${t('field.description')} (${l})`} bind:value={draft[l].description} />
+                </Field.Field>
+                <Field.Field>
+                  <Field.Label for={`tr-seo-t-${l}`}>{t('product.seo_title')}</Field.Label>
+                  <Input id={`tr-seo-t-${l}`} lang={l} maxlength={70} placeholder={draft[l].name || product.seo?.title || product.name} bind:value={draft[l].seo_title} />
+                </Field.Field>
+                <Field.Field>
+                  <Field.Label for={`tr-seo-d-${l}`}>{t('product.seo_description')}</Field.Label>
+                  <Textarea id={`tr-seo-d-${l}`} lang={l} maxlength={160} bind:value={draft[l].seo_description} />
+                  <Field.Description>{t('product.seo_hint', { count: draft[l].seo_description.length })}</Field.Description>
                 </Field.Field>
                 {#if product.variants.length > 1}
                   <Field.Set>

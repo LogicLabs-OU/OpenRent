@@ -1,0 +1,48 @@
+:root {
+  --fg: #1c1917;
+  --muted: #78716c;
+  --line: #e7e5e4;
+  --bg: #fafaf9;
+  --card: #fff;
+  --accent: #0f766e;
+  --accent-fg: #fff;
+  --danger: #b91c1c;
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f5f5f4;
+    --muted: #a8a29e;
+    --line: #44403c;
+    --bg: #1c1917;
+    --card: #292524;
+    --accent: #2dd4bf;
+    --accent-fg: #042f2e;
+    --danger: #f87171;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.5; }
+a { color: inherit; }
+main, header, footer { max-width: 64rem; margin: 0 auto; padding: 1rem; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); }
+header nav { display: flex; gap: 1rem; }
+footer { color: var(--muted); font-size: 0.875rem; border-top: 1px solid var(--line); margin-top: 3rem; }
+h1 { font-size: 1.75rem; line-height: 1.2; }
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); padding: 0; list-style: none; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem; padding: 1rem; }
+.card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.5rem; background: var(--line); }
+.muted { color: var(--muted); }
+.error { color: var(--danger); }
+form.stack, .stack { display: flex; flex-direction: column; gap: 0.75rem; max-width: 32rem; }
+label { display: flex; flex-direction: column; gap: 0.25rem; font-weight: 500; }
+label.check { flex-direction: row; align-items: center; gap: 0.5rem; font-weight: 400; }
+input, select, textarea { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.5rem 0.75rem; }
+input[aria-invalid='true'] { border-color: var(--danger); }
+button, a.button { display: inline-block; text-decoration: none; font: inherit; cursor: pointer; border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.5rem 1rem; background: var(--card); color: inherit; }
+button.primary, a.button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--line); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }

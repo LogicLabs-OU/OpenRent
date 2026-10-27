@@ -17,6 +17,7 @@ import TruckIcon from '@lucide/svelte/icons/truck';
 import CalendarRangeIcon from '@lucide/svelte/icons/calendar-range';
 import PlugIcon from '@lucide/svelte/icons/plug';
 import LandmarkIcon from '@lucide/svelte/icons/landmark';
+import FileTextIcon from '@lucide/svelte/icons/file-text';
 import type { MessageKey } from './i18n/index.svelte.ts';
 
 /** Base-path aware link helper. */
@@ -49,6 +50,7 @@ export const NAV: NavItem[] = [
 /** Shop setup: storefront look, extensions and settings. */
 export const NAV_CONFIGURE: NavItem[] = [
   { href: '/themes', key: 'nav.themes', icon: PaletteIcon },
+  { href: '/pages', key: 'nav.pages', icon: FileTextIcon, perm: 'themes:manage' },
   { href: '/plugins', key: 'nav.plugins', icon: PuzzleIcon },
   { href: '/integrations', key: 'nav.integrations', icon: PlugIcon, perm: 'integrations:manage' },
   { href: '/audit', key: 'nav.audit', icon: ScrollTextIcon },

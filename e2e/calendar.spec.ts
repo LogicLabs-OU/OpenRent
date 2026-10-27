@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, collectErrors, shot, signIn } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, collectErrors, shot, signIn } from './helpers.ts';
 
 test('staff subscribe to pickups and returns with a calendar feed and revoke it', async ({ page }) => {
   const errors = collectErrors(page);

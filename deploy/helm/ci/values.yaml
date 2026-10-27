@@ -1,0 +1,13 @@
+# Values for the kind smoke test: images built in CI, one replica each, Caddy without a load balancer.
+image:
+  registry: ghcr.io/openrent
+  tag: ci
+  pullPolicy: Never
+publicUrl: http://rent.test
+database:
+  url: postgres://openrent:openrent@postgres:5432/openrent
+api: { replicas: 1, resources: { requests: { cpu: 50m, memory: 256Mi } } }
+worker: { replicas: 1, resources: { requests: { cpu: 50m, memory: 128Mi } } }
+storefront: { replicas: 1, resources: { requests: { cpu: 50m, memory: 128Mi } } }
+caddy:
+  service: { type: ClusterIP }

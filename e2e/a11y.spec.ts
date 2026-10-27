@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, STORE, hydrated, signIn } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, STORE, hydrated, signIn } from './helpers.ts';
 
 const WIDGET = process.env.WIDGET_URL ?? 'http://localhost:7173';
 
@@ -12,7 +12,7 @@ async function problems(page: Page) {
     .map((v) => `${v.id} (${v.impact}): ${v.help}\n    ${v.nodes.slice(0, 3).map((n) => `${n.target.join(' ')} ${n.html.slice(0, 200)}`).join('\n    ')}`);
 }
 
-const ADMIN_PAGES = ['/', '/orders', '/orders/new', '/products', '/pricing', '/pricing?tab=coupons', '/inventory', '/customers', '/scan', '/maintenance', '/reports', '/themes', '/plugins', '/integrations', '/accounting', '/accounting?tab=records', '/settings', '/settings?tab=email', '/audit'];
+const ADMIN_PAGES = ['/', '/orders', '/orders/new', '/products', '/pricing', '/pricing?tab=coupons', '/inventory', '/customers', '/scan', '/maintenance', '/reports', '/themes', '/pages', '/plugins', '/integrations', '/accounting', '/accounting?tab=records', '/settings', '/settings?tab=email', '/audit'];
 
 test('back office pages have no serious accessibility problems', async ({ page }) => {
   test.setTimeout(180_000);

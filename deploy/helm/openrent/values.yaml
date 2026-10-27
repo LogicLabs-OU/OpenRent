@@ -1,0 +1,106 @@
+# OpenRent on Kubernetes (PRD §10.1). Postgres and S3 storage are yours: point the chart at them below.
+#   helm install rent deploy/helm/openrent -f my-values.yaml
+
+image:
+  registry: ghcr.io/openrent
+  # Defaults to the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# The address people open; the admin is at <publicUrl>/admin.
+publicUrl: https://rent.example.com
+# single_tenant (one shop) or multi_tenant (shops on {slug}.<storefrontDomain> and their own domains).
+mode: single_tenant
+storefrontDomain: ""
+# Single-shop installs: the shop the storefront serves (empty: the only shop).
+tenantSlug: ""
+logLevel: info
+
+# OPENRENT_ENCRYPTION_KEY and OPENRENT_SESSION_SECRET. Left empty, the chart generates them once and keeps
+# them on upgrades. Keep a copy: without the encryption key, stored plugin secrets cannot be read.
+secrets:
+  # Use your own Secret instead (keys: OPENRENT_ENCRYPTION_KEY, OPENRENT_SESSION_SECRET, DATABASE_URL and
+  # optionally DATABASE_MIGRATION_URL, S3_ACCESS_KEY, S3_SECRET_KEY, SMTP_URL, STRIPE_*).
+  existingSecret: ""
+  encryptionKey: ""
+  sessionSecret: ""
+
+database:
+  # postgres://openrent_app:…@db:5432/openrent — the role the app uses (row-level security applies to it).
+  url: ""
+  # The owner role migrations run as; empty uses `url`.
+  migrationUrl: ""
+  poolMax: 10
+
+s3:
+  endpoint: ""        # empty for AWS S3
+  region: us-east-1
+  bucket: openrent
+  accessKey: ""
+  secretKey: ""
+
+email:
+  smtpUrl: ""         # smtp://user:pass@smtp.example.com:587
+  from: ""
+
+stripe:
+  secretKey: ""
+  publishableKey: ""
+  webhookSecret: ""
+
+# Extra environment for the API and worker (e.g. MOLLIE_API_KEY).
+extraEnv: {}
+
+api:
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { memory: 1536Mi }
+worker:
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { memory: 768Mi }
+storefront:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+# Runs the database migrations before each install and upgrade.
+migrations:
+  enabled: true
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+
+# Caddy terminates TLS (automatic certificates, also for shops' own domains) and routes /api, /admin,
+# /docs, /webhooks and /widget to the API and everything else to the storefront.
+caddy:
+  enabled: true
+  image: caddy:2.8
+  service:
+    type: LoadBalancer
+    annotations: {}
+  # Certificates are kept here.
+  persistence:
+    size: 1Gi
+    storageClass: ""
+  # The ACME account email for Let's Encrypt.
+  email: ""
+
+# Or use your cluster's ingress controller instead of Caddy (TLS is then the controller's job).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: rent.example.com
+  tls: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+nodeSelector: {}
+tolerations: []
+affinity: {}

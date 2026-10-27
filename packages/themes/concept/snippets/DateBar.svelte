@@ -16,7 +16,7 @@
 
   const rt = getRuntime();
   const shop = rt.shop;
-  const tz = shop.locations[0]?.timezone ?? shop.tenant.timezone;
+  const tz = (shop.location ?? shop.locations[0])?.timezone ?? shop.tenant.timezone;
   const initial = (iso: string | null) => (iso ? parseDate(rt.zone.localDate(iso)) : undefined);
 
   let range = $state<DateRange>({ start: initial(shop.dates.from), end: initial(shop.dates.to) });
@@ -155,4 +155,6 @@
     </div>
     {#if error}<p class="text-destructive w-full text-sm" role="alert">{error}</p>{/if}
   </form>
+  <!-- Where the visitor rents from, when the shop has several locations (theme API 1.9). -->
+  <rt.components.Slot name="dates.after" />
 </div>

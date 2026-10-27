@@ -19,6 +19,8 @@
   import EmailSettings from '#lib/components/email-settings.svelte';
   import CalendarFeeds from '#lib/components/calendar-feeds.svelte';
   import MigrationSettings from '#lib/components/migration-settings.svelte';
+  import CurrencySettings from '#lib/components/currency-settings.svelte';
+  import PlanUsage from '#lib/components/plan-usage.svelte';
   import LanguageSettings from '#lib/components/language-settings.svelte';
   import LanguageTabs from '#lib/components/language-tabs.svelte';
   import LocationsSettings from '#lib/components/locations-settings.svelte';
@@ -33,6 +35,7 @@
   import DocumentTemplates from '#lib/components/document-templates.svelte';
   import ReconciliationIssues from '#lib/components/reconciliation-issues.svelte';
   import PaymentProviderCard from '#lib/components/payment-provider-card.svelte';
+  import SelfServiceSettings from '#lib/components/self-service-settings.svelte';
   import { api, session, t, toast, notifyError, fieldErrors, rel, confirmAction, majorFromMinor, minorFromInput } from '#lib';
 
   const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'import', 'webhooks', 'api_keys', 'team', 'sso', 'security'] as const;
@@ -120,7 +123,9 @@
         </Card.Content>
         <Card.Footer><Button onclick={() => run(() => api.patch('/tenant', { name: tenant.name, legal_name: tenant.legal_name, address: tenant.address, tax_ids: tenant.tax_ids, branding: tenant.branding }), t('common.saved'))}>{t('common.save')}</Button></Card.Footer>
       </Card.Root>
+      <PlanUsage />
       <LanguageSettings {settings} onsaved={() => load().catch(notifyError)} />
+      <CurrencySettings {settings} base={tenant.currency} onsaved={() => load().catch(notifyError)} />
       <WidgetSites origins={settings.widget_origins ?? []} />
       {#if session.can('tenant:write')}<DataExport />{/if}
     </Tabs.Content>
@@ -255,11 +260,9 @@
             <Field.Field><Field.Label for="lg">{t('settings.late_grace')}</Field.Label><Input id="lg" type="number" value={settings.late_grace_minutes} onchange={(e) => saveSettings({ late_grace_minutes: Number((e.target as HTMLInputElement).value) })} /></Field.Field>
             <Field.Field orientation="horizontal" class="sm:pt-6"><Switch id="lf" checked={settings.late_fees_enabled} onCheckedChange={(v) => saveSettings({ late_fees_enabled: v })} /><Field.Label for="lf">{t('settings.late_fees')}</Field.Label></Field.Field>
           </Field.Group>
-          <Field.Separator class="my-4" />
-          <p class="mb-2 text-sm font-medium">{t('settings.cancellation')}</p>
-          <ul class="space-y-1 text-sm text-muted-foreground">{#each settings.cancellation_policy as tier}<li>{t('settings.cancellation_tier', { hours: tier.hours_before, pct: tier.refund_pct })}</li>{/each}</ul>
         </Card.Content>
       </Card.Root>
+      <SelfServiceSettings />
       <Card.Root>
         <Card.Header><Card.Title>{t('settings.waiver')}</Card.Title><Card.Description>{t('settings.waiver_hint')}</Card.Description></Card.Header>
         <Card.Content>

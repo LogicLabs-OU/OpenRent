@@ -3,6 +3,7 @@ packages:
   - "packages/*"
   - "packages/plugins/*"
   - "packages/themes/*"
+  - "packages/create-openrent-storefront/template"
 onlyBuiltDependencies:
   - "@node-rs/argon2"
   - esbuild

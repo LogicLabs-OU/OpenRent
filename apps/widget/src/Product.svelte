@@ -12,13 +12,18 @@
   import { Button } from '@openrent/ui/button';
   import { Spinner } from '@openrent/ui/spinner';
   import { call, config, money, openCheckout } from './api.ts';
-  import { css, registerProperties } from './styles.ts';
+  import { css, registerProperties, themeCss } from './styles.ts';
   import { t } from './i18n/index.ts';
 
   /** `checkout="storefront"` hands the booking to the storefront cart instead of the checkout drawer. */
   let { product = '', shop = '', pk = '', api = '', storefront = '', lang = '', checkout = 'inline' }: { product?: string; shop?: string; pk?: string; api?: string; storefront?: string; lang?: string; checkout?: string } = $props();
   registerProperties();
   const cfg = $derived(config({ api, shop, pk, storefront, lang }));
+  // The shop's theme look (FR-THM-10), after the widget's own styles.
+  let themeStyle = $state('');
+  $effect(() => {
+    if (cfg.api) void themeCss(cfg).then((c) => (themeStyle = c));
+  });
   let host: HTMLElement | undefined = $state();
   let p = $state<any>(null);
   let from = $state('');
@@ -66,7 +71,7 @@
   }
 </script>
 
-{@html css}
+{@html css}{@html themeStyle}
 <div class="bg-card text-card-foreground ring-foreground/10 flex w-full max-w-md flex-col gap-4 rounded-xl p-5 text-sm shadow-xs ring-1" bind:this={host} part="container">
   {#if p}
     <div class="flex flex-col gap-1">

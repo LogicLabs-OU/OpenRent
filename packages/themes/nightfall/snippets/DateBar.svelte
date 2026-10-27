@@ -19,7 +19,7 @@
 
   const rt = getRuntime();
   const shop = rt.shop;
-  const tz = shop.locations[0]?.timezone ?? shop.tenant.timezone;
+  const tz = (shop.location ?? shop.locations[0])?.timezone ?? shop.tenant.timezone;
   const initial = (iso: string | null) => (iso ? parseDate(rt.zone.localDate(iso)) : undefined);
 
   let range = $state<DateRange>({ start: initial(shop.dates.from), end: initial(shop.dates.to) });
@@ -82,23 +82,41 @@
 <div
   class={[
     'nf-glass shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] backdrop-blur-xl',
-    variant === 'panel' ? 'rounded-[28px] p-5 md:p-6' : 'rounded-3xl px-4 py-3 md:px-5 lg:rounded-full lg:py-2.5 lg:pl-6',
+    variant === 'panel'
+      ? 'rounded-[28px] p-5 md:p-6'
+      : 'rounded-3xl px-4 py-3 md:px-5 lg:rounded-full lg:py-2.5 lg:pl-6',
   ]}
   data-testid="date-bar"
 >
-  {#if variant === 'panel'}<p class="mb-4 flex items-center gap-2 text-[0.8125rem] font-semibold text-white/80">
-      <CalendarDaysIcon class="size-4 text-[color:var(--nf-accent-text)]" aria-hidden="true" />{rt.t('dates.hint')}
+  {#if variant === 'panel'}<p
+      class="mb-4 flex items-center gap-2 text-[0.8125rem] font-semibold text-white/80"
+    >
+      <CalendarDaysIcon class="size-4 text-[color:var(--nf-accent-text)]" aria-hidden="true" />{rt.t(
+        'dates.hint',
+      )}
     </p>{/if}
   <form
-    class={['grid grid-cols-2 items-end gap-3 md:flex md:flex-wrap', variant === 'bar' && 'lg:flex-nowrap lg:items-center']}
+    class={[
+      'grid grid-cols-2 items-end gap-3 md:flex md:flex-wrap',
+      variant === 'bar' && 'lg:flex-nowrap lg:items-center',
+    ]}
     onsubmit={apply}
     aria-label={rt.t('dates.hint')}
   >
-    {#if variant === 'bar'}<p class="hidden shrink-0 self-end pb-3 text-[0.8125rem] font-semibold text-white/70 xl:block">
+    {#if variant === 'bar'}<p
+        class="hidden shrink-0 self-end pb-3 text-[0.8125rem] font-semibold text-white/70 xl:block"
+      >
         {rt.t('dates.hint_short')}
       </p>{/if}
-    <div class={['col-span-2 flex flex-col gap-1.5', variant === 'panel' ? 'md:min-w-72 md:flex-1' : 'lg:flex-1']}>
-      <Label for="or-dates" class="text-xs text-white/60">{rt.t('dates.pickup')} – {rt.t('dates.return')}</Label>
+    <div
+      class={[
+        'col-span-2 flex flex-col gap-1.5',
+        variant === 'panel' ? 'md:min-w-72 md:flex-1' : 'lg:flex-1',
+      ]}
+    >
+      <Label for="or-dates" class="text-xs text-white/60"
+        >{rt.t('dates.pickup')} – {rt.t('dates.return')}</Label
+      >
       <Popover.Root bind:open>
         <Popover.Trigger
           id="or-dates"
@@ -148,12 +166,7 @@
     </div>
     <div class="flex flex-col gap-1.5">
       <Label for="or-to-time" class="text-xs text-white/60">{rt.t('dates.return_time')}</Label>
-      <NativeSelect
-        id="or-to-time"
-        class="w-full md:w-32"
-        bind:value={toTime}
-        disabled={!toOpts.length}
-      >
+      <NativeSelect id="or-to-time" class="w-full md:w-32" bind:value={toTime} disabled={!toOpts.length}>
         {#each toOpts as time (time)}<NativeSelectOption value={time}
             >{formatTime(time, shop.locale)}</NativeSelectOption
           >{:else}<NativeSelectOption value=""
@@ -174,4 +187,6 @@
     </div>
     {#if error}<p class="w-full text-sm text-rose-300" role="alert">{error}</p>{/if}
   </form>
+  <!-- Where the visitor rents from, when the shop has several locations (theme API 1.9). -->
+  <rt.components.Slot name="dates.after" />
 </div>

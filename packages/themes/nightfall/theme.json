@@ -5,7 +5,15 @@
   "author": "OpenRent",
   "license": "MIT",
   "compat": "^1.4.0",
-  "locales": ["en", "de", "fr", "es", "et", "ja"],
+  "locales": [
+    "en",
+    "de",
+    "fr",
+    "es",
+    "et",
+    "ja",
+    "nl"
+  ],
   "sections": [
     "hero",
     "statement",
@@ -16,5 +24,11 @@
     "faq",
     "cta"
   ],
-  "preview_images": ["assets/preview.jpg"]
+  "preview_images": [
+    "assets/preview.jpg"
+  ],
+  "extension_points": [
+    "section.register",
+    "checkout.extra_fields"
+  ]
 }

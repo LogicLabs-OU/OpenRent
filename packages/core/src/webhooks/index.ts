@@ -6,6 +6,7 @@ import { audit, emit } from '../events.ts';
 import { newId } from '../ids.ts';
 import { exec, many, must, one } from '../sql.ts';
 import { isPrivateHost, nextAttemptDelayMs, signatureHeader } from './sign.ts';
+import { readCapped } from '../net/guard.ts';
 
 export * from './sign.ts';
 
@@ -130,7 +131,7 @@ export async function redeliver(ctx: Ctx, deliveryId: string) {
   return { id, object: 'webhook_delivery', status: 'pending', event_id: d.event_id };
 }
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ status: number; text(): Promise<string> }>;
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: 'manual' }) => Promise<{ status: number; text(): Promise<string>; body?: unknown }>;
 
 const MAX_PAYLOAD = 256 * 1024;
 const FAILURE_DISABLE_MS = 3 * 24 * 3600 * 1000;
@@ -180,9 +181,12 @@ export async function attemptDelivery(ctx: Ctx, deliveryId: string, fetchImpl: F
       },
       body,
       signal: AbortSignal.timeout(10_000),
+      // A webhook answers itself: a redirect counts as a failed delivery and is never followed.
+      redirect: 'manual',
     });
     code = res.status;
-    respBody = (await res.text()).slice(0, 2000);
+    // At most a few kilobytes of the answer are read and kept.
+    respBody = (res.body ? await readCapped(res as unknown as Response, 4000) : await res.text()).slice(0, 2000);
   } catch (err: any) {
     error = String(err?.message ?? err).slice(0, 500);
   }

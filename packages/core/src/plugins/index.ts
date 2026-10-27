@@ -4,6 +4,7 @@ import { AppError, invalid, type FieldError } from '../errors.ts';
 import { audit } from '../events.ts';
 import { newId } from '../ids.ts';
 import { t } from '../i18n/index.ts';
+import { assertWithinLimit } from '../tenancy/operator.ts';
 import { exec, json, one } from '../sql.ts';
 
 /** What the plugin host knows about an installed plugin (passed in by the API). */
@@ -39,9 +40,16 @@ async function tenantRow(ctx: Ctx, pluginId: string) {
 }
 
 /** Effective configuration: installation defaults (env) overridden by the tenant's saved settings. */
+/** Settings that say where a plugin connects to (`api_base_url`, `host`, `nominatim_url` …). */
+const ENDPOINT = /(^|_)(url|host|endpoint)$/i;
+
 export async function pluginConfig(ctx: Ctx, pluginId: string): Promise<{ enabled: boolean; config: Record<string, unknown> }> {
   const row = await tenantRow(ctx, pluginId);
-  return { enabled: row ? row.enabled : true, config: { ...clean(ctx.plugins.defaultConfig(pluginId)), ...openStored(ctx, row?.config) } };
+  const own = openStored(ctx, row?.config);
+  // On a multi-shop installation, a shop that points a plugin somewhere else gets none of the
+  // installation's defaults: the operator's keys never travel to a host a shop chose.
+  const pointed = ctx.config.multiTenant && Object.entries(own).some(([k, v]) => ENDPOINT.test(k) && v !== null && v !== '');
+  return { enabled: row ? row.enabled : true, config: { ...(pointed ? {} : clean(ctx.plugins.defaultConfig(pluginId))), ...own } };
 }
 
 export async function isPluginEnabled(ctx: Ctx, pluginId: string): Promise<boolean> {
@@ -109,10 +117,13 @@ function validate(fields: SettingsField[], patch: Record<string, unknown>): Reco
         else out[key] = n;
         break;
       }
-      case 'boolean':
-        if (typeof raw !== 'boolean') errors.push({ field: `config.${key}`, code: 'invalid', message: t('plugins.invalid_boolean') });
-        else out[key] = raw;
+      case 'boolean': {
+        // The API's body schema may hand a boolean over as "true"/"false" (its value types are a union).
+        const v = raw === 'true' ? true : raw === 'false' ? false : raw;
+        if (typeof v !== 'boolean') errors.push({ field: `config.${key}`, code: 'invalid', message: t('plugins.invalid_boolean') });
+        else out[key] = v;
         break;
+      }
       case 'select':
         if (!f.options?.includes(String(raw))) errors.push({ field: `config.${key}`, code: 'invalid', message: t('plugins.invalid_option', { options: (f.options ?? []).join(', ') }) });
         else out[key] = String(raw);
@@ -133,6 +144,8 @@ export async function updatePlugin(ctx: Ctx, installed: InstalledPlugin[], id: s
   const fields = p.settings ?? [];
   const changes = validate(fields, patch.config ?? {});
   const row = await tenantRow(ctx, id);
+  // A plugin the shop turns on (or sets up, which turns it on) counts against its plan.
+  if ((patch.enabled ?? row?.enabled ?? true) && row?.enabled !== true) await assertWithinLimit(ctx, 'plugins');
   const merged = { ...openStored(ctx, row?.config), ...changes };
   const plain: Record<string, unknown> = {};
   const secret: Record<string, unknown> = {};
@@ -168,6 +181,16 @@ export async function enabledProvider<P extends { id: string; isConfigured(ctx: 
   const { enabled, config } = await pluginConfig(ctx, pluginId);
   const pctx = { tenantId: ctx.tenantId, config, logger: ctx.logger };
   return enabled && provider.isConfigured(pctx) ? { provider, pctx, pluginId } : null;
+}
+
+/** The tax plugin a shop uses: the first that is on and set up for it; `need` asks for one that checks numbers. */
+export async function activeTaxProvider(ctx: Ctx, need?: 'checkTaxId') {
+  for (const p of ctx.plugins.taxProviders()) {
+    if (need && !p[need]) continue;
+    const active = await enabledProvider(ctx, p);
+    if (active) return active;
+  }
+  return null;
 }
 
 /**

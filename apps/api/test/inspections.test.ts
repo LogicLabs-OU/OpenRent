@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { withTenant } from '@openrent/db';
-import { Client, databaseForTests, isoIn, shopForTests, type TestApp } from './harness.ts';
+import { Client, databaseForTests, shopForTests, type TestApp } from './harness.ts';
 
 const dbinfo = await databaseForTests();
 const suite = dbinfo ? describe : describe.skip;
@@ -98,7 +98,9 @@ suite('inspection checklists', () => {
   it('sends returned units to inspection when the shop asks for it', async () => {
     await admin.patch('/api/v1/tenant/settings', { require_inspection_on_return: true });
     const customer = (await admin.post('/api/v1/customers', { name: 'Rider', email: 'rider@test.dev' })).body.id;
-    const o = (await admin.post('/api/v1/orders', { customer_id: customer, starts_at: isoIn(0, 23), ends_at: isoIn(1, 23), lines: [{ variant_id: ebike, quantity: 1 }, { variant_id: plain, quantity: 1 }] })).body;
+    // Pickup later today at any hour the test runs (a fixed UTC hour may already have passed).
+    const soon = new Date(Math.ceil((Date.now() + 1800_000) / 60_000) * 60_000).toISOString();
+    const o = (await admin.post('/api/v1/orders', { customer_id: customer, starts_at: soon, ends_at: new Date(Date.parse(soon) + 86400_000).toISOString(), lines: [{ variant_id: ebike, quantity: 1 }, { variant_id: plain, quantity: 1 }] })).body;
     for (const a of ['reserve']) expect((await admin.post(`/api/v1/orders/${o.id}/actions/${a}`, {})).status).toBe(200);
     expect((await admin.post(`/api/v1/orders/${o.id}/actions/assign_units`, { barcodes: ['EB-1', 'HL-1'] })).status).toBe(200);
     const out = await admin.post(`/api/v1/orders/${o.id}/actions/check_out`, {});

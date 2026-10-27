@@ -1,0 +1,10 @@
+apiVersion: v2
+name: openrent
+description: OpenRent, open-source rental software (API, worker, storefront and Caddy)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://openrent.dev
+sources:
+  - https://github.com/openrent/openrent
+keywords: [rental, booking, ecommerce]

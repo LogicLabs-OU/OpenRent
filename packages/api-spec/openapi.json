@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "OpenRent API",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "description": "Every OpenRent feature is available here; the back office and storefront use the same endpoints. Money is `{amount, currency}` in minor units. Errors are RFC 9457 problem details with a stable `code`. POST requests accept `Idempotency-Key`.",
     "license": {
       "name": "Apache-2.0 (spec), AGPL-3.0-only (server)"
@@ -152,6 +152,187 @@
         }
       }
     },
+    "/api/v1/operator/shops": {
+      "get": {
+        "summary": "Every shop with its status, limits and usage this month",
+        "tags": [
+          "Operator"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/operator/shops/{id}": {
+      "patch": {
+        "summary": "Set a shop’s limits (null removes one)",
+        "tags": [
+          "Operator"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "limits"
+                ],
+                "properties": {
+                  "limits": {
+                    "type": "object",
+                    "properties": {
+                      "orders_per_month": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      "storage_mb": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      },
+                      "plugins": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "minimum": 0
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Erase a suspended shop and all its data for good; `confirm` must be its slug",
+        "tags": [
+          "Operator"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "confirm",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/operator/shops/{id}/actions/suspend": {
+      "post": {
+        "summary": "Suspend a shop: admin and storefront answer \"suspended\"; nothing is deleted",
+        "tags": [
+          "Operator"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/operator/shops/{id}/actions/resume": {
+      "post": {
+        "summary": "Resume a suspended shop",
+        "tags": [
+          "Operator"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "summary": "Sign in with email and password (optional TOTP code)",
@@ -239,7 +420,7 @@
     },
     "/api/v1/auth/magic_link/verify": {
       "post": {
-        "summary": "Exchange a sign-in link token for a session",
+        "summary": "Exchange a sign-in link token for a session; with an authenticator app, its code too",
         "tags": [
           "Auth"
         ],
@@ -254,6 +435,9 @@
                 ],
                 "properties": {
                   "token": {
+                    "type": "string"
+                  },
+                  "totp": {
                     "type": "string"
                   }
                 }
@@ -333,6 +517,12 @@
                         "type": "string",
                         "enum": [
                           "ja"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "nl"
                         ]
                       }
                     ]
@@ -479,6 +669,107 @@
                 "properties": {
                   "code": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/signup": {
+      "get": {
+        "summary": "Whether anyone may open a shop here",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Open a new shop with its owner and first location, and sign the owner in",
+        "tags": [
+          "Setup"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "owner",
+                  "tenant",
+                  "location"
+                ],
+                "properties": {
+                  "owner": {
+                    "type": "object",
+                    "required": [
+                      "email",
+                      "password",
+                      "name"
+                    ],
+                    "properties": {
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "password": {
+                        "type": "string",
+                        "minLength": 8
+                      },
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "tenant": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "currency",
+                      "timezone"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{3}$"
+                      },
+                      "timezone": {
+                        "type": "string"
+                      },
+                      "locale": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "location": {
+                    "type": "object",
+                    "required": [
+                      "name"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      }
+                    }
                   }
                 }
               }
@@ -707,6 +998,28 @@
         }
       }
     },
+    "/api/v1/tenant/usage": {
+      "get": {
+        "summary": "This month’s orders, stored files and plugins turned on, against the shop’s limits (managed cloud)",
+        "tags": [
+          "Tenant"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "tenant:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/tenant/settings": {
       "get": {
         "summary": "Effective settings (defaults merged)",
@@ -744,6 +1057,28 @@
             }
           }
         },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "tenant:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/tenant/settings/actions/refresh_rates": {
+      "post": {
+        "summary": "Update the exchange rates for display currencies now, from the chosen rates plugin",
+        "tags": [
+          "Tenant"
+        ],
         "security": [
           {
             "sessionCookie": []
@@ -860,6 +1195,21 @@
                     "type": "string"
                   },
                   "opening_hours": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^\\d{2}:\\d{2}$"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    }
+                  },
+                  "delivery_windows": {
                     "type": "object",
                     "additionalProperties": {
                       "type": "array",
@@ -1033,6 +1383,21 @@
                     "type": "string"
                   },
                   "opening_hours": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "pattern": "^\\d{2}:\\d{2}$"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    }
+                  },
+                  "delivery_windows": {
                     "type": "object",
                     "additionalProperties": {
                       "type": "array",
@@ -8015,6 +8380,20 @@
                   "translations": {
                     "type": "object",
                     "additionalProperties": {}
+                  },
+                  "seo": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "maxLength": 70
+                      },
+                      "description": {
+                        "type": "string",
+                        "maxLength": 160
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": false
@@ -8104,6 +8483,20 @@
                   "translations": {
                     "type": "object",
                     "additionalProperties": {}
+                  },
+                  "seo": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "maxLength": 70
+                      },
+                      "description": {
+                        "type": "string",
+                        "maxLength": 160
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 }
               }
@@ -10088,6 +10481,12 @@
                         "enum": [
                           "zone"
                         ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "per_km"
+                        ]
                       }
                     ]
                   },
@@ -10164,6 +10563,31 @@
                       }
                     },
                     "maxItems": 50
+                  },
+                  "distance_bands": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "up_to_km",
+                        "amount"
+                      ],
+                      "properties": {
+                        "up_to_km": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "Up to this many kilometres; null for any distance"
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "maxItems": 20,
+                    "description": "per_km: the first band the distance fits"
                   },
                   "mode": {
                     "anyOf": [
@@ -10357,6 +10781,12 @@
                         "enum": [
                           "zone"
                         ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "per_km"
+                        ]
                       }
                     ]
                   },
@@ -10433,6 +10863,31 @@
                       }
                     },
                     "maxItems": 50
+                  },
+                  "distance_bands": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "up_to_km",
+                        "amount"
+                      ],
+                      "properties": {
+                        "up_to_km": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "description": "Up to this many kilometres; null for any distance"
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    },
+                    "maxItems": 20,
+                    "description": "per_km: the first band the distance fits"
                   },
                   "mode": {
                     "anyOf": [
@@ -14027,6 +14482,40 @@
         }
       }
     },
+    "/api/v1/customers/{id}/actions/check_tax_id": {
+      "post": {
+        "summary": "Check the customer’s tax number again with the tax plugin (VIES for EU VAT numbers)",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/customers/{id}/actions/send_portal_link": {
       "post": {
         "summary": "Email the customer a link to their account, valid for a week (also before the first booking)",
@@ -15625,6 +16114,327 @@
         "responses": {
           "200": {
             "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/actions/reschedule": {
+      "post": {
+        "summary": "Move a reserved order that is not picked up yet to other dates; priced again, dry_run answers with the price and whether the dates are free",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "starts_at",
+                  "ends_at"
+                ],
+                "properties": {
+                  "starts_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "ends_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "dry_run": {
+                    "type": "boolean"
+                  },
+                  "notify": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "orders:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/billing": {
+      "put": {
+        "summary": "Set the billing details printed on the order (until an invoice is issued); null uses the customer’s own",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "billing"
+                ],
+                "properties": {
+                  "billing": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "private"
+                            ]
+                          },
+                          {
+                            "type": "string",
+                            "enum": [
+                              "company"
+                            ]
+                          }
+                        ]
+                      },
+                      "name": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "company_name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 200
+                      },
+                      "tax_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 40
+                      },
+                      "address": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "properties": {
+                          "line1": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "line2": {
+                            "type": "string",
+                            "maxLength": 200
+                          },
+                          "postal_code": {
+                            "type": "string",
+                            "maxLength": 20
+                          },
+                          "city": {
+                            "type": "string",
+                            "maxLength": 100
+                          },
+                          "region": {
+                            "type": "string",
+                            "maxLength": 100
+                          },
+                          "country": {
+                            "type": "string",
+                            "maxLength": 2,
+                            "description": "ISO 3166-1 alpha-2"
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "is_default": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "orders:write",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "number",
+                    "status",
+                    "payment_status",
+                    "totals",
+                    "lines"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "order"
+                      ]
+                    },
+                    "number": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "payment_status": {
+                      "type": "string"
+                    },
+                    "totals": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "order_line"
+                            ]
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
           }
         }
       }
@@ -26532,6 +27342,12 @@
                   "enum": [
                     "ja"
                   ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "nl"
+                  ]
                 }
               ]
             },
@@ -26601,6 +27417,12 @@
                   "enum": [
                     "ja"
                   ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "nl"
+                  ]
                 }
               ]
             },
@@ -26645,10 +27467,6 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "subject",
-                  "body"
-                ],
                 "properties": {
                   "subject": {
                     "type": "string"
@@ -26692,6 +27510,12 @@
                         "type": "string",
                         "enum": [
                           "ja"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "nl"
                         ]
                       }
                     ]
@@ -26808,6 +27632,12 @@
                         "enum": [
                           "ja"
                         ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "nl"
+                        ]
                       }
                     ]
                   }
@@ -26893,6 +27723,12 @@
                         "type": "string",
                         "enum": [
                           "ja"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "nl"
                         ]
                       }
                     ]
@@ -27948,6 +28784,155 @@
         }
       }
     },
+    "/api/v1/storefront/pages/{slug}": {
+      "get": {
+        "summary": "A published page of the shop in one storefront language, with its sections for the live theme (X-Theme-Preview: the previewed theme, drafts too)",
+        "tags": [
+          "Storefront"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "locale",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "in": "path",
+            "name": "slug",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/contact": {
+      "post": {
+        "summary": "A message from the storefront contact form; staff get it as a notice and by email",
+        "tags": [
+          "Storefront"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "email",
+                  "message"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254
+                  },
+                  "message": {
+                    "type": "string",
+                    "maxLength": 5000
+                  },
+                  "consent": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 300
+                  },
+                  "consent_required": {
+                    "type": "boolean"
+                  },
+                  "website": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/sitemap": {
+      "get": {
+        "summary": "Paths for search engines: the home page, categories and public products, with when each last changed",
+        "tags": [
+          "Storefront"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "in": "query",
+            "name": "offset",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50000
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/storefront/catalog/categories": {
       "get": {
         "summary": "Categories",
@@ -28951,6 +29936,56 @@
         }
       }
     },
+    "/api/v1/storefront/orders/{id}/calendar": {
+      "get": {
+        "summary": "The booking’s pickup and return as an iCalendar file (?token= required)",
+        "tags": [
+          "Storefront"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 16
+            },
+            "in": "query",
+            "name": "token",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "locale",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/storefront/orders/{id}/payment_intents": {
       "post": {
         "summary": "New payment attempt for an unpaid storefront order",
@@ -29255,6 +30290,155 @@
         "tags": [
           "Storefront",
           "Accounts"
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/orders/{id}/actions/cancel": {
+      "post": {
+        "summary": "Cancel one of your bookings yourself, when the shop allows it; the refund follows its cancellation rules",
+        "tags": [
+          "Storefront",
+          "Accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/orders/{id}/actions/change_dates": {
+      "post": {
+        "summary": "Move one of your bookings to other dates, or ask the shop to, as its rules allow; dry_run answers with the price and whether the dates are free",
+        "tags": [
+          "Storefront",
+          "Accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "starts_at",
+                  "ends_at"
+                ],
+                "properties": {
+                  "starts_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "ends_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "dry_run": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/orders/{id}/actions/book_again": {
+      "post": {
+        "summary": "A new cart with the items of one of your bookings, without dates; items no longer offered are named in `skipped`",
+        "tags": [
+          "Storefront",
+          "Accounts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
         ],
         "security": [
           {
@@ -29857,6 +31041,2355 @@
         }
       }
     },
+    "/api/v1/storefront_pages": {
+      "get": {
+        "summary": "The shop’s storefront pages",
+        "tags": [
+          "Storefront pages"
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a page (a draft unless `status` is published); `slug` comes from the title when left out",
+        "tags": [
+          "Storefront pages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "slug": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "draft"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "published"
+                        ]
+                      }
+                    ]
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
+                  "seo": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "description": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "translations": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "body": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "seo_title": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "seo_description": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront_pages/{id}": {
+      "get": {
+        "summary": "One page with its sections per theme",
+        "tags": [
+          "Storefront pages"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change a page’s title, address, text, status or translations",
+        "tags": [
+          "Storefront pages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "slug": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "draft"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "published"
+                        ]
+                      }
+                    ]
+                  },
+                  "body": {
+                    "type": "string",
+                    "maxLength": 100000
+                  },
+                  "seo": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "description": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "translations": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "body": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "seo_title": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "seo_description": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a page",
+        "tags": [
+          "Storefront pages"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront_pages/{id}/sections/{theme}": {
+      "put": {
+        "summary": "Save a page’s sections for one theme (checked against its section types); null removes them",
+        "tags": [
+          "Storefront pages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "sections"
+                ],
+                "properties": {
+                  "sections": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": {}
+                        },
+                        "maxItems": 100
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "theme",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront_pages/{id}/content/{theme}/{locale}": {
+      "put": {
+        "summary": "Translate a page’s section texts for one theme into one storefront language",
+        "tags": [
+          "Storefront pages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "values"
+                ],
+                "properties": {
+                  "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "maxLength": 5000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "theme",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z]{2}(-[A-Z]{2})?$"
+            },
+            "in": "path",
+            "name": "locale",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront_navigation": {
+      "get": {
+        "summary": "The storefront’s header and footer menus",
+        "tags": [
+          "Storefront pages"
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace the header and footer menus; an empty header leaves the theme’s own menu",
+        "tags": [
+          "Storefront pages"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "header",
+                  "footer"
+                ],
+                "properties": {
+                  "header": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "home"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "search"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "category"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "page"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "product"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "url"
+                              ]
+                            }
+                          ]
+                        },
+                        "target": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 500
+                        },
+                        "label": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 200
+                        },
+                        "translations": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  },
+                  "footer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "home"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "search"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "category"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "page"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "product"
+                              ]
+                            },
+                            {
+                              "type": "string",
+                              "enum": [
+                                "url"
+                              ]
+                            }
+                          ]
+                        },
+                        "target": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 500
+                        },
+                        "label": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "maxLength": 200
+                        },
+                        "translations": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "x-permission": "themes:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/billing_profiles": {
+      "get": {
+        "summary": "Saved billing details, the default first",
+        "tags": [
+          "Customer accounts"
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save billing details: private, or a company with its tax number (checked when the shop has a tax plugin)",
+        "tags": [
+          "Customer accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "private"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "company"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "company_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "tax_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/billing_profiles/{profile_id}": {
+      "patch": {
+        "summary": "Change saved billing details, or make them the default",
+        "tags": [
+          "Customer accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "private"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "company"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "company_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "tax_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "profile_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete saved billing details (orders keep their copy)",
+        "tags": [
+          "Customer accounts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "profile_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/addresses": {
+      "get": {
+        "summary": "Saved delivery addresses, the default first",
+        "tags": [
+          "Customer accounts"
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a delivery address",
+        "tags": [
+          "Customer accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  },
+                  "recipient": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/addresses/{address_id}": {
+      "patch": {
+        "summary": "Change a saved delivery address, or make it the default",
+        "tags": [
+          "Customer accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  },
+                  "recipient": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a saved delivery address",
+        "tags": [
+          "Customer accounts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/me/billing_profiles": {
+      "get": {
+        "summary": "Saved billing details, the default first",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save billing details: private, or a company with its tax number (checked when the shop has a tax plugin)",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "private"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "company"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "company_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "tax_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/me/billing_profiles/{profile_id}": {
+      "patch": {
+        "summary": "Change saved billing details, or make them the default",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "private"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "company"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "company_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "tax_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "profile_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete saved billing details (orders keep their copy)",
+        "tags": [
+          "Portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "profile_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/me/addresses": {
+      "get": {
+        "summary": "Saved delivery addresses, the default first",
+        "tags": [
+          "Portal"
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a delivery address",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  },
+                  "recipient": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/me/addresses/{address_id}": {
+      "patch": {
+        "summary": "Change a saved delivery address, or make it the default",
+        "tags": [
+          "Portal"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  },
+                  "recipient": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a saved delivery address",
+        "tags": [
+          "Portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/billing_profiles": {
+      "get": {
+        "summary": "Saved billing details, the default first",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save billing details: private, or a company with its tax number (checked when the shop has a tax plugin)",
+        "tags": [
+          "Customers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "private"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "company"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "company_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "tax_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/billing_profiles/{profile_id}": {
+      "patch": {
+        "summary": "Change saved billing details, or make them the default",
+        "tags": [
+          "Customers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "private"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "company"
+                        ]
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "company_name": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "tax_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "profile_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete saved billing details (orders keep their copy)",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "profile_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/addresses": {
+      "get": {
+        "summary": "Saved delivery addresses, the default first",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a delivery address",
+        "tags": [
+          "Customers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  },
+                  "recipient": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/addresses/{address_id}": {
+      "patch": {
+        "summary": "Change a saved delivery address, or make it the default",
+        "tags": [
+          "Customers"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 80
+                  },
+                  "recipient": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 200
+                  },
+                  "phone": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 40
+                  },
+                  "address": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "line2": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "postal_code": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "region": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "country": {
+                        "type": "string",
+                        "maxLength": 2,
+                        "description": "ISO 3166-1 alpha-2"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "is_default": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a saved delivery address",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "address_id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/portal/auth/request_link": {
       "post": {
         "summary": "Email a one-time sign-in link to a customer who has bookings. The answer is the same either way.",
@@ -29925,6 +33458,41 @@
             }
           }
         },
+        "security": [
+          {
+            "publishableKey": [],
+            "customerSession": []
+          },
+          {
+            "tenantSlug": [],
+            "customerSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/invoices/{id}/payment_intents": {
+      "post": {
+        "summary": "Pay a monthly invoice as a whole: one payment for what its bookings still owe, shared out over them when it succeeds",
+        "tags": [
+          "Portal"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
         "security": [
           {
             "publishableKey": [],

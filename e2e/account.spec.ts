@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, randomOffset, shot, signIn, weekday } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, messageHtml, ADMIN, STORE, collectErrors, hydrated, randomOffset, shot, signIn, weekday } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 const day = 86400_000;
@@ -63,7 +63,7 @@ test('a customer signs in by email link, asks to cancel and staff approve', asyn
   const log = await call(page, 'GET', '/notifications?limit=50');
   const msg = log.data.find((n: any) => n.template === 'customer_login' && n.recipient === email);
   expect(msg).toBeTruthy();
-  const html: string = (await call(page, 'GET', `/notifications/${msg.id}`)).body_html
+  const html: string = (await messageHtml(msg.id))
     .replace(/&#x3D;/g, '=')
     .replace(/&amp;/g, '&');
   const link = /href="([^"]*\/account\/verify\?token=[\w-]+)"/.exec(html)![1]!;

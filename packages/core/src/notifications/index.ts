@@ -18,10 +18,18 @@ export { DEFAULT_NOTIFICATIONS, DEFAULT_TEXTS };
 export { normalizePhone, renderText, textWebhookUrl, MAX_TEXT } from './texts.ts';
 import { MAX_TEXT } from './texts.ts';
 
+/**
+ * Messages whose links or codes let the reader sign in or sign as someone. The log never shows their
+ * content: staff who may read the log must not be able to borrow a colleague's or customer's link.
+ */
+const SECRET_TEMPLATES = new Set(['magic_link', 'staff_invitation', 'staff_password_reset', 'customer_login', 'portal_invitation', 'signature_requested', 'signature_code']);
+export const isSecretMessage = (key: string) => SECRET_TEMPLATES.has(key);
+
 export function notificationToApi(n: any) {
+  const hidden = SECRET_TEMPLATES.has(n.template_key);
   return {
     id: n.id, object: 'notification', channel: n.channel, template: n.template_key, recipient: n.recipient, audience: n.audience, subject: n.subject, order_id: n.order_id,
-    text: n.body_text ?? null, attachments: n.attachments ?? [], status: n.status, error: n.error, attempts: n.attempts ?? 0, next_attempt_at: n.next_attempt_at ?? null, sent_at: n.sent_at, created_at: n.created_at,
+    content_hidden: hidden, text: hidden ? null : (n.body_text ?? null), attachments: n.attachments ?? [], status: n.status, error: n.error, attempts: n.attempts ?? 0, next_attempt_at: n.next_attempt_at ?? null, sent_at: n.sent_at, created_at: n.created_at,
   };
 }
 
@@ -122,6 +130,10 @@ export async function staffRecipients(ctx: Ctx): Promise<string[]> {
 export async function notifyStaff(ctx: Ctx, orderId: string | null, template: string, extra: Record<string, any> = {}, dedupeKey?: string) {
   const data = orderId ? await orderMessageData(ctx, orderId, extra) : extra;
   await addStaffNotices(ctx, template, extra, data, orderId ? { type: 'order', id: orderId } : null, dedupeKey);
+  // For plugins that pass notices on (notify-slack): the notice as staff read it, with its admin link.
+  const { subject } = await render(ctx, template, data, { audience: 'staff' }).catch(() => ({ subject: template }));
+  const url = orderId && ctx.config.adminUrl ? `${ctx.config.adminUrl.replace(/\/$/, '')}/orders/${orderId}` : null;
+  await emit(ctx, 'staff_notice.created', orderId ? { type: 'order', id: orderId } : { type: 'tenant', id: ctx.tenantId }, { object: 'staff_notice', kind: template, text: subject, url });
   const optedIn = new Set(await emailRecipients(ctx, template));
   const t = await must<any>(ctx, `SELECT settings FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
   const shared = resolveSettings(t.settings).staff_email;
@@ -304,7 +316,7 @@ export async function recordDeliveryFailure(ctx: Ctx, id: string, err: any) {
 
 export async function getNotification(ctx: Ctx, id: string) {
   const n = await must<any>(ctx, `SELECT * FROM notifications WHERE id = $1`, [id], 'notification', id);
-  return { ...notificationToApi(n), body_html: n.body_html };
+  return { ...notificationToApi(n), body_html: isSecretMessage(n.template_key) ? null : n.body_html };
 }
 
 /** Sends a queued or failed message at the next worker tick. */

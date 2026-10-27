@@ -1,0 +1,12 @@
+/* Marquee in the embeddable widget: paper cards, square corners, the bold accent on buttons. */
+:host {
+  --card: {{ settings.paper | #f5f5f3 }};
+  --card-foreground: #181818;
+  --foreground: #181818;
+  --muted-foreground: #4a4a4a;
+  --border: #181818;
+  --primary: {{ settings.accent | #1b1bff }};
+  --primary-foreground: {{ contrast: settings.accent | #1b1bff }};
+  --ring: {{ settings.accent_2 | #e3530f }};
+  --radius: 0.125rem;
+}

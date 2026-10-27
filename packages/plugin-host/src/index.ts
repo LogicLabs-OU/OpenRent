@@ -20,6 +20,8 @@ import {
   type TaxProvider,
   type IdentityProvider,
   type SearchProvider,
+  type RatesProvider,
+  type Geocoder,
   type SignatureProvider,
   type IntegrationProvider,
   type ScheduleHandler,
@@ -62,9 +64,11 @@ export class PluginHost implements PluginRuntime {
   /** Several plugins may send email; each shop picks one (settings.email_channel). */
   private readonly channels = new Map<string, Registered<NotificationChannel>[]>();
   private storage: Registered<StorageProvider> | null = null;
-  private tax: Registered<TaxProvider> | null = null;
+  private taxes: Registered<TaxProvider>[] = [];
   private identity: Registered<IdentityProvider> | null = null;
   private search: Registered<SearchProvider> | null = null;
+  private rates: Registered<RatesProvider>[] = [];
+  private geo: Registered<Geocoder> | null = null;
   private signature: Registered<SignatureProvider> | null = null;
   /** Integrations by id (plugin API 1.2); a shop connects each on the Integrations page. */
   private readonly integrationList = new Map<string, Registered<IntegrationProvider>>();
@@ -133,7 +137,7 @@ export class PluginHost implements PluginRuntime {
           status.provides.push(`storage:${s.id}`);
         },
         registerTaxProvider: (p) => {
-          this.tax = { pluginId, handler: p };
+          this.taxes.push({ pluginId, handler: p });
           this.owners.set(p.id, pluginId);
           status.provides.push(`tax:${p.id}`);
         },
@@ -146,6 +150,16 @@ export class PluginHost implements PluginRuntime {
           this.search = { pluginId, handler: p };
           this.owners.set(p.id, pluginId);
           status.provides.push(`search:${p.id}`);
+        },
+        registerGeocoder: (p) => {
+          this.geo = { pluginId, handler: p };
+          this.owners.set(p.id, pluginId);
+          status.provides.push(`geocoder:${p.id}`);
+        },
+        registerRatesProvider: (p) => {
+          this.rates.push({ pluginId, handler: p });
+          this.owners.set(p.id, pluginId);
+          status.provides.push(`rates:${p.id}`);
         },
         registerSignatureProvider: (p) => {
           this.signature = { pluginId, handler: p };
@@ -247,7 +261,12 @@ export class PluginHost implements PluginRuntime {
   }
 
   taxProvider() {
-    return this.tax?.handler;
+    return this.taxes[0]?.handler;
+  }
+
+  /** Every tax plugin: a shop uses the first it has on and set up (US sales tax, EU VAT numbers). */
+  taxProviders() {
+    return this.taxes.map((t) => t.handler);
   }
 
   identityProvider() {
@@ -256,6 +275,14 @@ export class PluginHost implements PluginRuntime {
 
   searchProvider() {
     return this.search?.handler;
+  }
+
+  geocoder() {
+    return this.geo?.handler;
+  }
+
+  ratesProviders() {
+    return this.rates.map((r) => r.handler);
   }
 
   signatureProvider() {

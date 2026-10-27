@@ -22,6 +22,7 @@ export default async function globalSetup() {
   if (!res.ok()) throw new Error(`Staff sign-in for the e2e run failed: ${res.status()} ${await res.text()}`);
   if (process.env.E2E_CLEANUP === '1') {
     await cancelOldOrders(api);
+    await cancelOldTickets(api);
     await deleteTestProducts(api);
   }
   mkdirSync(path.dirname(ADMIN_STATE), { recursive: true });
@@ -49,6 +50,19 @@ async function cancelOldOrders(api: APIRequestContext) {
     }
   }
   if (cancelled) process.stdout.write(`e2e cleanup: cancelled ${cancelled} orders left by earlier runs\n`);
+}
+
+/** Cancels repair tickets earlier runs left open, so a spec finds its own ticket on the first page. */
+async function cancelOldTickets(api: APIRequestContext) {
+  const before = Date.now();
+  const csrf = (await api.storageState()).cookies.find((c) => c.name === 'or_csrf')?.value ?? '';
+  const res = await api.get('/api/v1/maintenance_tickets?status=active');
+  if (!res.ok()) throw new Error(`Listing repair tickets failed: ${res.status()} ${await res.text()}`);
+  const old = ((await res.json()) as { data: { id: string; created_at: string }[] }).data.filter((t) => Date.parse(t.created_at) < before);
+  for (let i = 0; i < old.length; i += 8) {
+    await Promise.all(old.slice(i, i + 8).map((t) => api.post(`/api/v1/maintenance_tickets/${t.id}/actions/cancel`, { data: { reason: 'e2e cleanup' }, headers: { 'x-csrf-token': csrf } })));
+  }
+  if (old.length) process.stdout.write(`e2e cleanup: cancelled ${old.length} repair tickets left by earlier runs\n`);
 }
 
 /**

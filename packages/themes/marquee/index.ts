@@ -13,6 +13,7 @@ import fr from './locales/fr.json';
 import es from './locales/es.json';
 import et from './locales/et.json';
 import ja from './locales/ja.json';
+import nl from './locales/nl.json';
 import sectionsData from './config/sections_data.json';
 import hero from './sections/hero.json';
 import ticker from './sections/ticker.json';
@@ -56,7 +57,7 @@ const theme: ThemeModule = {
     search,
     sign,
   },
-  locales: themeCatalogs({ en, de, fr, es, et, ja }),
+  locales: themeCatalogs({ en, de, fr, es, et, ja, nl }),
   // The file name is the section type, as the API reads sections/<type>.json.
   sectionSchemas: Object.entries({
     hero,

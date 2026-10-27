@@ -1,15 +1,29 @@
-import type { SectionInstance, Shop } from '@openrent/theme-sdk';
+import type { SectionInstance, SectionSchema, Shop } from '@openrent/theme-sdk';
 import { resolveSettings } from '@openrent/theme-sdk';
 import { error, redirect } from '@sveltejs/kit';
 import { pickLocale } from '@openrent/i18n';
 import { sf, fail, localeOf, localeQuery } from '#lib/server/api.ts';
-import { readDates, cartId, setPreview, accountToken, setAccount, langCookie, setLangCookie } from '#lib/server/session.ts';
+import { readDates, cartId, setPreview, accountToken, setAccount, langCookie, setLangCookie, readCurrency, readLocation } from '#lib/server/session.ts';
 import { SfError } from '#lib/server/api.ts';
 import { themeFor } from '#lib/themes.ts';
 import { themeAssets } from '#lib/server/theme-assets.ts';
 import { t } from '#lib/i18n/index.ts';
 import type { LayoutServerLoad } from './$types';
 import type { CheckoutFieldDef } from '#lib/extensions.svelte.ts';
+import type { ShopSeo } from '#lib/meta.ts';
+
+/** The currency prices are shown in: the visitor's choice when the shop offers it, else the shop's own. */
+function displayCurrency(c: { base: string; display: { code: string; rate: number }[] } | undefined, chosen: string | null) {
+  if (!c?.display?.length) return undefined;
+  const pick = c.display.find((d) => d.code === chosen);
+  return { base: c.base, shown: pick?.code ?? c.base, rate: pick?.rate ?? 1, choices: [c.base, ...c.display.map((d) => d.code)] };
+}
+
+type Links = { label: string; href: string; external: boolean }[];
+function navigationIn(nav: { header?: Links; footer?: Links } | undefined, prefix: string): NonNullable<Shop['navigation']> {
+  const local = (list: Links = []) => list.map((l) => (l.external ? l : { ...l, href: l.href === '/' ? prefix || '/' : `${prefix}${l.href}` }));
+  return { header: local(nav?.header), footer: local(nav?.footer) };
+}
 
 export const load: LayoutServerLoad = async (event) => {
   event.depends('or:shop');
@@ -65,6 +79,8 @@ export const load: LayoutServerLoad = async (event) => {
   const shop: Shop = {
     tenant: s.tenant,
     locations: s.locations,
+    // The location picked on this browser, else the shop's default (theme API 1.9).
+    location: s.locations.find((l: { id: string }) => l.id === readLocation(event.cookies)) ?? s.locations[0],
     categories: s.categories,
     terms: s.terms,
     cancellation_policy: s.cancellation_policy,
@@ -75,11 +91,16 @@ export const load: LayoutServerLoad = async (event) => {
     cartCount,
     settings: resolveSettings(theme, s.theme?.settings ?? {}, s.theme?.content),
     displayPricesIncludingTax: s.display_prices_including_tax,
+    displayCurrency: displayCurrency(s.currencies, readCurrency(event.cookies)),
     customer,
     features: { document_pdfs: !!s.features?.document_pdfs, accounts: true },
+    // The shop's menus, with this language's prefix on the shop's own links.
+    navigation: navigationIn(s.navigation, locale === defaultLocale ? '' : `/${locale}`),
     // Child theme files come from the API; code themes' from their hashed assets/ URLs.
     assets: { ...themeAssets(theme.manifest.id), ...(s.theme?.assets ?? {}) },
     strings: s.strings ?? {},
   };
-  return { shop, messaging: (s.messaging ?? { sms: false, whatsapp: false }) as { sms: boolean; whatsapp: boolean }, extensions: (s.extensions ?? { checkout_fields: [], scripts: [] }) as { checkout_fields: CheckoutFieldDef[]; scripts: { plugin: string; src: string; consent: 'necessary' | 'analytics' | 'marketing' }[] }, code: (s.code ?? { css: '', header_html: '', footer_html: '' }) as { css: string; header_html: string; footer_html: string }, themeCss: (s.theme?.css ?? '') as string, themeId: theme.manifest.id, themeOverrides: (s.theme?.translations ?? {}) as Record<string, Record<string, string>>, themeSections: (s.theme?.sections ?? null) as SectionInstance[] | null, themeContent: (s.theme?.content ?? {}) as Record<string, string>, preview: s.theme?.preview ? theme.manifest.name : null };
+  // The shop's own address and home page texts for the head (canonical links, previews, structured data).
+  const seo: ShopSeo = { base_url: s.seo?.base_url ?? event.url.origin, title: s.seo?.title ?? null, description: s.seo?.description ?? null, image_url: s.seo?.image_url ?? null };
+  return { shop, seo, messaging: (s.messaging ?? { sms: false, whatsapp: false }) as { sms: boolean; whatsapp: boolean }, extensions: (s.extensions ?? { checkout_fields: [], scripts: [] }) as { checkout_fields: CheckoutFieldDef[]; scripts: { plugin: string; src: string; consent: 'necessary' | 'analytics' | 'marketing' }[] }, code: (s.code ?? { css: '', header_html: '', footer_html: '' }) as { css: string; header_html: string; footer_html: string }, themeCss: (s.theme?.css ?? '') as string, themeId: theme.manifest.id, themeOverrides: (s.theme?.translations ?? {}) as Record<string, Record<string, string>>, themeSections: (s.theme?.sections ?? null) as SectionInstance[] | null, pluginSections: (s.theme?.plugin_sections ?? {}) as Record<string, string>, pluginSectionSchemas: (s.extensions?.sections ?? []) as SectionSchema[], themeContent: (s.theme?.content ?? {}) as Record<string, string>, preview: s.theme?.preview ? theme.manifest.name : null };
 };

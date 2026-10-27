@@ -29,6 +29,9 @@
 	import { cn, type WithElementRef } from "#ui/utils.js";
 	import type { Snippet } from "svelte";
 	import type { HTMLAttributes } from "svelte/elements";
+	import { getContext } from "svelte";
+
+	const inGroup = getContext<boolean | undefined>("item-group") === true;
 
 	let {
 		ref = $bindable(null),
@@ -48,6 +51,8 @@
 		"data-slot": "item",
 		"data-variant": variant,
 		"data-size": size,
+		// A plain item in a group is a list item; one rendered as a button or link keeps its own role.
+		...(inGroup && !child ? { role: "listitem" } : {}),
 		...restProps,
 	});
 </script>

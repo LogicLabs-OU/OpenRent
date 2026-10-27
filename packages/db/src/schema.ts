@@ -50,6 +50,8 @@ export const users = pgTable(
     name: text().default('').notNull(),
     locale: text().default('en').notNull(),
     totpSecret: text('totp_secret'),
+    /** The last authenticator step used to sign in: each code works once. */
+    totpLastStep: bigint('totp_last_step', { mode: 'number' }),
     totpPending: text('totp_pending'),
     status: text().default('active').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -124,11 +126,18 @@ export const tenants = pgTable(
     settings: jsonb().default({}).notNull(),
     branding: jsonb().default({}).notNull(),
     invoiceNumbering: jsonb('invoice_numbering').default({}).notNull(),
+    /** Managed cloud: `suspended` shops answer neither admin nor storefront; their data stays. */
+    status: text().default('active').notNull(),
+    suspendedReason: text('suspended_reason'),
+    suspendedAt: timestamp('suspended_at', { withTimezone: true, mode: 'string' }),
+    /** Per-shop limits the operator sets (orders a month, storage, plugins); empty is unlimited. */
+    limits: jsonb().default({}).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
   },
   (table) => [
     unique('tenants_slug_key').on(table.slug),
+    check('tenants_status_check', sql`${table.status} IN ('active', 'suspended')`),
     pgPolicy('tenant_isolation', {
       as: 'permissive',
       for: 'all',
@@ -148,6 +157,8 @@ export const locations = pgTable(
     address: jsonb().default({}).notNull(),
     timezone: text().notNull(),
     openingHours: jsonb('opening_hours').default({}).notNull(),
+    // Times customers may choose for a delivery or collection, per weekday like opening_hours.
+    deliveryWindows: jsonb('delivery_windows').default({}).notNull(),
     isDefault: boolean('is_default').default(false).notNull(),
     phone: text(),
     email: text(),
@@ -386,6 +397,8 @@ export const categories = pgTable(
     parentId: text('parent_id'),
     position: integer().default(0).notNull(),
     translations: jsonb().default({}).notNull(),
+    // Search engine title and description ({title, description}); other languages in `translations`.
+    seo: jsonb().default({}).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
@@ -415,6 +428,50 @@ export const categories = pgTable(
       using: sql`openrent_tenant_ok(tenant_id)`,
       withCheck: sql`openrent_tenant_ok(tenant_id)`,
     }),
+  ],
+);
+
+// The shop's own storefront pages (about, contact, FAQ): a text in every language and, per theme,
+// sections like the home page's. Drafts are seen only in a theme preview.
+export const storefrontPages = pgTable(
+  'storefront_pages',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    slug: text().notNull(),
+    status: text().default('draft').notNull(),
+    title: text().notNull(),
+    body: text().default('').notNull(),
+    seo: jsonb().default({}).notNull(),
+    translations: jsonb().default({}).notNull(),
+    // theme id → sections; theme id → locale → section texts (as the home page's translations).
+    sections: jsonb().default({}).notNull(),
+    contentTranslations: jsonb('content_translations').default({}).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'string' }),
+  },
+  (table) => [
+    uniqueIndex('storefront_pages_slug')
+      .using(
+        'btree',
+        table.tenantId.asc().nullsLast().op('text_ops'),
+        table.slug.asc().nullsLast().op('text_ops'),
+      )
+      .where(sql`(deleted_at IS NULL)`),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'storefront_pages_tenant_id_fkey',
+    }),
+    pgPolicy('tenant_isolation', {
+      as: 'permissive',
+      for: 'all',
+      to: ['public'],
+      using: sql`openrent_tenant_ok(tenant_id)`,
+      withCheck: sql`openrent_tenant_ok(tenant_id)`,
+    }),
+    check('storefront_pages_status_check', sql`status = ANY (ARRAY['draft'::text, 'published'::text])`),
   ],
 );
 
@@ -769,6 +826,8 @@ export const customers = pgTable(
     /** Booking updates by text message or WhatsApp, which the customer asked for (FR-NOT-4). */
     smsOptIn: boolean('sms_opt_in').default(false).notNull(),
     whatsappOptIn: boolean('whatsapp_opt_in').default(false).notNull(),
+    /** The tax plugin's last check of `tax_id` (VIES for EU VAT numbers), or null. */
+    taxIdCheck: jsonb('tax_id_check'),
     notes: text().default('').notNull(),
     customFields: jsonb('custom_fields').default({}).notNull(),
     providerRefs: jsonb('provider_refs').default({}).notNull(),
@@ -908,6 +967,8 @@ export const orders = pgTable(
     externalRef: text('external_ref'),
     /** The customer's purchase order number (FR-CUS-7). */
     poNumber: text('po_number'),
+    // The billing details chosen at checkout (ADR 0012); null uses the customer's.
+    billing: jsonb(),
     /** The monthly invoice this booking is on, for customers invoiced monthly. */
     invoiceId: text('invoice_id'),
     /** Long rentals billed per period while out (FR-OR-11): weekly or monthly; null bills once. */
@@ -2520,6 +2581,8 @@ export const paymentRequests = pgTable(
     paymentId: text('payment_id'),
     createdBy: text('created_by'),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'string' }),
+    /** A monthly invoice paid as a whole (ADR 0012): the payment is shared out over its bookings. */
+    invoiceId: text('invoice_id'),
     /** A provider-hosted payment link (FR-PAY-1), when the provider makes one. */
     provider: text(),
     providerRef: text('provider_ref'),
@@ -2534,7 +2597,7 @@ export const paymentRequests = pgTable(
     index('payment_requests_order').on(table.orderId),
     check('payment_requests_amount_check', sql`amount > 0`),
     check('payment_requests_status_check', sql`status = ANY (ARRAY['open'::text, 'paid'::text, 'cancelled'::text, 'expired'::text])`),
-    check('payment_requests_kind_check', sql`kind = ANY (ARRAY['upfront'::text, 'balance'::text, 'custom'::text])`),
+    check('payment_requests_kind_check', sql`kind = ANY (ARRAY['upfront'::text, 'balance'::text, 'custom'::text, 'invoice'::text])`),
     tenantPolicy(),
   ],
 );
@@ -2586,6 +2649,60 @@ export const customerContacts = pgTable(
     foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'customer_contacts_tenant_id_fkey' }),
     foreignKey({ columns: [table.customerId], foreignColumns: [customers.id], name: 'customer_contacts_customer_id_fkey' }).onDelete('cascade'),
     index('customer_contacts_customer').on(table.customerId),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * Billing details a customer keeps for checkout (ADR 0012): private, or a company with its tax number.
+ * Orders copy the one chosen (`orders.billing`), so changing a profile never changes an order.
+ */
+export const customerBillingProfiles = pgTable(
+  'customer_billing_profiles',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    customerId: text('customer_id').notNull(),
+    kind: text().default('private').notNull(),
+    name: text().notNull(),
+    companyName: text('company_name'),
+    taxId: text('tax_id'),
+    taxIdCheck: jsonb('tax_id_check'),
+    address: jsonb().default({}).notNull(),
+    isDefault: boolean('is_default').default(false).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'customer_billing_profiles_tenant_id_fkey' }),
+    foreignKey({ columns: [table.customerId], foreignColumns: [customers.id], name: 'customer_billing_profiles_customer_id_fkey' }).onDelete('cascade'),
+    index('customer_billing_profiles_customer').on(table.customerId),
+    uniqueIndex('customer_billing_profiles_one_default').on(table.customerId).where(sql`is_default`),
+    check('customer_billing_profiles_kind_check', sql`kind = ANY (ARRAY['private'::text, 'company'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/** Delivery addresses a customer keeps for checkout. */
+export const customerAddresses = pgTable(
+  'customer_addresses',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    customerId: text('customer_id').notNull(),
+    label: text(),
+    recipient: text(),
+    phone: text(),
+    address: jsonb().default({}).notNull(),
+    isDefault: boolean('is_default').default(false).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'customer_addresses_tenant_id_fkey' }),
+    foreignKey({ columns: [table.customerId], foreignColumns: [customers.id], name: 'customer_addresses_customer_id_fkey' }).onDelete('cascade'),
+    index('customer_addresses_customer').on(table.customerId),
+    uniqueIndex('customer_addresses_one_default').on(table.customerId).where(sql`is_default`),
     tenantPolicy(),
   ],
 );
@@ -2999,6 +3116,8 @@ export const feeRules = pgTable(
     periodUnit: text('period_unit'),
     /** [{ postcodes: ['101', '102'], amount }] for `zone`. */
     zones: jsonb().default([]).notNull(),
+    /** [{ up_to_km, amount }] for `per_km` (FR-PR-8): the first band the distance fits; null `up_to_km` is any distance. */
+    distanceBands: jsonb('distance_bands').default([]).notNull(),
     mode: text().default('auto').notNull(),
     productIds: text('product_ids').array().default(sql`'{}'::text[]`).notNull(),
     categoryIds: text('category_ids').array().default(sql`'{}'::text[]`).notNull(),
@@ -3015,7 +3134,7 @@ export const feeRules = pgTable(
   (table) => [
     foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'fee_rules_tenant_id_fkey' }),
     check('fee_rules_kind_check', sql`kind = ANY (ARRAY['delivery'::text, 'cleaning'::text, 'damage_waiver'::text, 'extension'::text, 'late'::text])`),
-    check('fee_rules_calculation_check', sql`calculation = ANY (ARRAY['flat'::text, 'per_unit'::text, 'percent'::text, 'per_period'::text, 'zone'::text])`),
+    check('fee_rules_calculation_check', sql`calculation = ANY (ARRAY['flat'::text, 'per_unit'::text, 'percent'::text, 'per_period'::text, 'zone'::text, 'per_km'::text])`),
     check('fee_rules_mode_check', sql`mode = ANY (ARRAY['auto'::text, 'optional'::text])`),
     check('fee_rules_amount_check', sql`amount >= 0`),
     check('fee_rules_period_unit_check', sql`period_unit IS NULL OR period_unit = ANY (ARRAY['hour'::text, 'day'::text, 'week'::text, 'month'::text])`),
@@ -3035,6 +3154,8 @@ export const extensionRequests = pgTable(
     orderId: text('order_id').notNull(),
     customerId: text('customer_id'),
     requestedEndsAt: timestamp('requested_ends_at', { withTimezone: true, mode: 'string' }).notNull(),
+    // Set when the customer asks for other dates altogether (a date change), not only a later return.
+    requestedStartsAt: timestamp('requested_starts_at', { withTimezone: true, mode: 'string' }),
     reason: text().default('').notNull(),
     status: text().default('pending').notNull(),
     decisionNote: text('decision_note'),
@@ -3068,6 +3189,9 @@ export const deliveries = pgTable(
     kind: text().notNull(),
     status: text().default('scheduled').notNull(),
     address: jsonb().default({}).notNull(),
+    /** Where the address is on the map (geocoded), for route exports (FR-PR-8). */
+    lat: doublePrecision(),
+    lon: doublePrecision(),
     contact: jsonb().default({}).notNull(),
     windowStart: timestamp('window_start', { withTimezone: true, mode: 'string' }).notNull(),
     windowEnd: timestamp('window_end', { withTimezone: true, mode: 'string' }).notNull(),
@@ -3654,6 +3778,26 @@ export const savedReports = pgTable(
     index('saved_reports_due').on(table.nextRunAt).where(sql`schedule IS NOT NULL`),
     check('saved_reports_format_check', sql`format = ANY (ARRAY['csv'::text, 'xlsx'::text])`),
     check('saved_reports_schedule_check', sql`schedule IS NULL OR schedule = ANY (ARRAY['daily'::text, 'weekly'::text, 'monthly'::text])`),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * Addresses already looked up on the map (FR-PR-8): geocoding services ask callers to keep answers
+ * instead of asking again. `lat`/`lon` are null for an address that was not found.
+ */
+export const geocodeCache = pgTable(
+  'geocode_cache',
+  {
+    tenantId: text('tenant_id').notNull(),
+    query: text().notNull(),
+    lat: doublePrecision(),
+    lon: doublePrecision(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'geocode_cache_tenant_id_fkey' }),
+    primaryKey({ columns: [table.tenantId, table.query], name: 'geocode_cache_pkey' }),
     tenantPolicy(),
   ],
 );

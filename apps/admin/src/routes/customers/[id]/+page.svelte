@@ -26,6 +26,7 @@
   import TagInput from '#lib/components/tag-input.svelte';
   import CustomFieldsForm from '#lib/components/custom-fields-form.svelte';
   import CustomerTermsCard from '#lib/components/customer-terms-card.svelte';
+  import CustomerBillingCard from '#lib/components/customer-billing-card.svelte';
 
   const ADDRESS_FIELDS = ['line1', 'line2', 'postal_code', 'city', 'country'] as const;
   const blankAddress = () => Object.fromEntries(ADDRESS_FIELDS.map((k) => [k, ''])) as Record<string, string>;
@@ -79,6 +80,7 @@
     const out = Object.fromEntries(Object.entries(a).filter(([, v]) => v.trim()).map(([k, v]) => [k, k === 'country' ? v.trim().toUpperCase() : v.trim()]));
     return Object.keys(out).length ? out : null;
   };
+  const checkTaxId = () => run(() => api.post(`/customers/${id}/actions/check_tax_id`, {}), t('customer.tax_check.done'));
   const saveAddresses = () => run(() => api.patch(`/customers/${id}`, { addresses: { billing: clean(addr.billing), shipping: clean(addr.shipping) } }), t('common.saved'));
 
   function editContact(x?: any) {
@@ -179,6 +181,7 @@
       </Card.Content>
       <Card.Footer><Button onclick={saveAddresses}>{t('common.save')}</Button></Card.Footer>
     </Card.Root>
+    <CustomerBillingCard customerId={c.id} />
     {#if f.type === 'company' || contacts.length}
       <Card.Root data-testid="customer-contacts">
         <Card.Header>
@@ -221,6 +224,18 @@
                 <Field.Label for={k}>{t(l as any)}</Field.Label>
                 <Input id={k} bind:value={f[k]} />
                 {#if errors[k]}<Field.Error>{errors[k]}</Field.Error>{/if}
+                {#if k === 'tax_id' && c.tax_id_check && c.tax_id && f.tax_id === c.tax_id}
+                  {@const chk = c.tax_id_check}
+                  <div class="flex flex-col gap-1 text-sm" data-testid="tax-id-check">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <Badge variant={chk.status === 'valid' ? 'secondary' : chk.status === 'invalid' ? 'destructive' : 'outline'}>{t(`customer.tax_check.${chk.status}` as any)}</Badge>
+                      <span class="text-muted-foreground">{t('customer.tax_check.checked', { date: d(chk.checked_at) })}</span>
+                      {#if session.can('customers:write')}<Button variant="link" size="sm" class="h-auto p-0" onclick={checkTaxId}>{t('customer.tax_check.again')}</Button>{/if}
+                    </div>
+                    {#if chk.name}<span class="text-muted-foreground whitespace-pre-line">{chk.name}{#if chk.address}<br />{chk.address}{/if}</span>{/if}
+                    {#if chk.ref}<span class="text-muted-foreground">{t('customer.tax_check.ref', { ref: chk.ref })}</span>{/if}
+                  </div>
+                {/if}
               </Field.Field>
             {/each}
             <Field.Field>

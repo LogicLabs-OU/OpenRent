@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import { ADMIN, addProduct, collectErrors, localInput, shot } from './helpers.ts';
+import { expect } from '@playwright/test';
+import { test, ADMIN, addProduct, collectErrors, localInput, shot } from './helpers.ts';
 
 test('staff run an order from creation to return', async ({ page }) => {
   const errors = collectErrors(page);

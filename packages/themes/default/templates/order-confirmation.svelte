@@ -120,6 +120,8 @@
     <Card.Content class="flex flex-col items-center gap-3">
       <div class="size-48 rounded-lg bg-white p-2 [&_svg]:size-full" data-testid="order-qr">{@html o.qr_svg}</div>
       <p class="text-muted-foreground text-sm">{rt.t('order.show_qr')}</p>
+      <!-- Calendar links (theme API 1.9). -->
+      <rt.components.Slot name="order.actions" context={{ order: o }} />
     </Card.Content>
   </Card.Root>
 </div>

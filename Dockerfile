@@ -40,7 +40,7 @@ HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:707
 CMD ["node", "dist/server.js"]
 
 FROM node:24-slim AS worker
-ENV NODE_ENV=production PLUGINS_CONFIG=/app/plugins.json PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ENV NODE_ENV=production PLUGINS_CONFIG=/app/plugins.json PLAYWRIGHT_BROWSERS_PATH=/ms-playwright OPENRENT_MIGRATIONS_DIR=/app/migrations OPENRENT_INVARIANTS_FILE=/app/sql/invariants.sql
 WORKDIR /app
 COPY --from=build /out/worker/node_modules ./node_modules
 # Noto CJK gives Japanese documents real glyphs instead of empty boxes.
@@ -56,6 +56,9 @@ COPY --from=build /src/apps/worker/package.json ./package.json
 COPY --from=build /src/apps/worker/dist ./dist
 COPY --from=build /src/packages/cli/dist ./cli
 COPY --from=build /src/plugins.json ./plugins.json
+# `openrent restore` and `openrent migrate` run the migrations and invariants from here.
+COPY --from=build /src/packages/db/migrations ./migrations
+COPY --from=build /src/packages/db/sql ./sql
 # `docker compose exec worker openrent backup --out /backups/2026-10-25`
 RUN printf '#!/bin/sh\nexec node /app/cli/main.js "$@"\n' > /usr/local/bin/openrent && chmod +x /usr/local/bin/openrent \
   && mkdir -p /backups && chown node:node /backups

@@ -17,7 +17,7 @@
   const rt = getRuntime();
   const shop = $derived(rt.shop);
   const css = $derived(conceptCss(shop.settings.accent, shop.settings.full_width === true));
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
   // `path` includes the language prefix (/de/...), so compare with the runtime's URLs.
   const showDates = $derived(!path.startsWith(rt.url.order('')) && !path.startsWith(rt.url.checkout()));
   let menu = $state(false);

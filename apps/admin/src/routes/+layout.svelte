@@ -11,7 +11,9 @@
   import { Kbd } from '@openrent/ui/kbd';
   import { Toaster } from '@openrent/ui/sonner';
   import { Spinner } from '@openrent/ui/spinner';
+  import * as Empty from '@openrent/ui/empty';
   import SearchIcon from '@lucide/svelte/icons/search';
+  import CirclePauseIcon from '@lucide/svelte/icons/circle-pause';
   import PlusIcon from '@lucide/svelte/icons/plus';
   import type { LayoutProps } from './$types';
   import { api, session, t, notifyError } from '#lib';
@@ -27,7 +29,7 @@
   let palette = $state(false);
   let flash = $state('');
 
-  const bare = $derived(/\/(login|setup)\/?$/.test(page.url.pathname));
+  const bare = $derived(/\/(login|setup|signup)\/?$/.test(page.url.pathname));
   const section = $derived.by(() => {
     const p = page.url.pathname.replace(/^\/admin/, '') || '/';
     return [...NAV, ...NAV_CONFIGURE].find((n) => (n.href === '/' ? p === '/' : p.startsWith(n.href)));
@@ -93,6 +95,21 @@
   {@render children()}
 {:else if !session.loaded || !session.me}
   <div class="flex min-h-svh items-center justify-center gap-2 text-sm text-muted-foreground"><Spinner />{t('common.loading')}</div>
+{:else if session.me.tenant?.status === 'suspended'}
+  <!-- Managed cloud: the operator suspended this shop; nothing else answers until it is resumed. -->
+  <div class="flex min-h-svh items-center justify-center bg-muted p-6">
+    <Empty.Root class="max-w-md border bg-background" data-testid="shop-suspended">
+      <Empty.Header>
+        <Empty.Media variant="icon"><CirclePauseIcon /></Empty.Media>
+        <Empty.Title>{t('suspended.title', { shop: session.me.tenant.name })}</Empty.Title>
+        <Empty.Description>{t('suspended.description')}</Empty.Description>
+      </Empty.Header>
+      {#if session.me.tenant.suspended_reason}<p class="text-sm">{session.me.tenant.suspended_reason}</p>{/if}
+      <Empty.Content>
+        <Button variant="outline" onclick={() => api.post('/auth/logout').catch(() => undefined).then(() => (location.href = to('/login')))}>{t('action.sign_out')}</Button>
+      </Empty.Content>
+    </Empty.Root>
+  </div>
 {:else}
   <Sidebar.Provider>
     <AppSidebar />

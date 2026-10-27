@@ -29,6 +29,14 @@ export type AccountKey = (typeof ACCOUNT_KEYS)[number];
 
 export interface TenantSettings {
   display_prices_including_tax: boolean;
+  /** Per storefront language (FR-I18N-7): prices shown with tax (`incl`) or without (`excl`); others follow the setting above. */
+  tax_display: Record<string, 'incl' | 'excl'>;
+  /**
+   * Other currencies the storefront can show prices in (FR-I18N-7); orders are always charged in the
+   * shop's currency. `rates` are units per one unit of the shop's currency, typed in or kept up to
+   * date by a rates plugin (`source`).
+   */
+  display_currencies: { currencies: string[]; rates: Record<string, number>; source: string; updated_at: string | null };
   quote_ttl_hours: number;
   quote_holds_stock: boolean;
   /** Minutes a storefront checkout holds stock while payment completes. */
@@ -94,7 +102,33 @@ export interface TenantSettings {
   cart_reminders: { enabled: boolean; after_hours: number };
   /** The shop's own CSS and header/footer HTML, cleaned on save (FR-SF-4). */
   storefront_code: { css: string; header_html: string; footer_html: string; translations?: Record<string, { header_html?: string; footer_html?: string }> };
+  /**
+   * What search engines and shared links show for the home page, and the picture shared when a page has
+   * none of its own; `translations` holds the texts in other storefront languages.
+   */
+  seo: { title: string | null; description: string | null; image_url: string | null; translations?: Record<string, { title?: string | null; description?: string | null }> };
+  /**
+   * What customers may change themselves in their account (ADR 0012): cancel (else they ask) up to
+   * `cancel_until_hours` before pickup, and move their dates (off, ask, or themselves) up to
+   * `change_until_hours` before pickup. Refunds follow `cancellation_policy`.
+   */
+  self_service: { cancel: 'request' | 'self'; cancel_until_hours: number; change_dates: 'off' | 'request' | 'self'; change_until_hours: number };
+  /** The storefront's own menus; an empty header menu leaves the theme's (the categories). */
+  navigation: { header: NavItem[]; footer: NavItem[] };
 }
+
+/**
+ * A menu link: a category, page or product by id (its name when `label` is empty), the home page,
+ * search, or an address (`/path` or https://…). `translations` holds the label in other languages.
+ */
+export interface NavItem {
+  kind: 'home' | 'search' | 'category' | 'page' | 'product' | 'url';
+  target?: string | null;
+  label?: string | null;
+  translations?: Record<string, string>;
+}
+export const NAV_KINDS = ['home', 'search', 'category', 'page', 'product', 'url'] as const;
+export const NAV_MAX = { header: 12, footer: 20 } as const;
 
 export const DEFAULT_TERMS = `1. The renter is responsible for the equipment from pickup until return.
 2. Equipment must be returned clean and in the condition it was received.
@@ -103,6 +137,8 @@ export const DEFAULT_TERMS = `1. The renter is responsible for the equipment fro
 
 export const DEFAULT_SETTINGS: TenantSettings = {
   display_prices_including_tax: true,
+  tax_display: {},
+  display_currencies: { currencies: [], rates: {}, source: 'manual', updated_at: null },
   quote_ttl_hours: 48,
   quote_holds_stock: true,
   storefront_hold_minutes: 30,
@@ -146,6 +182,9 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   theme_sections: {},
   theme_content_translations: {},
   storefront_code: { css: '', header_html: '', footer_html: '' },
+  seo: { title: null, description: null, image_url: null },
+  navigation: { header: [], footer: [] },
+  self_service: { cancel: 'request', cancel_until_hours: 48, change_dates: 'off', change_until_hours: 48 },
 };
 
 function isObj(v: unknown): v is Record<string, any> {

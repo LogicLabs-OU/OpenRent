@@ -65,7 +65,8 @@ suite('product relations', () => {
   it('offers public accessories and related products in the storefront', async () => {
     const r = (await shop().get(`/api/v1/storefront/catalog/products/${p.kayak.slug}`)).body;
     expect(r.accessories.map((x: any) => [x.name, x.variant_id])).toEqual([['Paddle', p.paddle.variants[0].id], ['Helmet', p.helmet.variants[0].id]]);
-    expect(r.accessories[0].price.description).toContain('10');
+    // €10.00 a day plus the shop's 20 % VAT, as the storefront shows prices with tax.
+    expect(r.accessories[0].price.description).toBe('€12.00 per day');
     // The map is related by staff and often rented with the kayak: shown once.
     expect(r.related.map((x: any) => x.name)).toEqual(['River map']);
     // Deleting a product takes its relations with it.

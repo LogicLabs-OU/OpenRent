@@ -1,5 +1,5 @@
 import { DeliveryError, type Attachment, type DomainEvent } from '@openrent/plugin-sdk';
-import { webhooks, notifications, orders, customers, storefront, catalog, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, imports, domains, exportZip, hookContext, serverT, type Ctx } from '@openrent/core';
+import { webhooks, notifications, orders, customers, storefront, catalog, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, imports, tenancy, domains, exportZip, hookContext, serverT, type Ctx, guardedFetch } from '@openrent/core';
 import { readSheet, rowsSheet, writeCsv, writeXlsx } from '@openrent/api/spreadsheets';
 import { withSystem, withTenant, type PoolClient } from '@openrent/db';
 import type { AppDeps } from '@openrent/api/deps';
@@ -20,7 +20,7 @@ function ctxFor(deps: AppDeps, db: PoolClient, tenantId: string, logger: WorkerL
     plugins: deps.plugins,
     secrets: deps.secrets,
     config: {
-      publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, livemode: deps.config.livemode,
+      publicUrl: deps.config.publicUrl, adminUrl: deps.config.adminUrl, storefrontUrl: deps.config.storefrontUrl, storefrontDomain: deps.config.storefrontDomain, livemode: deps.config.livemode, multiTenant: deps.config.mode === 'multi_tenant',
       renderPdf: deps.config.pdfRenderer === 'playwright' ? async (html) => (await import('@openrent/api/pdf')).renderPdf(html) : undefined,
     },
     logger,
@@ -113,7 +113,9 @@ const WORKER_CONCURRENCY = 4;
  * Sends due webhook deliveries (first attempts and retries). Each delivery takes one of
  * ENDPOINT_CONCURRENCY advisory-lock slots for its endpoint; when all are taken it waits for the next run.
  */
-export async function deliverWebhooks(deps: AppDeps, logger: WorkerLogger, fetchImpl: webhooks.FetchLike = fetch as any, batch = 20): Promise<number> {
+export async function deliverWebhooks(deps: AppDeps, logger: WorkerLogger, fetchImpl?: webhooks.FetchLike, batch = 20): Promise<number> {
+  // Through the network guard unless the installation allows private endpoints (WEBHOOKS_ALLOW_PRIVATE_NETWORK).
+  fetchImpl ??= (webhooks.allowPrivateNetwork() ? fetch : guardedFetch) as unknown as webhooks.FetchLike;
   const due = await withSystem(deps.db, (c) =>
     c.query<{ id: string; tenant_id: string; endpoint_id: string }>(
       `SELECT id, tenant_id, endpoint_id FROM webhook_deliveries WHERE status = 'pending' AND next_attempt_at <= now() ORDER BY next_attempt_at LIMIT $1`,
@@ -229,13 +231,19 @@ export function formatFrom(from: string | null | undefined, shopName: string): s
 }
 
 /**
- * PDFs of the message's documents, and stored files as they are (scheduled reports). A missing
+ * PDFs of the message's documents, stored files as they are (scheduled reports), and a booking's
+ * pickup and return as a calendar file (`ics:<order id>`). A missing
  * renderer never blocks the email; links still work.
  */
 async function attachmentsFor(deps: AppDeps, ctx: Ctx, ids: string[], logger: WorkerLogger): Promise<Attachment[]> {
   const out: Attachment[] = [];
   for (const id of ids) {
     try {
+      if (id.startsWith('ics:')) {
+        const cal = await orders.orderCalendar(ctx, id.slice(4));
+        out.push({ filename: cal.filename, contentType: 'text/calendar; charset=utf-8; method=PUBLISH', content: cal.content });
+        continue;
+      }
       if (id.startsWith('fil_')) {
         const f = await files.getFile(ctx, id);
         out.push({ filename: f.filename, contentType: f.content_type, content: await files.readFile(ctx, f) });
@@ -266,7 +274,9 @@ export async function sendNotifications(deps: AppDeps, logger: WorkerLogger, bat
       [serverT('email.gave_up', { days: notifications.MAX_QUEUE_DAYS }), notifications.MAX_QUEUE_DAYS],
     );
     return c.query<{ id: string; tenant_id: string }>(
+      // A suspended shop's messages wait until it is resumed.
       `SELECT id, tenant_id FROM notifications WHERE status = 'queued' AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+          AND tenant_id IN (SELECT id FROM tenants WHERE status = 'active')
         ORDER BY created_at LIMIT $1`,
       [batch],
     );
@@ -336,7 +346,8 @@ async function sendText(ctx: Ctx, n: any, logger: WorkerLogger) {
 }
 
 async function forEachTenant(deps: AppDeps, fn: (ctx: Ctx) => Promise<unknown>, logger: WorkerLogger) {
-  const tenants = await withSystem(deps.db, (c) => c.query<{ id: string }>(`SELECT id FROM tenants`));
+  // Suspended shops (managed cloud) are paused: no reminders, expiries or plugin jobs until resumed.
+  const tenants = await withSystem(deps.db, (c) => c.query<{ id: string }>(`SELECT id FROM tenants WHERE status = 'active'`));
   for (const t of tenants.rows) {
     try {
       await withTenant(deps.db, t.id, (c) => fn(ctxFor(deps, c, t.id, logger)));
@@ -383,6 +394,7 @@ export const SCHEDULED = {
   // One reminder to carts left with an email and items, when the shop turned them on (FR-SF-9).
   'storefront.cart_reminders': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => storefront.sendCartReminders(ctx), l) },
   // "Often rented with" from the last year of bookings (FR-CAT-7).
+  'currency.rates': { cron: '17 6 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => tenancy.refreshRates(ctx), l) },
   'reports.saved': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => reports.queueDueReports(ctx), l) },
   'catalog.often_rented_with': { cron: '41 3 * * 1', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => catalog.computeOftenRentedWith(ctx), l) },
   // Long rentals billed weekly or monthly while out (FR-OR-11).

@@ -93,11 +93,13 @@ export interface FeeRule {
   id: string;
   name: string;
   kind: 'delivery' | 'cleaning' | 'damage_waiver' | 'extension' | 'late';
-  calculation: 'flat' | 'per_unit' | 'percent' | 'per_period' | 'zone';
+  calculation: 'flat' | 'per_unit' | 'percent' | 'per_period' | 'zone' | 'per_km';
   amount: number;
   period_unit?: PeriodUnit | null;
   /** Postcode prefixes and their price, for `zone`. */
   zones?: { postcodes: string[]; amount: number }[];
+  /** Distance bands for `per_km` (FR-PR-8): the first one the distance fits; `up_to_km` null is any distance. */
+  distance_bands?: { up_to_km: number | null; amount: number }[];
   mode: 'auto' | 'optional';
   product_ids?: string[];
   category_ids?: string[];
@@ -110,7 +112,14 @@ export interface QuoteOptions {
   postcode?: string | null;
   /** Where to deliver, as the customer wrote it (FR-OR-12). */
   address?: string | null;
+  /**
+   * Set by the quote, not the customer (FR-PR-8): kilometres from the location to `address`, or why
+   * there is none (no address, or not found on the map).
+   */
+  distance?: { km: number } | { error: 'address_required' | 'address_not_found' } | null;
 }
+
+export type FeeError = 'postcode_required' | 'postcode_not_served' | 'address_required' | 'address_not_found' | 'address_too_far';
 
 export interface BundleComponentInput {
   variantId: string;
@@ -210,10 +219,13 @@ export interface QuoteBreakdown {
   coupons_applied: { code: string; coupon_id: string; amount: number }[];
   coupon_errors: { code: string; reason: string }[];
   /** Optional fees the customer can add, with what each would cost now. */
-  optional_fees: { id: string; name: string; kind: FeeRule['kind']; amount: number; selected: boolean }[];
+  /** `priced_by` says what a delivery's price waits for when it is not known yet: the postcode or the address. */
+  optional_fees: { id: string; name: string; kind: FeeRule['kind']; amount: number; selected: boolean; priced_by: 'postcode' | 'distance' | null }[];
   /** Fees that could not be priced, e.g. a delivery postcode outside every zone. */
-  fee_errors: { fee_id: string; reason: 'postcode_required' | 'postcode_not_served' }[];
+  fee_errors: { fee_id: string; reason: FeeError }[];
   tax_breakdown: { rate_bp: number; net: number; tax: number }[];
+  /** From the tax plugin (plugin API 1.8): printed under the totals, e.g. for the reverse charge. */
+  tax_note?: Record<string, string> | null;
   explanation: string[];
   explanation_items: Explain[];
 }
@@ -472,8 +484,8 @@ export function zoneAmount(zones: FeeRule['zones'], postcode: string | null | un
 export function feeAmount(
   f: FeeRule,
   lines: { productId?: string | null; categoryIds?: string[]; quantity: number; subtotal: number; type: string }[],
-  q: { durationMin: number; postcode?: string | null },
-): { amount: number } | { error: 'postcode_required' | 'postcode_not_served' } | null {
+  q: { durationMin: number; postcode?: string | null; distance?: QuoteOptions['distance'] },
+): { amount: number } | { error: FeeError } | null {
   const products = f.product_ids ?? [];
   const cats = f.category_ids ?? [];
   const inScope = lines.filter(
@@ -494,7 +506,19 @@ export function feeAmount(
       const a = zoneAmount(f.zones, q.postcode);
       return a === null ? { error: 'postcode_not_served' } : { amount: a };
     }
+    case 'per_km': {
+      const d = q.distance ?? { error: 'address_required' as const };
+      if ('error' in d) return { error: d.error };
+      const band = bandFor(f.distance_bands, d.km);
+      return band === null ? { error: 'address_too_far' } : { amount: band };
+    }
   }
+}
+
+/** The price of the first distance band a distance fits; null when it is beyond the last. */
+export function bandFor(bands: FeeRule['distance_bands'], km: number): number | null {
+  const sorted = [...(bands ?? [])].sort((a, b) => (a.up_to_km ?? Infinity) - (b.up_to_km ?? Infinity));
+  return sorted.find((b) => b.up_to_km === null || km <= b.up_to_km)?.amount ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -670,15 +694,16 @@ export function quote(input: QuoteInput, now: Date): QuoteBreakdown {
   const priced = input.lines.map((l, i) => ({ productId: l.productId, categoryIds: l.categoryIds, type: l.type, quantity: lines[i]!.quantity, subtotal: lines[i]!.subtotal }));
   for (const f of input.feeRules ?? []) {
     if (f.kind === 'extension' || f.kind === 'late') continue;
+    const priced_by = f.calculation === 'zone' ? 'postcode' : f.calculation === 'per_km' ? 'distance' : null;
     const wanted = f.mode === 'auto' || chosen.has(f.id);
-    const r = feeAmount(f, priced, { durationMin, postcode: input.options?.postcode });
+    const r = feeAmount(f, priced, { durationMin, postcode: input.options?.postcode, distance: input.options?.distance });
     if (!r) continue;
     if ('error' in r) {
       if (wanted) fee_errors.push({ fee_id: f.id, reason: r.error });
-      if (f.mode === 'optional') optional_fees.push({ id: f.id, name: f.name, kind: f.kind, amount: 0, selected: chosen.has(f.id) });
+      if (f.mode === 'optional') optional_fees.push({ id: f.id, name: f.name, kind: f.kind, amount: 0, selected: chosen.has(f.id), priced_by });
       continue;
     }
-    if (f.mode === 'optional') optional_fees.push({ id: f.id, name: f.name, kind: f.kind, amount: r.amount, selected: chosen.has(f.id) });
+    if (f.mode === 'optional') optional_fees.push({ id: f.id, name: f.name, kind: f.kind, amount: r.amount, selected: chosen.has(f.id), priced_by });
     if (!wanted) continue;
     lines.push({
       key: `fee:${f.id}`, type: 'fee', name: f.name, quantity: 1, periods: 1, charge_periods: 1, period_unit: null, unit_price: r.amount, subtotal: r.amount,

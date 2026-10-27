@@ -7,7 +7,7 @@
   let { heading, text, coins }: { heading: string; text: string; coins: boolean } = $props();
   const rt = getRuntime();
   const letter = $derived(rt.shop.tenant.name.trim()[0]?.toUpperCase() ?? '');
-  const loc = $derived(rt.shop.locations[0]);
+  const loc = $derived(rt.shop.location ?? rt.shop.locations[0]);
 </script>
 
 <section class="relative overflow-hidden border-b border-black">

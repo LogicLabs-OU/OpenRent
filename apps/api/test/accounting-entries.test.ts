@@ -98,7 +98,8 @@ suite('accounting entries', () => {
   });
 
   it('dates entries after the lock date and keeps the real date', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    // The shop's day (Europe/Tallinn), which differs from the UTC day around midnight.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Tallinn' }).format(new Date());
     const bad = await admin.patch('/api/v1/tenant/settings', { accounting: { locked_until: '2999-01-01' } });
     expect(bad.status).toBe(422);
     expect(bad.body.errors.map((e: any) => e.field)).toEqual(['accounting.locked_until']);

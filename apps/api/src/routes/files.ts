@@ -6,6 +6,16 @@ import { withSystem, withTenant } from '@openrent/db';
 import type { Router } from '../http.ts';
 import { Id, IdParams, Nullable, Type } from '../schemas.ts';
 import { imageBytes, storeImage } from '../images.ts';
+
+/** Spreadsheet types browsers send for CSV and Excel files. */
+const IMPORT_TYPES = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+const importType = (mime: string, filename: string) => {
+  if (IMPORT_TYPES.includes(mime)) return mime;
+  if (mime !== 'application/octet-stream') return null;
+  const ext = filename.toLowerCase().split('.').pop();
+  return ext === 'csv' ? 'text/csv' : ext === 'xlsx' ? IMPORT_TYPES[4]! : ext === 'xls' ? 'application/vnd.ms-excel' : null;
+};
+const RASTER = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']);
 import { systemCtx } from '../context.ts';
 
 export const MAX_UPLOAD_MB = 15;
@@ -41,9 +51,13 @@ export function registerFiles(r: Router) {
       const filename = part.filename.replace(/[^\w.\- ]+/g, '_').slice(0, 120) || 'upload';
       if (purpose === 'attachment' && !attachments.ATTACHMENT_TYPES.includes(part.mimetype))
         throw new AppError('unsupported_media_type', 415, serverT('attachments.unsupported'));
+      // Imports are spreadsheets: anything else (HTML, SVG) could be opened in staff's browser later.
+      // Some browsers send a spreadsheet as application/octet-stream; its name then tells which it is.
+      const sheet = importType(part.mimetype, filename);
+      if (purpose === 'import' && !sheet) throw new AppError('unsupported_media_type', 415, serverT('files.import_unsupported'));
       const f =
         purpose === 'import' || purpose === 'attachment'
-          ? await files.putFile(ctx, { kind: purpose, filename, contentType: part.mimetype, body })
+          ? await files.putFile(ctx, { kind: purpose, filename, contentType: purpose === 'import' ? sheet! : part.mimetype, body })
           : await storeImage(ctx, { kind: purpose, filename, body });
       return reply.status(201).send({ ...files.fileToApi(f), ...(purpose === 'import' || purpose === 'attachment' ? {} : catalog.imageUrls(ctx, f.id)) });
     },
@@ -57,10 +71,19 @@ export function registerFiles(r: Router) {
   });
   r.get('/files/:id', { permission: 'catalog:read', tags: F, summary: 'File metadata', params: IdParams }, async (ctx, req) => files.fileToApi(await files.getFile(ctx, req.params.id)));
   r.get('/files/:id/content', { permission: 'catalog:read', tags: F, summary: 'Download a file (images accept ?variant=sm|lg)', params: IdParams, querystring: Type.Object({ variant: Type.Optional(Type.Union([Type.Literal('sm'), Type.Literal('lg'), Type.Literal('original')])) }), raw: true }, async (ctx, req, reply) => {
-    // Data exports hold every customer's details: they download only through GET /jobs/{id}/download.
-    if ((await files.getFile(ctx, req.params.id)).kind === 'export') throw new AppError('not_found', 404, serverT('files.not_found'));
+    // Only catalogue images, condition photos and import files come from here. Everything else (exports,
+    // ID documents, signatures, attachments) downloads through its own route and permission.
+    if (!['image', 'photo', 'import'].includes((await files.getFile(ctx, req.params.id)).kind)) throw new AppError('not_found', 404, serverT('files.not_found'));
     const { file, body } = await imageBytes(ctx, req.params.id, req.query.variant ?? 'original');
-    return reply.type(file.content_type).header('Cache-Control', 'private, max-age=3600').header('Content-Disposition', `inline; filename="${file.filename}"`).send(body);
+    // Pictures show in the page; anything else downloads, and nothing served here may run script.
+    const inline = RASTER.has(file.content_type);
+    return reply
+      .type(file.content_type)
+      .header('Cache-Control', 'private, max-age=3600')
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Security-Policy', "default-src 'none'; sandbox")
+      .header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${file.filename}"`)
+      .send(body);
   });
 
   // Product photos are public once attached to a product: no session or shop header needed, so plain <img> tags work anywhere.
@@ -85,7 +108,16 @@ export function registerFiles(r: Router) {
       const f = await files.getFile(ctx, req.params.id);
       return { file: f, body: await files.readFile(ctx, f) };
     });
-    return reply.type(file.content_type).header('Cache-Control', 'public, max-age=31536000, immutable').header('Access-Control-Allow-Origin', '*').header('X-Content-Type-Options', 'nosniff').send(body);
+    // An SVG opened on its own must not run script on this origin (it also serves the admin).
+    const svg = file.content_type === 'image/svg+xml';
+    return reply
+      .type(file.content_type)
+      .header('Cache-Control', 'public, max-age=31536000, immutable')
+      .header('Access-Control-Allow-Origin', '*')
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:; sandbox")
+      .header('Content-Disposition', svg ? `attachment; filename="${req.params.name.replace(/[^\w.-]+/g, '_')}"` : 'inline')
+      .send(body);
   });
 
   // Preview images of code themes (the thumbnails on Admin → Themes), read from the theme's own folder.

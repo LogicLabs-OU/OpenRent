@@ -1,7 +1,21 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
+
+/**
+ * The tests' `test`: after each one, browser contexts it opened besides its own (a shopper, a second
+ * staff member) are closed, even when it failed, so they do not pile up in the worker's browser.
+ */
+export const test = base.extend<{ closeExtraContexts: void }>({
+  closeExtraContexts: [
+    async ({ browser, context }, use) => {
+      await use();
+      for (const c of browser.contexts()) if (c !== context) await c.close().catch(() => undefined);
+    },
+    { auto: true },
+  ],
+});
 
 export const ADMIN = (process.env.ADMIN_URL ?? 'http://localhost:7071/admin').replace(/\/$/, '');
 export const STORE = (process.env.STOREFRONT_URL ?? 'http://localhost:7072').replace(/\/$/, '');
@@ -34,7 +48,8 @@ export function collectErrors(page: Page) {
 }
 
 export async function shot(page: Page, name: string) {
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: true });
+  // The visible window: full-page captures draw sticky headers and sidebars in the wrong place.
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
 }
 
 export const isoDate = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
@@ -87,4 +102,27 @@ export async function addProduct(page: Page, search: string, option = search) {
   await picker.getByLabel('Add a product').fill(search);
   await picker.getByRole('option', { name: option, exact: true }).click();
   await expect(picker.getByLabel('Add a product')).toHaveValue('');
+}
+
+/**
+ * The HTML of a queued message that the message log hides (sign-in links, signing codes). The e2e stack
+ * runs no worker, so messages stay queued; tests read them from the test database, never through the API.
+ */
+export async function messageHtml(id: string): Promise<string> {
+  const { default: pg } = await import('pg');
+  // The test database (PGlite behind a socket) can mix up statements of clients that connect at the
+  // same moment, as parallel specs do; a fresh connection then reads fine.
+  for (let attempt = 1; ; attempt++) {
+    const c = new pg.Client({ connectionString: process.env.DATABASE_URL ?? 'postgres://postgres:postgres@127.0.0.1:7432/postgres' });
+    try {
+      await c.connect();
+      const r = await c.query(`SELECT body_html FROM notifications WHERE id = $1`, [id]);
+      return String(r.rows[0]?.body_html ?? '');
+    } catch (err) {
+      if (attempt >= 3 || !/prepared statement|portal/i.test(String((err as Error).message))) throw err;
+      await new Promise((ok) => setTimeout(ok, 200 * attempt));
+    } finally {
+      await c.end().catch(() => undefined);
+    }
+  }
 }

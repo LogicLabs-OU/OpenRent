@@ -21,7 +21,7 @@
 
   const rt = getRuntime();
   const shop = rt.shop;
-  const tz = shop.locations[0]?.timezone ?? shop.tenant.timezone;
+  const tz = (shop.location ?? shop.locations[0])?.timezone ?? shop.tenant.timezone;
   const initial = (iso: string | null) => (iso ? parseDate(rt.zone.localDate(iso)) : undefined);
 
   let range = $state<DateRange>({ start: initial(shop.dates.from), end: initial(shop.dates.to) });
@@ -117,7 +117,9 @@
             id="or-dates"
             class="flex h-8 w-full items-center gap-2 text-left text-lg font-semibold uppercase hover:text-(--mq-accent)"
           >
-            <CalendarDaysIcon class="size-4 shrink-0" aria-hidden="true" /><span class="truncate">{label}</span>
+            <CalendarDaysIcon class="size-4 shrink-0" aria-hidden="true" /><span class="truncate"
+              >{label}</span
+            >
           </Popover.Trigger>
           <Popover.Content class="w-auto p-0" align="start">
             <RangeCalendar.RangeCalendar
@@ -164,7 +166,8 @@
         <button
           type="submit"
           class="mq-cta flex min-h-14 flex-1 items-center justify-between gap-4 px-5 text-xl font-bold tracking-[-0.01em] uppercase disabled:opacity-60"
-          disabled={busy}>{rt.t('dates.apply')}<ArrowRightIcon class="mq-arrow size-5" aria-hidden="true" /></button
+          disabled={busy}
+          >{rt.t('dates.apply')}<ArrowRightIcon class="mq-arrow size-5" aria-hidden="true" /></button
         >
         {#if shop.dates.from}<button
             type="button"
@@ -177,6 +180,8 @@
     </div>
     {#if error}<p class="text-destructive text-base font-semibold uppercase" role="alert">{error}</p>{/if}
   </form>
+  <!-- Where the visitor rents from, when the shop has several locations (theme API 1.9). -->
+  <rt.components.Slot name="dates.after" />
   {#if variant === 'bar'}
     <button
       type="button"

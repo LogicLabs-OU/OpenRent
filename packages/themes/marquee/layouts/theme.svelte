@@ -20,7 +20,7 @@
   const rt = getRuntime();
   const shop = $derived(rt.shop);
   const css = $derived(marqueeCss(shop.settings));
-  const loc = $derived(shop.locations[0]);
+  const loc = $derived(shop.location ?? shop.locations[0]);
   const notice = $derived(
     shop.settings.show_notice === false
       ? ''
@@ -37,10 +37,15 @@
   const accountLabel = $derived(shop.customer ? rt.t('nav.account') : rt.t('nav.sign_in'));
   const searchUrl = $derived(rt.url.search?.());
   let menu = $state(false);
-  const links = $derived([
-    { href: rt.url.home(), label: rt.t('nav.home') },
-    ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
-  ]);
+  // The shop's own header menu (theme API 1.9) takes the place of the categories when it has links.
+  const links = $derived(
+    shop.navigation?.header.length
+      ? shop.navigation.header.map((l) => ({ href: l.href, label: l.label }))
+      : [
+          { href: rt.url.home(), label: rt.t('nav.home') },
+          ...shop.categories.map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
+        ],
+  );
 
   const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
   /** Opening hours as rows of a short weekday and its time ranges (2024-01-01 was a Monday). */
@@ -57,14 +62,21 @@
       : [],
   );
   const address = $derived(
-    loc ? [loc.address?.line1, [loc.address?.postal_code, loc.address?.city].filter(Boolean).join(' ')].filter(Boolean) : [],
+    loc
+      ? [loc.address?.line1, [loc.address?.postal_code, loc.address?.city].filter(Boolean).join(' ')].filter(
+          Boolean,
+        )
+      : [],
   );
-  const footerLinks = $derived([
-    ...shop.categories.slice(0, 6).map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
-    { href: rt.url.page('terms'), label: rt.t('footer.terms') },
-    ...(account ? [{ href: account, label: accountLabel }] : []),
-    { href: rt.url.cart(), label: rt.t('nav.cart') },
-  ]);
+  const footerLinks = $derived(
+    [
+      ...shop.categories.slice(0, 6).map((c) => ({ href: rt.url.category(c.slug), label: c.name })),
+      { href: rt.url.page('terms'), label: rt.t('footer.terms') },
+      ...(shop.navigation?.footer ?? []).map((l) => ({ href: l.href, label: l.label })),
+      ...(account ? [{ href: account, label: accountLabel }] : []),
+      { href: rt.url.cart(), label: rt.t('nav.cart') },
+    ].filter((l, i, all) => all.findIndex((x) => x.href === l.href) === i),
+  );
 </script>
 
 <svelte:head>
@@ -128,7 +140,8 @@
           >{#if shop.cartCount}<span class="sr-only">({shop.cartCount})</span>{/if}</a
         >
         <Sheet.Root bind:open={menu}>
-          <Sheet.Trigger class="group flex items-center gap-3 text-[1.0625rem] leading-none font-bold uppercase"
+          <Sheet.Trigger
+            class="group flex items-center gap-3 text-[1.0625rem] leading-none font-bold uppercase"
             ><span class="hidden md:inline">{rt.t('nav.menu')}</span><span
               class="mq-burger flex w-8 flex-col gap-[7px]"
               aria-hidden="true"
@@ -155,14 +168,18 @@
                   ></a
                 >{/each}
             </nav>
-            <div class="mt-auto flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-(--mq-ink) px-6 py-5">
+            <div
+              class="mt-auto flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-(--mq-ink) px-6 py-5"
+            >
               {#if account}<a
                   class="mq-link text-lg font-bold uppercase"
                   href={account}
                   onclick={() => (menu = false)}>{accountLabel}</a
                 >{/if}
-              {#if searchUrl}<a class="mq-link text-lg font-bold uppercase" href={searchUrl} onclick={() => (menu = false)}
-                  >{rt.t('nav.search')}</a
+              {#if searchUrl}<a
+                  class="mq-link text-lg font-bold uppercase"
+                  href={searchUrl}
+                  onclick={() => (menu = false)}>{rt.t('nav.search')}</a
                 >{/if}
               <LanguageMenu />
             </div>
@@ -197,7 +214,8 @@
             <button
               class="mq-fill grid aspect-square w-[clamp(3.5rem,7vw,5.5rem)] shrink-0 place-items-center border border-(--mq-rule) [--mq-fill:var(--mq-paper)] [--mq-fill-text:var(--mq-ink)]"
               type="submit"
-              aria-label={rt.t('search.submit')}><ArrowRightIcon class="mq-arrow size-7" aria-hidden="true" /></button
+              aria-label={rt.t('search.submit')}
+              ><ArrowRightIcon class="mq-arrow size-7" aria-hidden="true" /></button
             >
           </form>
         {/if}
@@ -211,9 +229,12 @@
           <a
             class="mq-fill col-span-2 row-span-2 flex min-h-56 flex-col justify-between gap-4 p-5 [--mq-fill:var(--mq-accent)]"
             href={rt.url.home()}
-            ><span class="mq-outline mq-tight text-[7rem] leading-[0.8] font-extrabold uppercase [--mq-stroke:var(--mq-paper)]"
+            ><span
+              class="mq-outline mq-tight text-[7rem] leading-[0.8] font-extrabold uppercase [--mq-stroke:var(--mq-paper)]"
               >{shop.tenant.name.slice(0, 1)}</span
-            ><span class="mq-tight text-3xl leading-[0.9] font-bold break-words uppercase">{shop.tenant.name}</span></a
+            ><span class="mq-tight text-3xl leading-[0.9] font-bold break-words uppercase"
+              >{shop.tenant.name}</span
+            ></a
           >
           {#if loc}<div class="col-span-2 flex min-h-28 flex-col gap-2 p-5">
               <span class="text-[0.8125rem] font-semibold tracking-[0.04em] text-[#b9bac1] uppercase"
@@ -228,7 +249,9 @@
               >
               <dl class="mq-mono grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-[0.8125rem] uppercase">
                 {#each hours as h (h.day)}<dt>{h.day}</dt>
-                  <dd class={h.time ? '' : 'text-[#b9bac1]'}>{h.time || rt.t('dates.closed_short')}</dd>{/each}
+                  <dd class={h.time ? '' : 'text-[#b9bac1]'}>
+                    {h.time || rt.t('dates.closed_short')}
+                  </dd>{/each}
               </dl>
             </div>{/if}
           {#each footerLinks as l (l.href)}<a
@@ -248,10 +271,12 @@
         'flex flex-wrap items-center justify-between gap-3 border-t border-(--mq-rule) py-6 text-[0.8125rem] font-semibold tracking-[0.04em] uppercase',
       )}
     >
-      <span class="mq-mono font-normal normal-case">{rt.t('footer.copyright', {
+      <span class="mq-mono font-normal normal-case"
+        >{rt.t('footer.copyright', {
           year: new Date().getFullYear(),
           shop: shop.tenant.name,
-        })}</span>
+        })}</span
+      >
       {#if shop.settings.show_powered_by !== false}<a
           class="mq-link"
           href="https://openrent.dev"

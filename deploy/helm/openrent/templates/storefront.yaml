@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openrent.fullname" . }}-storefront
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storefront
+spec:
+  replicas: {{ .Values.storefront.replicas }}
+  selector:
+    matchLabels: {{- include "openrent.selector" (dict "root" . "component" "storefront") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "openrent.selector" (dict "root" . "component" "storefront") | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: storefront
+          image: {{ include "openrent.image" (dict "root" . "name" "storefront") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports: [{ name: http, containerPort: 7072 }]
+          env:
+            - name: OPENRENT_API_URL
+              value: {{ printf "http://%s-api:7070" (include "openrent.fullname" .) | quote }}
+            - name: OPENRENT_STOREFRONT_DOMAIN
+              value: {{ .Values.storefrontDomain | quote }}
+            - name: TENANT_SLUG
+              value: {{ .Values.tenantSlug | quote }}
+            # The request's own host and scheme (from Caddy or the ingress), for {slug} subdomains and custom domains.
+            - name: PROTOCOL_HEADER
+              value: x-forwarded-proto
+            - name: HOST_HEADER
+              value: x-forwarded-host
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 5
+          resources: {{- toYaml .Values.storefront.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "openrent.fullname" . }}-storefront
+  labels: {{- include "openrent.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "openrent.selector" (dict "root" . "component" "storefront") | nindent 4 }}
+  ports: [{ name: http, port: 7072, targetPort: http }]

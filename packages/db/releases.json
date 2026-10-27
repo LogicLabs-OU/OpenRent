@@ -1,0 +1,8 @@
+{
+  "//": "The last migration of each release. The N-1 test (apps/api/test/upgrade.test.ts) upgrades a database from the previous release's schema, filled with data, to the current one. Add a line when cutting a release.",
+  "previous": "0.9.0",
+  "releases": {
+    "0.9.0": "20261026171558_external_stock.sql",
+    "1.0.0": "20261027002647_totp_last_step.sql"
+  }
+}

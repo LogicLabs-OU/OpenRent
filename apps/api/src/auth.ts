@@ -37,6 +37,10 @@ function safeEqual(a: string, b: string) {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
+const status = new Map<string, { s: string; at: number }>();
+/** After the operator suspends or resumes a shop, this API instance stops using its cached status. */
+export const forgetShopStatus = (id: string) => status.delete(id);
+
 /** Resolves credentials for every /api/v1 request (PRD §5.2). */
 export function registerAuth(app: FastifyInstance, deps: AppDeps) {
   // Single-tenant convenience: cache the only tenant for slug-less storefront calls.
@@ -131,4 +135,22 @@ export function registerAuth(app: FastifyInstance, deps: AppDeps) {
       if (tenantId) req.auth = { kind: 'slug', tenantId, actor: { type: 'storefront', id: null, scopes: ['storefront'] } };
     }
   });
+
+  // A suspended shop (managed cloud) answers nothing but sign-in and "who am I", so its admin can say
+  // why; the storefront shows the same message. Status is cached for 15 s per shop.
+  const shopStatus = async (id: string) => {
+    const hit = status.get(id);
+    if (hit && Date.now() - hit.at < 15_000) return hit.s;
+    const s = (await withSystem(deps.db, (c) => c.query(`SELECT status FROM tenants WHERE id = $1`, [id]))).rows[0]?.status ?? 'active';
+    if (status.size > 5000) status.clear();
+    status.set(id, { s, at: Date.now() });
+    return s;
+  };
+  app.addHook('onRequest', async (req: FastifyRequest) => {
+    const url = req.url.split('?')[0]!;
+    const id = req.auth?.tenantId;
+    if (!id || !url.startsWith('/api/v1/') || /^\/api\/v1\/(auth|system|operator)\//.test(url)) return;
+    if ((await shopStatus(id)) === 'suspended') throw new AppError('shop_suspended', 403, serverT('error.shop_suspended'));
+  });
+
 }

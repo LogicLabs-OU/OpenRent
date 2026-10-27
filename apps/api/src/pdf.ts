@@ -1,10 +1,21 @@
 import type { Browser } from 'playwright';
-import { AppError, documents, serverT, type Ctx } from '@openrent/core';
+import { AppError, documents, guardedFetch, serverT, type Ctx } from '@openrent/core';
 
 /**
  * HTML → PDF with headless Chromium (PRD FR-DOC-2). One browser per process, one isolated context per
  * document. Document HTML is rendered with JavaScript off and may only load https: and data: resources.
+ * Chromium never fetches anything itself: each resource (a logo, an image in a shop's template) is
+ * fetched here through the network guard, redirects included, and handed over; this installation's
+ * own address (product photos, theme fonts) is fetched directly.
  */
+const OWN = (() => {
+  try {
+    return new URL(process.env.OPENRENT_PUBLIC_URL ?? '').origin;
+  } catch {
+    return null;
+  }
+})();
+const MAX_RESOURCE = 10 * 1024 * 1024;
 let launching: Promise<Browser> | null = null;
 
 async function browser(): Promise<Browser> {
@@ -27,9 +38,19 @@ export async function renderPdf(html: string): Promise<Buffer> {
   const context = await b.newContext({ javaScriptEnabled: false });
   try {
     const page = await context.newPage();
-    await page.route('**/*', (route) => {
+    await page.route('**/*', async (route) => {
       const url = route.request().url();
-      return url.startsWith('data:') || url.startsWith('https://') ? route.continue() : route.abort();
+      if (url.startsWith('data:')) return route.continue();
+      if (!url.startsWith('https://') && !(OWN && url.startsWith(`${OWN}/`))) return route.abort();
+      try {
+        const res = OWN && url.startsWith(`${OWN}/`) ? await fetch(url, { signal: AbortSignal.timeout(10_000) }) : await guardedFetch(url, { timeoutMs: 10_000 });
+        if (Number(res.headers.get('content-length') ?? 0) > MAX_RESOURCE) return route.abort();
+        const body = Buffer.from(await res.arrayBuffer());
+        if (body.length > MAX_RESOURCE) return route.abort();
+        return route.fulfill({ status: res.status, contentType: res.headers.get('content-type') ?? 'application/octet-stream', body });
+      } catch {
+        return route.abort();
+      }
     });
     await page.setContent(html, { waitUntil: 'load', timeout: 20_000 });
     return await page.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true, margin: { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' } });

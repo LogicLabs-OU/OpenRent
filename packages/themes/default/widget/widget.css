@@ -1,0 +1,7 @@
+/* OpenRent Default in the embeddable widget (theme API 1.8): the shop's accent and corner radius. */
+:host {
+  --primary: {{ settings.accent | branding.primary_color }};
+  --primary-foreground: {{ contrast: settings.accent | branding.primary_color }};
+  --ring: {{ settings.accent | branding.primary_color }};
+  --radius: {{ settings.radius | 10 }}px;
+}

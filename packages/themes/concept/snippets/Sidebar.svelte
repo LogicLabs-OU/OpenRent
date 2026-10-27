@@ -72,6 +72,20 @@
     {/if}
   </nav>
 
+  <!-- The shop's own header menu (theme API 1.9); the sidebar keeps the categories below it. -->
+  {#if shop.navigation?.header.length}
+    <nav class="flex flex-col gap-px" aria-label={rt.t('nav.menu')}>
+      {#each shop.navigation.header as l (l.href)}
+        <a
+          class={[row, item, path === l.href && on]}
+          href={l.href}
+          aria-current={path === l.href ? 'page' : undefined}
+          ><FileTextIcon /><span class="truncate">{l.label}</span></a
+        >
+      {/each}
+    </nav>
+  {/if}
+
   {#if shop.categories.length}
     <nav class="flex flex-col gap-px" aria-labelledby="concept-categories">
       <h2 id="concept-categories" class={[label, 'px-2 pb-1']}>{rt.t('nav.categories')}</h2>
@@ -89,6 +103,9 @@
 
   <div class="text-muted-foreground mt-auto flex flex-col gap-px pb-1 text-xs">
     <a class={[row, 'px-2 py-1']} href={rt.url.page('terms')}>{rt.t('footer.terms')}</a>
+    {#each shop.navigation?.footer ?? [] as l (l.href)}<a class={[row, 'px-2 py-1']} href={l.href}
+        >{l.label}</a
+      >{/each}
     {#if shop.settings.show_powered_by !== false}<a
         class={[row, 'px-2 py-1']}
         href="https://openrent.dev"

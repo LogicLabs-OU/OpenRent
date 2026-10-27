@@ -323,6 +323,76 @@
       "when": 1793046563949,
       "tag": "20261026202923_import_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1793054504954,
+      "tag": "20261026224144_delivery_distance",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793057285184,
+      "tag": "20261026232805_tax_id_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1793059664628,
+      "tag": "20261027000744_shop_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793060807808,
+      "tag": "20261027002647_totp_last_step",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793094621569,
+      "tag": "20261027095021_storefront_seo",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793095380358,
+      "tag": "20261027100300_storefront_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793098703609,
+      "tag": "20261027105823_billing_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793104925413,
+      "tag": "20261027124205_delivery_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1793105418926,
+      "tag": "20261027125018_self_service",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793105856232,
+      "tag": "20261027125736_invoice_payments",
+      "breakpoints": true
     }
   ]
 }

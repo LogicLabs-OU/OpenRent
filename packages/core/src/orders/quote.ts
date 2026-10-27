@@ -1,12 +1,13 @@
 import { currentLocale, t as msg } from '../i18n/index.ts';
 import type { Ctx } from '../context.ts';
 import { hookContext } from '../plugins/scope.ts';
-import { enabledProvider } from '../plugins/index.ts';
+import { activeTaxProvider } from '../plugins/index.ts';
 import { invalid, type FieldError } from '../errors.ts';
 import { many, must, one } from '../sql.ts';
 import { quote, type CouponRule, type QuoteBreakdown, type QuoteLineInput, type QuoteOptions } from '../pricing/engine.ts';
 import { activeFeeRules, activePriceRules, taxProfileAt, toEngineStructure } from '../catalog/index.ts';
 import { resolveSettings } from '../tenancy/settings.ts';
+import { addressLine, distanceKm } from '../deliveries/geo.ts';
 
 export interface QuoteRequestLine {
   key?: string;
@@ -34,6 +35,8 @@ export interface QuoteRequest {
   locale?: string | null;
   /** Optional fees chosen and the delivery postcode (FR-PR-8). */
   options?: QuoteOptions | null;
+  /** Billing details chosen for the order (ADR 0012): their tax number and address decide the tax, not the customer's. */
+  billing?: { tax_id?: string | null; tax_id_check?: unknown; address?: Record<string, any> | null } | null;
 }
 
 export interface ResolvedLine {
@@ -46,7 +49,7 @@ export interface ResolvedLine {
   picks: Record<string, string> | null;
 }
 
-async function taxRateFor(ctx: Ctx, profileId: string | null, cache: Map<string, number>): Promise<number> {
+export async function taxRateFor(ctx: Ctx, profileId: string | null, cache: Map<string, number>): Promise<number> {
   const key = profileId ?? '__default';
   if (cache.has(key)) return cache.get(key)!;
   const p = profileId
@@ -161,25 +164,35 @@ export async function loadCoupons(ctx: Ctx, codes: string[], customerId?: string
  * Rates from a tax plugin (FR-PLG-1) replace the shop's own per line before pricing; the engine is
  * unchanged. If the service fails, the shop's rates apply and the quote still works.
  */
-async function applyTaxProvider(ctx: Ctx, resolved: ResolvedLine[], q: { currency: string; locationId: string | null; customerId: string | null; customer: any }) {
-  const tax = await enabledProvider(ctx, ctx.plugins.taxProvider());
-  if (!tax || !resolved.length) return;
+async function applyTaxProvider(ctx: Ctx, resolved: ResolvedLine[], q: { currency: string; locationId: string | null; customerId: string | null; customer: any; billing?: QuoteRequest['billing'] }): Promise<Record<string, string> | null> {
+  const tax = await activeTaxProvider(ctx);
+  if (!tax || !resolved.length) return null;
   const loc = await one<any>(ctx, q.locationId ? `SELECT address FROM locations WHERE id = $1` : `SELECT address FROM locations WHERE is_default AND deleted_at IS NULL LIMIT 1`, q.locationId ? [q.locationId] : []);
-  // Where the customer gets the gear (a delivery address), else where they are billed.
-  const address = q.customer?.addresses?.shipping ?? q.customer?.addresses?.billing ?? null;
+  // Where the customer gets the gear (a delivery address), else where they are billed; the billing
+  // details chosen for the order replace the customer's own.
+  const b = q.billing;
+  const billed = b?.address && Object.keys(b.address).length ? b.address : null;
+  const address = q.customer?.addresses?.shipping ?? (b ? billed : q.customer?.addresses?.billing) ?? null;
+  const taxId = b ? (b.tax_id ?? null) : (q.customer?.tax_id ?? null);
+  const taxIdCheck = b ? (b.tax_id_check ?? null) : (q.customer?.tax_id_check ?? null);
   try {
     const rates = await tax.provider.rates(tax.pctx, {
       currency: q.currency,
-      customer: q.customerId ? { id: q.customerId, country: address?.country ?? null, taxId: q.customer?.tax_id ?? null, address } : null,
+      customer: q.customerId || b ? { id: q.customerId ?? '', country: address?.country ?? null, taxId, address, taxIdCheck: taxIdCheck as any } : null,
       origin: { country: loc?.address?.country ?? null, address: loc?.address ?? null },
       lines: resolved.map((r) => ({ key: r.engine.key, type: r.engine.type, productId: r.product?.id ?? null, variantId: r.variant?.id ?? null, taxCode: r.product?.tax_profile_id ?? null, defaultRateBp: r.engine.taxRateBp })),
     });
+    // Plugin API 1.8: rates may come with a note for the documents.
+    const byLine = (rates && typeof rates.rates === 'object' && rates.rates !== null ? rates.rates : rates) as Record<string, number>;
     for (const r of resolved) {
-      const rate = rates[r.engine.key];
+      const rate = byLine[r.engine.key];
       if (Number.isInteger(rate) && rate! >= 0 && rate! <= 10_000) r.engine.taxRateBp = rate!;
     }
+    const note = (rates as { note?: unknown }).note;
+    return note && typeof note === 'object' ? Object.fromEntries(Object.entries(note).filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, (v as string).slice(0, 500)])) : null;
   } catch (err) {
     ctx.logger.warn({ err, plugin: tax.pluginId }, 'tax provider failed; the shop’s own rates apply');
+    return null;
   }
 }
 
@@ -192,12 +205,22 @@ export async function priceQuote(ctx: Ctx, req: QuoteRequest): Promise<{ breakdo
   if (!errors.length && endsAt <= startsAt) errors.push({ field: 'ends_at', code: 'invalid_range', message: msg('error.the_return_must_be_after_the_pickup') });
   if (errors.length) throw invalid(msg('error.invalid_rental_period'), errors);
   const tenant = await must<any>(ctx, `SELECT currency, timezone, settings FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
-  const loc = req.location_id ? await must<any>(ctx, `SELECT timezone FROM locations WHERE id = $1`, [req.location_id], 'location') : null;
+  const loc = req.location_id ? await must<any>(ctx, `SELECT timezone, address FROM locations WHERE id = $1`, [req.location_id], 'location') : null;
   const timezone = loc?.timezone ?? tenant.timezone;
   const resolved = await resolveLines(ctx, req.lines, req.locale, req.location_id);
-  const customer = req.customer_id ? await one(ctx, `SELECT flags, addresses, tax_id, tags FROM customers WHERE id = $1`, [req.customer_id]) : null;
-  await applyTaxProvider(ctx, resolved, { currency: tenant.currency.trim(), locationId: req.location_id ?? null, customerId: req.customer_id ?? null, customer });
+  const customer = req.customer_id ? await one(ctx, `SELECT flags, addresses, tax_id, tax_id_check, tags FROM customers WHERE id = $1`, [req.customer_id]) : null;
+  const taxNote = await applyTaxProvider(ctx, resolved, { currency: tenant.currency.trim(), locationId: req.location_id ?? null, customerId: req.customer_id ?? null, customer, billing: req.billing ?? null });
   const settings = resolveSettings(tenant.settings);
+  const feeRules = await activeFeeRules(ctx, req.locale, undefined, req.location_id);
+  // A delivery fee by distance (FR-PR-8) needs the kilometres from the location to the address, when it is wanted.
+  const chosen = new Set(req.options?.fees ?? []);
+  // The distance is always worked out here, never taken from the caller.
+  let options: QuoteOptions = { ...(req.options ?? {}), distance: undefined };
+  if (feeRules.some((f) => f.calculation === 'per_km' && (f.mode === 'auto' || chosen.has(f.id)))) {
+    const from = loc?.address ?? (await one<any>(ctx, `SELECT address FROM locations WHERE deleted_at IS NULL ORDER BY is_default DESC, created_at LIMIT 1`))?.address;
+    const to = options.address && options.postcode && !options.address.includes(options.postcode) ? `${options.address}, ${options.postcode}` : options.address;
+    options = { ...options, distance: await distanceKm(ctx, addressLine(from), to) };
+  }
   const breakdown = quote(
     {
       currency: tenant.currency.trim(),
@@ -210,12 +233,13 @@ export async function priceQuote(ctx: Ctx, req: QuoteRequest): Promise<{ breakdo
       depositPolicy: req.deposit ?? settings.deposit_policy,
       customer: customer ? { depositWaived: !!customer.flags?.deposit_waived, tags: (customer.tags ?? []).filter(Boolean) } : null,
       priceRules: await activePriceRules(ctx),
-      feeRules: await activeFeeRules(ctx, req.locale, undefined, req.location_id),
-      options: req.options ?? {},
+      feeRules,
+      options,
       locale: req.locale ?? currentLocale(),
     },
     ctx.now,
   );
+  breakdown.tax_note = taxNote;
   await ctx.plugins.runHook('after', 'pricing.quote', breakdown, hookContext(ctx));
   return { breakdown, resolved, timezone, currency: tenant.currency.trim() };
 }
@@ -248,6 +272,7 @@ export function breakdownToApi(b: QuoteBreakdown) {
     optional_fees: b.optional_fees.map((f) => ({ ...f, amount: m(f.amount, c) })),
     fee_errors: b.fee_errors,
     tax_breakdown: b.tax_breakdown.map((t) => ({ rate_bp: t.rate_bp, net: m(t.net, c), tax: m(t.tax, c) })),
+    tax_note: b.tax_note ?? null,
     explanation: b.explanation,
     explanation_items: b.explanation_items,
   };

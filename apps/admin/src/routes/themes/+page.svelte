@@ -13,6 +13,7 @@
   import { api, t, toast, notifyError, confirmAction } from '#lib';
   import { to } from '#lib/nav.ts';
   import CustomCode from '#lib/components/custom-code.svelte';
+  import SeoSettings from '#lib/components/seo-settings.svelte';
   import ThemeInstall from '#lib/components/theme-install.svelte';
 
   let themes = $state<any[] | null>(null);
@@ -104,6 +105,7 @@
       </Card.Root>
     {/each}
   </div>
+  <SeoSettings />
   <CustomCode />
   <p class="text-muted-foreground mt-6 text-sm">{t('themes.install_hint_child')}</p>
 {/if}

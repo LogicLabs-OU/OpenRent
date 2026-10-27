@@ -2,12 +2,12 @@
  * Languages OpenRent ships in, and the one message formatter every app uses. English is the base:
  * every catalogue falls back to it, key by key.
  */
-export const LOCALES = ['en', 'de', 'fr', 'es', 'et', 'ja'] as const;
+export const LOCALES = ['en', 'de', 'fr', 'es', 'et', 'ja', 'nl'] as const;
 export type Locale = (typeof LOCALES)[number];
 export const BASE_LOCALE: Locale = 'en';
 
 /** Each language in its own words, for language menus. */
-export const LOCALE_NAMES: Record<Locale, string> = { en: 'English', de: 'Deutsch', fr: 'Français', es: 'Español', et: 'Eesti', ja: '日本語' };
+export const LOCALE_NAMES: Record<Locale, string> = { en: 'English', de: 'Deutsch', fr: 'Français', es: 'Español', et: 'Eesti', ja: '日本語', nl: 'Nederlands' };
 
 export function isLocale(v: unknown): v is Locale {
   return typeof v === 'string' && (LOCALES as readonly string[]).includes(v);
@@ -147,7 +147,7 @@ export function lookup(catalogs: Partial<Record<string, Catalog>>, key: string, 
 
 /** Weekday codes for calendars: 0 = Sunday … 6 = Saturday. */
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-const FIRST_DAY: Record<string, Weekday> = { en: 0, ja: 0, de: 1, fr: 1, es: 1, et: 1 };
+const FIRST_DAY: Record<string, Weekday> = { en: 0, ja: 0, de: 1, fr: 1, es: 1, et: 1, nl: 1 };
 
 /** First day of the week for a locale (Sunday in en/ja, Monday in de/fr/es/et, region tags respected where supported). */
 export function weekStart(locale: string): Weekday {

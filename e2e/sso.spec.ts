@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, collectErrors, signIn } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, collectErrors, signIn } from './helpers.ts';
 import { startOidcMock } from '../apps/api/test/oidc-mock.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;

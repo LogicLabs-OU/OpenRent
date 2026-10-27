@@ -20,7 +20,7 @@
 
   const rt = getRuntime();
   const shop = rt.shop;
-  const tz = shop.locations[0]?.timezone ?? shop.tenant.timezone;
+  const tz = (shop.location ?? shop.locations[0])?.timezone ?? shop.tenant.timezone;
   const initial = (iso: string | null) => (iso ? parseDate(rt.zone.localDate(iso)) : undefined);
 
   let range = $state<DateRange>({ start: initial(shop.dates.from), end: initial(shop.dates.to) });
@@ -143,7 +143,8 @@
         bind:value={fromTime}
         disabled={!fromOpts.length}
       >
-        {#each fromOpts as time (time)}<NativeSelectOption value={time}>{formatTime(time, shop.locale)}</NativeSelectOption
+        {#each fromOpts as time (time)}<NativeSelectOption value={time}
+            >{formatTime(time, shop.locale)}</NativeSelectOption
           >{:else}<NativeSelectOption value=""
             >{fromDate ? rt.t('dates.closed_short') : '--:--'}</NativeSelectOption
           >{/each}
@@ -163,7 +164,8 @@
         bind:value={toTime}
         disabled={!toOpts.length}
       >
-        {#each toOpts as time (time)}<NativeSelectOption value={time}>{formatTime(time, shop.locale)}</NativeSelectOption
+        {#each toOpts as time (time)}<NativeSelectOption value={time}
+            >{formatTime(time, shop.locale)}</NativeSelectOption
           >{:else}<NativeSelectOption value=""
             >{toDate ? rt.t('dates.closed_short') : '--:--'}</NativeSelectOption
           >{/each}
@@ -188,4 +190,6 @@
     </div>
     {#if error}<p class="text-destructive col-span-2 w-full text-sm" role="alert">{error}</p>{/if}
   </form>
+  <!-- Where the visitor rents from, when the shop has several locations (theme API 1.9). -->
+  <rt.components.Slot name="dates.after" />
 </div>

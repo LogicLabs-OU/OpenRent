@@ -50,6 +50,7 @@
   import ExtensionRequestAlert from '#lib/components/extension-request-alert.svelte';
   import SwapUnitDialog from '#lib/components/swap-unit-dialog.svelte';
   import DeliveriesCard from '#lib/components/deliveries-card.svelte';
+  import OrderBillingCard from '#lib/components/order-billing-card.svelte';
   import InspectionRunner from '#lib/components/inspection-runner.svelte';
   import DocumentSignature from '#lib/components/document-signature.svelte';
   import ArrowLeftRightIcon from '@lucide/svelte/icons/arrow-left-right';
@@ -256,8 +257,8 @@
     return act(a.action);
   }
 
-  /** Optional fees and the delivery postcode of a draft or quote order (FR-PR-8). */
-  function setExtras(patch: { fees?: string[]; postcode?: string | null }) {
+  /** Optional fees and the delivery postcode and address of a draft or quote order (FR-PR-8). */
+  function setExtras(patch: { fees?: string[]; postcode?: string | null; address?: string | null }) {
     return call(() => api.patch(`/orders/${o.id}`, { options: { ...o.options, ...patch } }), t('order.toast.extras_saved'));
   }
 
@@ -586,14 +587,21 @@
                 {#each o.totals.optional_fees as f (f.id)}
                   <Field.Field orientation="horizontal">
                     <Checkbox id={`ox-${f.id}`} checked={f.selected} onCheckedChange={(v) => setExtras({ fees: v === true ? [...(o.options.fees ?? []), f.id] : (o.options.fees ?? []).filter((x: string) => x !== f.id) })} />
-                    <Field.Label for={`ox-${f.id}`} class="flex-1 justify-between font-normal">{f.name}<span class="text-muted-foreground tabular-nums">{#if f.kind === 'delivery' && !f.amount.amount}{t('order.extras_by_postcode')}{:else}<Money value={f.amount} />{/if}</span></Field.Label>
+                    <Field.Label for={`ox-${f.id}`} class="flex-1 justify-between font-normal">{f.name}<span class="text-muted-foreground tabular-nums">{#if f.kind === 'delivery' && !f.amount.amount}{t(f.priced_by === 'distance' ? 'order.extras_by_distance' : 'order.extras_by_postcode')}{:else}<Money value={f.amount} />{/if}</span></Field.Label>
                   </Field.Field>
                 {/each}
                 {#if o.totals.optional_fees.some((f: any) => f.kind === 'delivery')}
-                  <Field.Field data-invalid={!!o.totals.fee_errors.length || undefined}>
+                  {@const postcodeProblem = o.totals.fee_errors.find((x: any) => x.reason.startsWith('postcode_'))?.reason}
+                  {@const addressProblem = o.totals.fee_errors.find((x: any) => x.reason.startsWith('address_'))?.reason}
+                  <Field.Field data-invalid={!!postcodeProblem || undefined}>
                     <Field.Label for="ox-postcode">{t('order.extras_postcode')}</Field.Label>
-                    <Input id="ox-postcode" class="w-40" value={o.options.postcode ?? ''} onchange={(e) => setExtras({ postcode: (e.currentTarget as HTMLInputElement).value.trim() || null })} aria-invalid={!!o.totals.fee_errors.length} />
-                    {#if o.totals.fee_errors.length}<Field.Error>{t(`order.extras_${o.totals.fee_errors[0].reason}` as any)}</Field.Error>{/if}
+                    <Input id="ox-postcode" class="w-40" value={o.options.postcode ?? ''} onchange={(e) => setExtras({ postcode: (e.currentTarget as HTMLInputElement).value.trim() || null })} aria-invalid={!!postcodeProblem} />
+                    {#if postcodeProblem}<Field.Error>{t(`order.extras_${postcodeProblem}` as any)}</Field.Error>{/if}
+                  </Field.Field>
+                  <Field.Field data-invalid={!!addressProblem || undefined}>
+                    <Field.Label for="ox-address">{t('order.extras_address')}</Field.Label>
+                    <Input id="ox-address" autocomplete="off" value={o.options.address ?? ''} onchange={(e) => setExtras({ address: (e.currentTarget as HTMLInputElement).value.trim() || null })} aria-invalid={!!addressProblem} />
+                    {#if addressProblem}<Field.Error>{t(`order.extras_${addressProblem}` as any)}</Field.Error>{/if}
                   </Field.Field>
                 {/if}
               </Field.Set>
@@ -745,6 +753,7 @@
           {:else}<p class="text-muted-foreground">{t('order.no_customer')}</p>{/if}
         </Card.Content>
       </Card.Root>
+      {#if o.customer}<OrderBillingCard order={o} onchange={load} />{/if}
 
       <Card.Root>
         <Card.Header>

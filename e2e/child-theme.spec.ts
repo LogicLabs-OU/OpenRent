@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { strToU8, zipSync } from 'fflate';
-import { ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
+import { test, ADMIN, STORE, collectErrors, hydrated, shot, signIn } from './helpers.ts';
 
 /** A child theme of the default theme: a darker text colour and a renamed "All products" link. */
 function childTheme(id: string) {

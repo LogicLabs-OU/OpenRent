@@ -1,5 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, STORE, collectErrors, hydrated, randomOffset, signIn, weekday } from './helpers.ts';
+import { expect, type Page } from '@playwright/test';
+import { test, ADMIN, STORE, collectErrors, hydrated, randomOffset, signIn, weekday } from './helpers.ts';
 
 const API = `${new URL(ADMIN).origin}/api/v1`;
 

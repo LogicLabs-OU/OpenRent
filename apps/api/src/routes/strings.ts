@@ -7,11 +7,12 @@ import sfFr from '../../../storefront/src/lib/i18n/fr.json' with { type: 'json' 
 import sfEs from '../../../storefront/src/lib/i18n/es.json' with { type: 'json' };
 import sfEt from '../../../storefront/src/lib/i18n/et.json' with { type: 'json' };
 import sfJa from '../../../storefront/src/lib/i18n/ja.json' with { type: 'json' };
+import sfNl from '../../../storefront/src/lib/i18n/nl.json' with { type: 'json' };
 
 /** The shop's own wording (FR-I18N-6): Settings → Translations. */
 export function registerStrings(r: Router) {
   const S = ['Translations'];
-  const storefrontTexts = { en: sfEn, de: sfDe, fr: sfFr, es: sfEs, et: sfEt, ja: sfJa };
+  const storefrontTexts = { en: sfEn, de: sfDe, fr: sfFr, es: sfEs, et: sfEt, ja: sfJa, nl: sfNl };
 
   /** Every namespace a shop can reword: storefront, emails, documents, its themes and plugins. */
   async function namespaces(ctx: Ctx) {

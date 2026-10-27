@@ -1,0 +1,1 @@
+ALTER TABLE "locations" ADD COLUMN "delivery_windows" jsonb DEFAULT '{}'::jsonb NOT NULL;

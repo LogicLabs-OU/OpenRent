@@ -1,0 +1,16 @@
+/* Nightfall in the embeddable widget: dark glass cards and the violet accent. */
+:host {
+  --openrent-font: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --background: {{ settings.page | #000000 }};
+  --card: #18181b;
+  --card-foreground: #ffffff;
+  --foreground: #ffffff;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.18);
+  --primary: {{ settings.accent | #5351f3 }};
+  --primary-foreground: #ffffff;
+  --ring: {{ settings.accent | #5351f3 }};
+  --radius: 0.875rem;
+}
