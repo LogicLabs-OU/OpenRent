@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PluginPages from '#lib/components/plugin-pages.svelte';
   import PluginSlot from '#lib/components/plugin-slot.svelte';
   import PluginInstall from '#lib/components/plugin-install.svelte';
   import * as Card from '@openrent/ui/card';
@@ -188,7 +189,7 @@
       </Card.Root>
     {/each}
   </div>
-  <div class="mt-6 flex flex-col gap-4"><PluginSlot slot="settings.page" /></div>
+  <div class="mt-6 flex flex-col gap-4"><PluginPages placement="settings" /><PluginSlot slot="settings.page" /></div>
 
   {#if hookErrors.length}
     <Card.Root class="mt-6">

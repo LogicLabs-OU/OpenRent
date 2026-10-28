@@ -16,6 +16,7 @@ import { BASE_CSS, DEFAULT_TEMPLATES, LEGAL_NUMBERED } from './templates.ts';
 import { tAny } from '../i18n/index.ts';
 import { invoiceDueAt } from '../customers/b2b.ts';
 import { periodsText } from '../pricing/engine.ts';
+import { taxRateFor } from '../orders/quote.ts';
 import * as files from '../files/index.ts';
 
 export type DocumentType = keyof typeof DEFAULT_TEMPLATES;
@@ -40,7 +41,7 @@ export function documentToApi(d: any) {
     id: d.id, object: 'document', type: d.type, number: d.number, status: d.status, order_id: d.order_id, customer_id: d.customer_id,
     issued_at: d.issued_at, total: d.total == null ? null : { amount: Number(d.total), currency: d.currency?.trim() },
     voided_by_id: d.voided_by_id, template_id: d.template_id, due_at: d.data?.due_at ?? null,
-    orders: d.data?.orders?.map((o: any) => ({ id: o.id, number: o.number })) ?? null, created_at: d.created_at,
+    orders: d.data?.orders?.map((o: any) => ({ id: o.id, number: o.number })) ?? null, einvoice_format: ['invoice', 'credit_note'].includes(d.type) ? (d.data?.einvoice?.format ?? null) : null, created_at: d.created_at,
   };
 }
 
@@ -59,23 +60,16 @@ export async function buildOrderData(ctx: Ctx, orderId: string) {
   );
   const payments = await many(ctx, `SELECT * FROM payments WHERE order_id = $1 AND status = 'succeeded' ORDER BY created_at`, [orderId]);
   const deposit = await one(ctx, `SELECT * FROM deposits WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`, [orderId]);
-  const addr = tenant.address ?? {};
-  const chosen = chosenBilling(order.billing, customer?.addresses);
+  // Without billing details chosen for the booking (staff made it), the customer's default ones print (ADR 0012).
+  const profile = !order.billing && customer ? await one<any>(ctx, `SELECT * FROM customer_billing_profiles WHERE customer_id = $1 AND is_default`, [customer.id]) : null;
+  const billing = order.billing ?? (profile ? { name: profile.name, company_name: profile.company_name, tax_id: profile.tax_id, address: profile.address, einvoice: profile.einvoice } : null);
+  const chosen = chosenBilling(billing, customer?.addresses);
   const orderUrl = `${await storefrontBase(ctx)}/order/${order.public_token}`;
   const qr_svg = await QRCode.toString(orderUrl, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
   return {
     qr_svg,
     order_url: orderUrl,
-    tenant: {
-      name: tenant.name,
-      legal_name: tenant.legal_name || tenant.name,
-      address_lines: [addr.line1, addr.line2, [addr.postal_code, addr.city].filter(Boolean).join(' '), addr.country].filter(Boolean),
-      // A branch registered on its own shows its tax ids instead of the shop's.
-      tax_ids: location?.tax_ids?.length ? location.tax_ids : tenant.tax_ids ?? [],
-      branding: tenant.branding ?? {},
-      currency: tenant.currency.trim(),
-      locale: tenant.locale,
-    },
+    tenant: tenantBlock(tenant, location),
     order: {
       id: order.id, number: order.number, status: order.status, starts_at: order.starts_at, ends_at: order.ends_at,
       quote_expires_at: order.quote_expires_at, timezone: order.timezone, public_token: order.public_token, po_number: order.po_number ?? null,
@@ -115,9 +109,103 @@ export async function buildOrderData(ctx: Ctx, orderId: string) {
     payments: payments.map((p: any) => ({ amount: Number(p.amount), method: p.method, created_at: p.created_at })),
     deposit: deposit ? { amount: Number(deposit.amount), method: deposit.method, status: deposit.status } : null,
     terms: settings.terms,
+    // The e-invoice the customer's billing details ask for (FR-DOC-6), kept with the document.
+    einvoice: billing?.einvoice ?? null,
     signature: order.terms_acceptance ?? null,
     pickup_signature: await pickupSignature(ctx, order.terms_acceptance?.pickup_signature),
   };
+}
+
+/** The shop as documents print it. A branch registered on its own shows its tax ids instead of the shop's. */
+function tenantBlock(tenant: any, location: any) {
+  const addr = tenant.address ?? {};
+  const inv = resolveSettings(tenant.settings).invoicing;
+  return {
+    registry_code: inv.registry_code || null,
+    bank: inv.iban ? { iban: inv.iban.replace(/\s+/g, '').toUpperCase().replace(/(.{4})/g, '$1 ').trim(), bic: inv.bic?.trim().toUpperCase() || null } : null,
+    name: tenant.name,
+    legal_name: tenant.legal_name || tenant.name,
+    address_lines: [addr.line1, addr.line2, [addr.postal_code, addr.city].filter(Boolean).join(' '), addr.country].filter(Boolean),
+    tax_ids: location?.tax_ids?.length ? location.tax_ids : tenant.tax_ids ?? [],
+    address: addr,
+    branding: tenant.branding ?? {},
+    currency: tenant.currency.trim(),
+    locale: tenant.locale,
+  };
+}
+
+/** One line of a customer invoice: an amount before tax, at the given rate or the shop's default one. */
+export interface CustomerInvoiceLine {
+  description: string;
+  amount: number;
+  quantity?: number;
+  tax_rate_bp?: number;
+}
+
+/**
+ * An invoice to a customer for something that is no booking, such as a membership fee (ADR 0014). The
+ * customer's default billing profile prints when there is one. With `key`, the same invoice comes back
+ * instead of a second one, so a renewal run twice bills once.
+ */
+export async function issueCustomerInvoice(ctx: Ctx, customerId: string, input: { lines: CustomerInvoiceLine[]; key?: string; period?: { from: string; to: string } | null }) {
+  if (input.key) {
+    const done = await one<any>(ctx, `SELECT * FROM documents WHERE type = 'invoice' AND customer_id = $1 AND data->>'source_key' = $2 AND status <> 'voided' LIMIT 1`, [customerId, input.key]);
+    if (done) return documentToApi(done);
+  }
+  const errors = input.lines.length ? [] : [{ field: 'lines', code: 'required', message: msg('error.field.invoice_lines') }];
+  for (const [i, l] of input.lines.entries()) {
+    if (!l.description?.trim()) errors.push({ field: `lines[${i}].description`, code: 'required', message: msg('error.field.enter_a_description') });
+    if (!Number.isInteger(l.amount) || l.amount < 0) errors.push({ field: `lines[${i}].amount`, code: 'invalid', message: msg('error.amount_must_be_a_positive_integer_in') });
+    if (l.quantity != null && (!Number.isInteger(l.quantity) || l.quantity < 1)) errors.push({ field: `lines[${i}].quantity`, code: 'invalid', message: msg('error.field.enter_a_quantity') });
+    if (l.tax_rate_bp != null && (!Number.isInteger(l.tax_rate_bp) || l.tax_rate_bp < 0 || l.tax_rate_bp > 10000)) errors.push({ field: `lines[${i}].tax_rate_bp`, code: 'invalid', message: msg('error.field.tax_rate') });
+  }
+  if (errors.length) throw invalid(msg('error.check_the_invoice'), errors);
+  const tenant = await must<any>(ctx, `SELECT * FROM tenants WHERE id = $1`, [ctx.tenantId], 'tenant');
+  const settings = resolveSettings(tenant.settings);
+  const customer = await must<any>(ctx, `SELECT * FROM customers WHERE id = $1 AND deleted_at IS NULL`, [customerId], 'customer', customerId);
+  const profile = await one<any>(ctx, `SELECT * FROM customer_billing_profiles WHERE customer_id = $1 ORDER BY is_default DESC, created_at LIMIT 1`, [customerId]);
+  const location = await one<any>(ctx, `SELECT * FROM locations WHERE is_default AND deleted_at IS NULL LIMIT 1`);
+  const defaultRate = await taxRateFor(ctx, null, new Map());
+  const lines = input.lines.map((l) => {
+    const quantity = l.quantity ?? 1;
+    const rate = l.tax_rate_bp ?? defaultRate;
+    const net = l.amount * quantity;
+    const tax = Math.round((net * rate) / 10000);
+    return { name: l.description.trim(), type: 'fee', quantity, unit_price: l.amount, discount: 0, tax_rate_bp: rate, tax, total: net + tax, period_label: null, charge_periods: null, period_unit: null, units: [] };
+  });
+  const rates = new Map<number, { rate_bp: number; net: number; tax: number }>();
+  for (const l of lines) {
+    const r = rates.get(l.tax_rate_bp) ?? { rate_bp: l.tax_rate_bp, net: 0, tax: 0 };
+    rates.set(l.tax_rate_bp, { ...r, net: r.net + l.unit_price * l.quantity, tax: r.tax + l.tax });
+  }
+  const subtotal = lines.reduce((n, l) => n + l.unit_price * l.quantity, 0);
+  const tax = lines.reduce((n, l) => n + l.tax, 0);
+  const totals = { subtotal, discount: 0, fees: 0, tax, total: subtotal + tax, deposit: 0, paid: 0, refunded: 0, balance: subtotal + tax, tax_breakdown: [...rates.values()] };
+  const billing = profile ? { name: profile.name, company_name: profile.company_name, tax_id: profile.tax_id, address: profile.address } : null;
+  const data: Record<string, any> = {
+    qr_svg: null,
+    order_url: null,
+    tenant: tenantBlock(tenant, location),
+    order: { id: null, number: null, status: null, starts_at: input.period?.from ?? null, ends_at: input.period?.to ?? null, quote_expires_at: null, timezone: location?.timezone ?? tenant.timezone, public_token: null, po_number: null },
+    customer: {
+      name: billing?.name || customer.name, email: customer.email, phone: customer.phone, locale: customer.locale,
+      company_name: billing ? billing.company_name : customer.company_name, tax_id: billing ? billing.tax_id : customer.tax_id,
+      addresses: { ...(customer.addresses ?? {}), billing: billing?.address ?? customer.addresses?.billing ?? null }, billing: billing?.address ?? customer.addresses?.billing ?? null,
+    },
+    location: null,
+    lines,
+    totals,
+    tax_breakdown: totals.tax_breakdown,
+    payments: [],
+    deposit: null,
+    terms: settings.terms,
+    signature: null,
+    pickup_signature: null,
+    einvoice: profile?.einvoice ?? null,
+    ...(input.key ? { source_key: input.key } : {}),
+  };
+  await ctx.plugins.runHook('before', 'documents.render', { type: 'invoice', order_id: null, data }, hookContext(ctx));
+  return saveIssued(ctx, 'invoice', data, { orderId: null, orderNumber: null, customerId, currency: tenant.currency.trim(), timezone: data.order.timezone });
 }
 
 /** The billing details chosen at checkout (ADR 0012) print in place of the customer's own. */
@@ -295,10 +383,14 @@ export async function voidDocument(ctx: Ctx, id: string, reason?: string) {
   let creditNote: any = null;
   if (doc.type === 'invoice') {
     const d = doc.data;
-    creditNote = await issueDocument(ctx, doc.order_id, 'credit_note', {
-      overrides: { lines: d.lines, totals: d.totals, tax_breakdown: d.tax_breakdown },
-      extra: { credit_for: { id: doc.id, number: doc.number }, reason: reason ?? null },
-    });
+    const credit = { overrides: { lines: d.lines, totals: d.totals, tax_breakdown: d.tax_breakdown }, extra: { credit_for: { id: doc.id, number: doc.number }, reason: reason ?? null } };
+    if (doc.order_id) creditNote = await issueDocument(ctx, doc.order_id, 'credit_note', credit);
+    else {
+      // An invoice of no single booking (a monthly or a customer invoice) is credited from what it printed;
+      // the bookings of a monthly one can then be invoiced again.
+      creditNote = await saveIssued(ctx, 'credit_note', { ...d, ...credit.overrides, ...credit.extra }, { orderId: null, orderNumber: null, customerId: doc.customer_id, currency: String(doc.currency).trim(), timezone: d.order?.timezone ?? 'UTC' });
+      await exec(ctx, `UPDATE orders SET invoice_id = NULL WHERE invoice_id = $1`, [doc.id]);
+    }
   }
   await exec(ctx, `UPDATE documents SET status = 'voided', voided_by_id = $2 WHERE id = $1`, [id, creditNote?.id ?? null]);
   await emit(ctx, 'document.voided', { type: 'document', id }, { ...documentToApi(doc), status: 'voided' });
@@ -421,3 +513,5 @@ export async function previewTemplate(ctx: Ctx, input: { type: DocumentType; bod
     throw invalid(m, [{ field: 'body', code: 'template_syntax', message: m }]);
   }
 }
+
+export { einvoiceData, einvoiceFile, einvoiceFormat, einvoiceFormats } from './einvoice.ts';

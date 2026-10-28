@@ -5,7 +5,7 @@ import { createPayPalProvider, packRefs, unpackRefs } from '../src/index.ts';
 
 const paypal = createPayPalProvider();
 const intent = (over: Partial<CreatePaymentIntentInput> = {}): CreatePaymentIntentInput => ({
-  amount: 12050, currency: 'EUR', orderId: 'ord_1', orderNumber: 1042, purpose: 'rental', customer: { id: 'cus_1', name: 'Ada', email: 'ada@example.org', providerRef: null },
+  amount: 12050, currency: 'EUR', orderId: 'ord_1', orderNumber: 1042, reference: 'ord_1', purpose: 'rental', customer: { id: 'cus_1', name: 'Ada', email: 'ada@example.org', providerRef: null },
   savePaymentMethod: false, description: 'Booking #1042', metadata: { payment_request_id: 'prq_1' }, returnUrl: 'https://shop.example/order/tok', ...over,
 });
 
@@ -37,6 +37,13 @@ describe('PayPal against the PayPal fake', () => {
     expect(fake.orders.find((o) => o.id === r.ref)!.captures).toHaveLength(1);
     expect(await paypal.refund(ctx, r.ref, 2050)).toMatchObject({ status: 'succeeded' });
     await expect(paypal.refund(ctx, r.ref, 20000)).rejects.toThrow(/REFUND_AMOUNT_EXCEEDED/);
+  });
+
+  it('takes a payment for a customer invoice without a booking (plugin API 1.9)', async () => {
+    const r = await paypal.createPaymentIntent(ctx, intent({ orderId: null, orderNumber: null, reference: 'doc_9', purpose: 'invoice', description: undefined, metadata: { payment_request_id: 'prq_9' } }));
+    fake.approve(r.ref);
+    expect(await paypal.retrievePayment!(ctx, r.ref)).toMatchObject({ type: 'payment.succeeded', orderId: null, purpose: 'invoice', paymentRequestId: 'prq_9' });
+    expect(fake.orders.find((o) => o.id === r.ref)!.referenceId).toBe('doc_9');
   });
 
   it('keeps the PayPal account for deposits: holds, captures and voids with it', async () => {

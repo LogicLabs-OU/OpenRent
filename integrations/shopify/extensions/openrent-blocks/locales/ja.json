@@ -1,0 +1,5 @@
+{
+  "openrent": {
+    "not_ready": "先に OpenRent アプリで OpenRent に接続してください。それまで訪問者にはこのブロックが表示されません。"
+  }
+}

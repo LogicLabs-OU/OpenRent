@@ -8,7 +8,7 @@ import { putFile } from '../files/index.ts';
 import { addAttachment } from '../attachments/index.ts';
 import { accountTermsFor } from '../customers/b2b.ts';
 import { normalizeEmail } from '../customers/index.ts';
-import { activeProvider, createPaymentIntent, createPaymentRequest } from '../payments/index.ts';
+import { activeProvider, createPaymentIntent, createPaymentRequest, listCustomerInvoices, requestInvoicePayment } from '../payments/index.ts';
 import { storefrontBase } from '../notifications/index.ts';
 import { ownedOrder, overview } from '../accounts/index.ts';
 
@@ -58,7 +58,16 @@ async function openInvoices(ctx: Ctx, ids: string[]) {
       GROUP BY d.id HAVING sum(greatest((o.totals->>'balance')::bigint, 0)) > 0 ORDER BY d.issued_at`,
     [ids],
   );
-  return rows.map((d) => ({ id: d.id, object: 'invoice', number: d.number, issued_at: d.issued_at, due_at: d.data?.due_at ?? null, due: money(Number(d.due), String(d.currency).trim()) }));
+  const ofBookings = rows.map((d) => ({ id: d.id, object: 'invoice', number: d.number, issued_at: d.issued_at, due_at: d.data?.due_at ?? null, due: money(Number(d.due), String(d.currency).trim()) }));
+  // The customer's own invoices without bookings (ADR 0014), such as a membership fee.
+  const own = [];
+  for (const id of ids) {
+    for (const b of await listCustomerInvoices(ctx, id, { open: true })) {
+      const d = await one<any>(ctx, `SELECT issued_at, data FROM documents WHERE id = $1`, [b.id]);
+      own.push({ id: b.id, object: 'invoice', number: b.number, issued_at: d.issued_at, due_at: d.data?.due_at ?? null, due: b.due });
+    }
+  }
+  return [...ofBookings, ...own].sort((a, b) => new Date(a.issued_at).getTime() - new Date(b.issued_at).getTime());
 }
 
 /**
@@ -70,7 +79,12 @@ export async function payInvoice(ctx: Ctx, email: string, invoiceId: string) {
   const open = (await openInvoices(ctx, ids)).find((i) => i.id === invoiceId);
   if (!open) throw new AppError('not_payable', 409, msg('payments.not_payable'));
   if (!(await activeProvider(ctx))) throw new AppError('online_payment_unavailable', 409, msg('portal.online_payment_unavailable'));
-  const anchor = (await one<{ id: string; public_token: string }>(ctx, `SELECT id, public_token FROM orders WHERE invoice_id = $1 AND (totals->>'balance')::bigint > 0 ORDER BY starts_at, number LIMIT 1`, [invoiceId]))!;
+  const anchor = await one<{ id: string; public_token: string }>(ctx, `SELECT id, public_token FROM orders WHERE invoice_id = $1 AND (totals->>'balance')::bigint > 0 ORDER BY starts_at, number LIMIT 1`, [invoiceId]);
+  // No bookings on it: the customer pays on the provider's page and comes back to their account.
+  if (!anchor) {
+    const req = await requestInvoicePayment(ctx, invoiceId, { notify: false, returnUrl: `${(await storefrontBase(ctx)).replace(/\/$/, '')}/account` });
+    return { object: 'payment_intent', invoice_id: invoiceId, redirect_url: req.url };
+  }
   const c = await currency(ctx);
   // One open request per invoice: a new attempt replaces the last.
   await exec(ctx, `UPDATE payment_requests SET status = 'cancelled' WHERE invoice_id = $1 AND status = 'open'`, [invoiceId]);

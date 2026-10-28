@@ -1,0 +1,20 @@
+{
+  "name": "@openrent/shopify",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The OpenRent app for Shopify: a theme app extension with booking blocks, and the small server that installs it and connects shops to OpenRent",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./server/app.ts"
+  },
+  "scripts": {
+    "start": "node server/main.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "liquidjs": "^10.30.0",
+    "vitest": "^5.0.5"
+  }
+}

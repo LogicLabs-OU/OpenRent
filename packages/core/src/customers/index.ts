@@ -28,7 +28,7 @@ export function customerToApi(c: any) {
     id: c.id, object: 'customer', type: c.type, name: c.name, email: c.email, phone: c.phone, company_name: c.company_name, tax_id: c.tax_id, tax_id_check: c.tax_id_check ?? null,
     addresses: c.addresses, locale: c.locale, tags: c.tags, flags: { blocked: false, deposit_waived: false, requires_id_check: false, id_verified: false, ...c.flags },
     marketing_consent: c.marketing_consent, sms_opt_in: !!c.sms_opt_in, whatsapp_opt_in: !!c.whatsapp_opt_in, notes: c.notes, custom_fields: c.custom_fields, merged_into_id: c.merged_into_id,
-    b2b: b2bToApi(c), open_balance: c.open_balance ?? undefined,
+    b2b: b2bToApi(c), open_balance: c.open_balance ?? undefined, id_check: idCheckToApi(c.flags),
     anonymized_at: c.anonymized_at, stats: c.stats ?? undefined, created_at: c.created_at, updated_at: c.updated_at,
   };
 }
@@ -330,10 +330,13 @@ export async function exportCustomer(ctx: Ctx, id: string) {
     ),
     orders,
     order_lines: ids.length ? await many(ctx, `SELECT * FROM order_lines WHERE order_id = ANY($1)`, [ids]) : [],
-    payments: ids.length ? await many(ctx, `SELECT * FROM payments WHERE order_id = ANY($1)`, [ids]) : [],
+    payments: await many(ctx, `SELECT * FROM payments WHERE order_id = ANY($1) OR customer_id = $2`, [ids, id]),
     deposits: ids.length ? await many(ctx, `SELECT * FROM deposits WHERE order_id = ANY($1)`, [ids]) : [],
     documents: await many(ctx, `SELECT id, type, number, issued_at, status, data FROM documents WHERE customer_id = $1 OR order_id = ANY($2)`, [id, ids]),
     notifications: ids.length ? await many(ctx, `SELECT id, template_key, recipient, subject, status, created_at FROM notifications WHERE order_id = ANY($1)`, [ids]) : [],
     damage_charges: ids.length ? await many(ctx, `SELECT * FROM damage_charges WHERE order_id = ANY($1)`, [ids]) : [],
   };
 }
+export { activeIdentityProvider, applyIdentityResult, identityWebhookUrl, startIdentityCheck, syncIdentityChecks } from './identity.ts';
+import { idCheckToApi } from './identity.ts';
+export { idCheckToApi };

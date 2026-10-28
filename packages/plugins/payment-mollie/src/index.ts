@@ -80,10 +80,10 @@ export function createMollieProvider(): PaymentProvider {
       }
       const p = await call(ctx, 'POST', '/payments', {
         amount: mollieAmount(input.amount, input.currency),
-        description: (input.description ?? `#${input.orderNumber}`).slice(0, 255),
+        description: (input.description ?? (input.orderNumber != null ? `#${input.orderNumber}` : input.reference)).slice(0, 255),
         redirectUrl: input.returnUrl,
         webhookUrl: ctx.webhookUrl,
-        metadata: { ...input.metadata, order_id: input.orderId, purpose: input.purpose, tenant_id: ctx.tenantId },
+        metadata: { ...input.metadata, ...(input.orderId ? { order_id: input.orderId } : {}), purpose: input.purpose, tenant_id: ctx.tenantId },
         // A first payment leaves a mandate for deposits and later periods.
         ...(input.savePaymentMethod && customerRef ? { sequenceType: 'first', customerId: customerRef } : customerRef ? { customerId: customerRef } : {}),
       });
@@ -94,7 +94,7 @@ export function createMollieProvider(): PaymentProvider {
       try {
         const p = await call(ctx, 'POST', '/payments', {
           amount: mollieAmount(input.amount, input.currency), description: (input.description ?? 'Deposit').slice(0, 255), sequenceType: 'recurring', customerId: input.customerRef,
-          mandateId: input.paymentMethodRef, captureMode: 'manual', webhookUrl: ctx.webhookUrl, metadata: { ...input.metadata, order_id: input.orderId, purpose: 'deposit', tenant_id: ctx.tenantId },
+          mandateId: input.paymentMethodRef, captureMode: 'manual', webhookUrl: ctx.webhookUrl, metadata: { ...input.metadata, ...(input.orderId ? { order_id: input.orderId } : {}), purpose: input.metadata?.purpose ?? 'deposit', tenant_id: ctx.tenantId },
         });
         if (p.status === 'authorized') return { ref: p.id, status: 'held', expiresAt: new Date(Date.now() + 7 * 86400_000) };
         return { ref: p.id, status: 'failed', expiresAt: null, error: p.status };

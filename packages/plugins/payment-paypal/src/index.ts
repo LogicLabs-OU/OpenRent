@@ -114,8 +114,8 @@ export function createPayPalProvider(): PaymentProvider {
         {
           intent: 'CAPTURE',
           purchase_units: [{
-            reference_id: input.orderId, custom_id: packRefs({ tenant: ctx.tenantId, order: input.orderId, purpose: input.purpose, request: input.metadata?.payment_request_id }),
-            description: (input.description ?? `#${input.orderNumber}`).slice(0, 127), amount: paypalAmount(input.amount, input.currency),
+            reference_id: input.orderId ?? input.reference, custom_id: packRefs({ tenant: ctx.tenantId, order: input.orderId ?? '', purpose: input.purpose, request: input.metadata?.payment_request_id }),
+            description: (input.description ?? (input.orderNumber != null ? `#${input.orderNumber}` : input.reference)).slice(0, 127), amount: paypalAmount(input.amount, input.currency),
           }],
           payment_source: {
             paypal: {
@@ -125,7 +125,7 @@ export function createPayPalProvider(): PaymentProvider {
             },
           },
         },
-        ctx.idempotencyKey ? `${ctx.idempotencyKey}:order:${input.orderId}:${input.amount}` : undefined,
+        ctx.idempotencyKey ? `${ctx.idempotencyKey}:order:${input.reference ?? input.orderId}:${input.amount}` : undefined,
       );
       const approve = (o.links ?? []).find((l: any) => l.rel === 'payer-action' || l.rel === 'approve');
       return { ref: o.id, clientSecret: null, status: 'requires_payment', redirectUrl: approve?.href ?? null };
@@ -135,7 +135,7 @@ export function createPayPalProvider(): PaymentProvider {
       try {
         const o = await call(ctx, 'POST', '/v2/checkout/orders', {
           intent: 'AUTHORIZE',
-          purchase_units: [{ reference_id: input.orderId, custom_id: packRefs({ tenant: ctx.tenantId, order: input.orderId, purpose: 'deposit' }), description: (input.description ?? 'Deposit').slice(0, 127), amount: paypalAmount(input.amount, input.currency) }],
+          purchase_units: [{ reference_id: input.orderId ?? input.reference ?? '', custom_id: packRefs({ tenant: ctx.tenantId, order: input.orderId ?? '', purpose: input.metadata?.purpose ?? 'deposit' }), description: (input.description ?? 'Deposit').slice(0, 127), amount: paypalAmount(input.amount, input.currency) }],
           payment_source: { paypal: { vault_id: input.paymentMethodRef } },
         }, ctx.idempotencyKey ? `${ctx.idempotencyKey}:authorize` : undefined);
         const auth = authorizationOf(o);

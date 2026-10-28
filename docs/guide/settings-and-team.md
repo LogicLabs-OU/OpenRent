@@ -10,6 +10,10 @@ The **Business** card holds the **Shop name**, the **Legal name (on documents)**
 
 The line under the title shows your currency, time zone and shop address. They are set when the shop is created and cannot be changed here.
 
+### Invoice details
+
+**Invoice details** holds your **Registry code**, **IBAN** and **BIC**. Invoices print them under your address and with the due date, and e-invoices need them (see [E-invoices](customers.md#e-invoices)). An IBAN is checked when you save it.
+
 ### Languages
 
 Under **Languages**, turn on each of the **Storefront languages** your customers may choose, pick the **Default language** and click **Save**. New visitors whose browser prefers none of your languages see the default. Your base texts are written in it, and emails to staff use it. With more than one language, you can translate product names, categories, rental terms, emails, documents and storefront texts for each one.
@@ -153,6 +157,9 @@ Leave a text empty to use the original. Placeholders such as `{number}` must sta
 - **Custom fields:** extra fields on products, units, customers and orders.
 - **Move to OpenRent:** see [Moving to OpenRent](moving-to-openrent.md).
 - **Webhooks:** see [Plugins and integrations](plugins-and-integrations.md#webhooks).
+- **Apps:** the apps connected to your shop with OpenRent sign-in (OAuth), such as a WordPress site or a Shopify shop, with what each may do, who connected it and when it last called. **Disconnect** stops an app at once. See the [API guide](api.md#oauth-for-apps).
+- **Data access:** database logins for BI tools; see [Reports](reports.md#read-your-data-in-a-bi-tool).
+- **RFID readers:** see [Scanning](scanning.md#rfid).
 
 Delivery fees are set under **Pricing → Fees**; see [Delivery fees by distance](delivery-fees.md).
 

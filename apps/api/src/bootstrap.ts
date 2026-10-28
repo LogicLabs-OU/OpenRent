@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { createSecretBox } from '@openrent/core';
-import { createDatabase, probeAppRole, migrate, migratePlugins, withSystem } from '@openrent/db';
+import { biRoles, createDatabase, probeAppRole, migrate, migratePlugins, withSystem } from '@openrent/db';
 import type { Config } from './config.ts';
 import type { AppDeps } from './deps.ts';
 import { createPluginHost } from './plugins.ts';
@@ -30,10 +30,12 @@ export async function bootstrap(config: Config, logger: any, opts: { migrate?: b
   }
   // Hooks and event handlers of a plugin run only for tenants that have it enabled (no row = enabled).
   await plugins.useEnablementSource(async () => {
-    const r = await withSystem(db, (c) => c.query<{ tenantId: string; pluginId: string }>(`SELECT tenant_id AS "tenantId", plugin_id AS "pluginId" FROM plugins WHERE NOT enabled`));
+    const r = await withSystem(db, (c) => c.query<{ tenantId: string; pluginId: string; enabled: boolean }>(`SELECT tenant_id AS "tenantId", plugin_id AS "pluginId", enabled FROM plugins`));
     return r.rows;
   });
   // The worker has no use for theme metadata; only the API serves it to the admin.
   const themes = opts.themes === false ? [] : loadThemes(logger, config.themesConfig ?? undefined, config.themesDir);
-  return { config, db, plugins, themes, secrets: createSecretBox(config.encryptionKey), version: readVersion() };
+  const { enabled, ...connection } = config.bi;
+  const bi = { enabled, roles: biRoles(config.databaseMigrationUrl), connection };
+  return { config, db, plugins, themes, secrets: createSecretBox(config.encryptionKey), version: readVersion(), bi };
 }

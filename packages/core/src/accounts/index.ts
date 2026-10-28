@@ -3,6 +3,7 @@ import { AppError, conflict, invalid, notFound } from '../errors.ts';
 import { audit, emit } from '../events.ts';
 import { newId, randomToken, sha256 } from '../ids.ts';
 import { t } from '../i18n/index.ts';
+import { idCheckToApi } from '../customers/identity.ts';
 import { exec, many, one } from '../sql.ts';
 import { customerAttachmentFile, customerAttachments } from '../attachments/index.ts';
 import { money } from '../crud.ts';
@@ -266,6 +267,8 @@ function profileToApi(c: any, email: string) {
     marketing_consent: !!c?.marketing_consent,
     sms_opt_in: !!c?.sms_opt_in,
     whatsapp_opt_in: !!c?.whatsapp_opt_in,
+    // An ID check before pickup (FR-PAY-9): whether one is needed, done, or waiting on the service's page.
+    id_check: idCheckToApi(c?.flags),
   };
 }
 

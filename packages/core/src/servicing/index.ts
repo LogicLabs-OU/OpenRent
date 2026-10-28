@@ -9,6 +9,7 @@ import { createTicket, openTicketOf } from '../maintenance/index.ts';
 import { recordServiceEvent } from './events.ts';
 
 export { recordServiceEvent } from './events.ts';
+export * from './electrical.ts';
 
 /**
  * Meters, service intervals and depreciation (FR-CAT-10, FR-MNT-4). A unit's meter only goes up; a
@@ -92,12 +93,14 @@ export interface IntervalInput {
   every_meter?: number | null;
   opens_ticket?: boolean;
   active?: boolean;
+  /** `electrical_test`: a PAT test (FR-MNT-5), every so many days. */
+  kind?: 'service' | 'electrical_test';
 }
 
 export function intervalToApi(r: any) {
   return {
     id: r.id, object: 'service_interval', name: r.name, product_id: r.product_id, product_name: r.product_name ?? null, category_id: r.category_id, category_name: r.category_name ?? null,
-    every_days: r.every_days, every_rentals: r.every_rentals, every_meter: r.every_meter == null ? null : Number(r.every_meter), opens_ticket: r.opens_ticket, active: r.active,
+    kind: r.kind ?? 'service', every_days: r.every_days, every_rentals: r.every_rentals, every_meter: r.every_meter == null ? null : Number(r.every_meter), opens_ticket: r.opens_ticket, active: r.active,
     created_at: r.created_at, updated_at: r.updated_at,
   };
 }
@@ -113,6 +116,9 @@ async function checkInterval(ctx: Ctx, input: IntervalInput, merged: IntervalInp
     if (v != null && (!(Number(v) > 0) || (k !== 'every_meter' && !Number.isInteger(v)))) errors.push({ field: k, code: 'invalid', message: msg('error.field.interval_value') });
   }
   if (!(merged.every_days || merged.every_rentals || merged.every_meter)) errors.push({ field: 'every_days', code: 'required', message: msg('error.field.interval_some') });
+  if (merged.kind !== undefined && !['service', 'electrical_test'].includes(merged.kind)) errors.push({ field: 'kind', code: 'invalid', message: msg('error.field.interval_kind') });
+  // A test is due by time; rentals and meter hours say nothing about a cable's safety.
+  if (merged.kind === 'electrical_test' && (!merged.every_days || merged.every_rentals || merged.every_meter)) errors.push({ field: 'every_days', code: 'required', message: msg('error.field.interval_test_days') });
   if (merged.product_id && merged.category_id) errors.push({ field: 'category_id', code: 'invalid', message: msg('error.field.interval_one_scope') });
   if (input.product_id && !(await one(ctx, `SELECT 1 FROM products WHERE id = $1 AND deleted_at IS NULL`, [input.product_id]))) errors.push({ field: 'product_id', code: 'not_found', message: msg('error.field.unknown_product') });
   if (input.category_id && !(await one(ctx, `SELECT 1 FROM categories WHERE id = $1`, [input.category_id]))) errors.push({ field: 'category_id', code: 'not_found', message: msg('error.field.unknown_category') });
@@ -133,8 +139,8 @@ export async function createInterval(ctx: Ctx, input: IntervalInput) {
   const id = newId('svi');
   await exec(
     ctx,
-    `INSERT INTO service_intervals (id, tenant_id, name, product_id, category_id, every_days, every_rentals, every_meter, opens_ticket, active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-    [id, ctx.tenantId, input.name!.trim(), input.product_id || null, input.category_id || null, input.every_days || null, input.every_rentals || null, input.every_meter || null, input.opens_ticket ?? true, input.active ?? true],
+    `INSERT INTO service_intervals (id, tenant_id, name, product_id, category_id, every_days, every_rentals, every_meter, opens_ticket, active, kind) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+    [id, ctx.tenantId, input.name!.trim(), input.product_id || null, input.category_id || null, input.every_days || null, input.every_rentals || null, input.every_meter || null, input.opens_ticket ?? true, input.active ?? true, input.kind ?? 'service'],
   );
   const row = intervalToApi(await must(ctx, `${INTERVAL_SELECT} WHERE si.id = $1`, [id], 'service_interval'));
   await audit(ctx, { entity_type: 'service_interval', entity_id: id, action: 'create', after: row });
@@ -145,7 +151,7 @@ export async function updateInterval(ctx: Ctx, id: string, input: IntervalInput)
   const before = await must<any>(ctx, `SELECT * FROM service_intervals WHERE id = $1 AND deleted_at IS NULL`, [id], 'service_interval', id);
   const merged = { ...intervalToApi(before), ...input };
   await checkInterval(ctx, input, merged);
-  const cols = ['name', 'product_id', 'category_id', 'every_days', 'every_rentals', 'every_meter', 'opens_ticket', 'active'] as const;
+  const cols = ['name', 'product_id', 'category_id', 'every_days', 'every_rentals', 'every_meter', 'opens_ticket', 'active', 'kind'] as const;
   const sets: string[] = [];
   const vals: unknown[] = [id];
   for (const c of cols)
@@ -236,8 +242,10 @@ export async function serviceDue(ctx: Ctx, f: { location_id?: string; interval_i
 /** Records a service done without a ticket (from the unit page). */
 export async function recordService(ctx: Ctx, stockItemId: string, input: { interval_id: string; notes?: string; performed_at?: string | null }) {
   await must(ctx, `SELECT 1 FROM stock_items WHERE id = $1`, [stockItemId], 'stock_item', stockItemId);
-  if (!(await one(ctx, `SELECT 1 FROM service_intervals WHERE id = $1 AND deleted_at IS NULL`, [input.interval_id])))
-    throw invalid(msg('error.check_the_interval'), [{ field: 'interval_id', code: 'not_found', message: msg('error.field.unknown_interval') }]);
+  const iv = await one<{ kind: string }>(ctx, `SELECT kind FROM service_intervals WHERE id = $1 AND deleted_at IS NULL`, [input.interval_id]);
+  if (!iv) throw invalid(msg('error.check_the_interval'), [{ field: 'interval_id', code: 'not_found', message: msg('error.field.unknown_interval') }]);
+  // A test is recorded with what was measured, not as a plain service.
+  if (iv.kind === 'electrical_test') throw invalid(msg('error.check_the_interval'), [{ field: 'interval_id', code: 'electrical_test', message: msg('error.field.interval_needs_test') }]);
   return recordServiceEvent(ctx, stockItemId, input);
 }
 

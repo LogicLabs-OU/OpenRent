@@ -2,6 +2,7 @@ import type { SettingsField } from '@openrent/plugin-sdk';
 import type { Ctx } from '../context.ts';
 import { AppError, invalid, type FieldError } from '../errors.ts';
 import { audit } from '../events.ts';
+import { can, type Permission } from '../permissions.ts';
 import { newId } from '../ids.ts';
 import { t } from '../i18n/index.ts';
 import { assertWithinLimit } from '../tenancy/operator.ts';
@@ -34,7 +35,7 @@ function openStored(ctx: Ctx, config: Record<string, unknown> | null | undefined
   return { ...plain, ...secrets };
 }
 
-/** Tenant row for a plugin; no row means enabled with installation defaults. */
+/** Tenant row for a plugin; no row means installation defaults, on unless the plugin starts off. */
 async function tenantRow(ctx: Ctx, pluginId: string) {
   return one<{ id: string; enabled: boolean; config: Record<string, unknown> }>(ctx, `SELECT id, enabled, config FROM plugins WHERE plugin_id = $1`, [pluginId]);
 }
@@ -49,11 +50,11 @@ export async function pluginConfig(ctx: Ctx, pluginId: string): Promise<{ enable
   // On a multi-shop installation, a shop that points a plugin somewhere else gets none of the
   // installation's defaults: the operator's keys never travel to a host a shop chose.
   const pointed = ctx.config.multiTenant && Object.entries(own).some(([k, v]) => ENDPOINT.test(k) && v !== null && v !== '');
-  return { enabled: row ? row.enabled : true, config: { ...(pointed ? {} : clean(ctx.plugins.defaultConfig(pluginId))), ...own } };
+  return { enabled: row ? row.enabled : (ctx.plugins.enabledByDefault?.(pluginId) ?? true), config: { ...(pointed ? {} : clean(ctx.plugins.defaultConfig(pluginId))), ...own } };
 }
 
 export async function isPluginEnabled(ctx: Ctx, pluginId: string): Promise<boolean> {
-  return (await tenantRow(ctx, pluginId))?.enabled ?? true;
+  return (await tenantRow(ctx, pluginId))?.enabled ?? ctx.plugins.enabledByDefault?.(pluginId) ?? true;
 }
 
 async function toApi(ctx: Ctx, p: InstalledPlugin) {
@@ -80,7 +81,7 @@ async function toApi(ctx: Ctx, p: InstalledPlugin) {
     provides: p.provides,
     warnings: p.warnings ?? [],
     jobs: p.jobs ?? [],
-    enabled: row ? row.enabled : true,
+    enabled: row ? row.enabled : (ctx.plugins.enabledByDefault?.(p.id) ?? true),
     settings: fields,
     values,
     secrets,
@@ -174,6 +175,38 @@ export async function adminSlots(ctx: Ctx, slots: { pluginId: string; slot: stri
   return out;
 }
 
+/**
+ * Pages of records plugins keep (plugin API 1.9), for the admin to draw: the plugins this shop has on,
+ * pages the user may see, texts in `locale`.
+ */
+export async function adminPages(ctx: Ctx, locale?: string | null) {
+  const text = (t: Record<string, string> | undefined) => (t ? (locale && t[locale]) || t.en || Object.values(t)[0] || '' : '');
+  const out = [];
+  for (const { pluginId, page } of ctx.plugins.adminPages?.() ?? []) {
+    if (!(await pluginConfig(ctx, pluginId)).enabled) continue;
+    if (page.permission && !can(ctx.actor, page.permission as Permission)) continue;
+    out.push({
+      object: 'plugin_page', plugin_id: pluginId, key: page.key, title: text(page.title), description: text(page.description) || null, placement: page.placement,
+      path: `/plugins/${pluginId}${page.path.startsWith('/') ? '' : '/'}${page.path}`,
+      columns: page.columns.map((c) => ({ key: c.key, label: text(c.label), type: c.type ?? 'text' })),
+      form: page.form
+        ? {
+            create: !!page.form.create, update: !!page.form.update,
+            fields: page.form.fields.map((f) => ({
+              key: f.key, label: text(f.label), type: f.type, required: !!f.required, help: text(f.help) || null, min: f.min ?? null, max: f.max ?? null, step: f.step ?? null, create_only: !!f.createOnly,
+              options: (f.options ?? []).map((o) => ({ value: o.value, label: text(o.label) })),
+              options_path: f.optionsPath ? `/plugins/${pluginId}${f.optionsPath.startsWith('/') ? '' : '/'}${f.optionsPath}` : null,
+            })),
+          }
+        : null,
+      remove: !!page.remove,
+      actions: (page.actions ?? []).map((a) => ({ key: a.key, label: text(a.label), confirm: text(a.confirm) || null, destructive: !!a.destructive, when: a.when ?? null })),
+      empty: text(page.empty) || null,
+    });
+  }
+  return out;
+}
+
 /** A provider a plugin registered, when this shop has that plugin on and set up; null otherwise. */
 export async function enabledProvider<P extends { id: string; isConfigured(ctx: { tenantId: string; config: Record<string, unknown>; logger: any }): boolean }>(ctx: Ctx, provider: P | undefined) {
   if (!provider) return null;
@@ -229,3 +262,4 @@ async function channelStates(ctx: Ctx, all: ReturnType<Ctx['plugins']['notificat
   return ready;
 }
 
+export { renderAccountPanels } from './storefront.ts';

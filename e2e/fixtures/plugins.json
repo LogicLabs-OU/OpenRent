@@ -23,6 +23,15 @@
     "@openrent/plugin-analytics",
     "@openrent/plugin-geocode-osm",
     "@openrent/plugin-search-meilisearch",
+    "@openrent/plugin-memberships",
+    "@openrent/plugin-einvoice-peppol",
+    "@openrent/plugin-einvoice-facturx",
+    "@openrent/plugin-einvoice-earve",
+    "@openrent/plugin-sign-documenso",
+    "@openrent/plugin-sign-docusign",
+    "@openrent/plugin-identity-stripe",
+    "@openrent/plugin-identity-veriff",
+    "@openrent/plugin-rfid-bridge",
     "e2e-extras"
   ]
 }

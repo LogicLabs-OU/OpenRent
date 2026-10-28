@@ -311,6 +311,8 @@ export interface ProductInput {
   seo?: Record<string, unknown>;
   tracking?: Tracking;
   meter_unit?: string | null;
+  /** What the meter costs at return: per meter unit, with an amount free per rental. */
+  meter_rate?: { amount: number; included?: number } | null;
   depreciation_months?: number | null;
   residual_bp?: number;
   price?: VariantInput['price'];
@@ -321,7 +323,7 @@ export interface ProductInput {
 const PRODUCT_COLS = {
   type: {}, name: {}, slug: {}, description: {}, visibility: {}, tags: {}, tax_profile_id: {}, deposit_amount: {}, buffer_before_min: {},
   buffer_after_min: {}, min_duration_min: {}, max_duration_min: {}, min_notice_min: {}, increment_min: {}, custom_fields: { json: true },
-  translations: { json: true }, seo: { json: true }, meter_unit: {}, depreciation_months: {}, residual_bp: {},
+  translations: { json: true }, seo: { json: true }, meter_unit: {}, meter_rate: { json: true }, depreciation_months: {}, residual_bp: {},
 };
 
 export function variantToApi(v: any, currency?: string) {
@@ -341,7 +343,7 @@ export function productToApi(p: any, extra: { variants?: any[]; category_ids?: s
     translations: p.translations, seo: p.seo, tax_profile_id: p.tax_profile_id, deposit_amount: Number(p.deposit_amount),
     buffer_before_min: p.buffer_before_min, buffer_after_min: p.buffer_after_min, min_duration_min: p.min_duration_min,
     max_duration_min: p.max_duration_min, min_notice_min: p.min_notice_min, increment_min: p.increment_min, custom_fields: p.custom_fields,
-    meter_unit: p.meter_unit ?? null, depreciation_months: p.depreciation_months ?? null, residual_bp: p.residual_bp ?? 0,
+    meter_unit: p.meter_unit ?? null, meter_rate: p.meter_rate ?? null, depreciation_months: p.depreciation_months ?? null, residual_bp: p.residual_bp ?? 0,
     category_ids: extra.category_ids ?? [], variants: (extra.variants ?? []).map((v) => variantToApi(v, extra.currency)), bundle: extra.bundle ?? null, images: extra.images ?? [],
     created_at: p.created_at, updated_at: p.updated_at,
   };
@@ -497,22 +499,34 @@ async function setBundle(ctx: Ctx, productId: string, b: NonNullable<ProductInpu
   }
 }
 
+/** A meter rate needs a meter: a whole amount per unit and a free amount that is not negative. */
+function checkMeterRate(rate: ProductInput['meter_rate'], meterUnit: string | null | undefined) {
+  if (rate == null) return null;
+  const errors = [];
+  if (!meterUnit?.trim()) errors.push({ field: 'meter_rate', code: 'no_meter', message: msg('error.field.meter_rate_no_meter') });
+  if (!Number.isInteger(rate.amount) || rate.amount < 0) errors.push({ field: 'meter_rate.amount', code: 'invalid', message: msg('error.field.meter_rate_amount') });
+  if (rate.included != null && !(Number(rate.included) >= 0)) errors.push({ field: 'meter_rate.included', code: 'invalid', message: msg('error.field.meter_rate_included') });
+  if (errors.length) throw invalid(msg('error.check_the_meter_rate'), errors);
+  return { amount: rate.amount, included: Number(rate.included ?? 0) };
+}
+
 export async function createProduct(ctx: Ctx, input: ProductInput) {
   if (!input.name?.trim()) throw invalid(msg('error.name_is_required'), [{ field: 'name', code: 'required', message: msg('error.field.enter_a_name') }]);
+  const meterRate = checkMeterRate(input.meter_rate, input.meter_unit);
   input = { ...input, custom_fields: await validateCustomFields(ctx, 'product', input.custom_fields), ...cleanDescriptions(input) };
   const slug = input.slug ? slugify(input.slug) : await uniqueSlug(ctx, slugify(input.name));
   const p = (
     await many(
       ctx,
       `INSERT INTO products (id, tenant_id, type, name, slug, description, visibility, tags, tax_profile_id, deposit_amount, buffer_before_min,
-         buffer_after_min, min_duration_min, max_duration_min, min_notice_min, increment_min, custom_fields, translations, seo, meter_unit, depreciation_months, residual_bp)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING *`,
+         buffer_after_min, min_duration_min, max_duration_min, min_notice_min, increment_min, custom_fields, translations, seo, meter_unit, depreciation_months, residual_bp, meter_rate)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
       [
         newId('prod'), ctx.tenantId, input.type, input.name.trim(), slug, input.description ?? '', input.visibility ?? 'public', input.tags ?? [],
         input.tax_profile_id ?? (await one(ctx, `SELECT id FROM tax_profiles WHERE is_default AND deleted_at IS NULL`))?.id ?? null,
         input.deposit_amount ?? 0, input.buffer_before_min ?? 0, input.buffer_after_min ?? 0, input.min_duration_min ?? null, input.max_duration_min ?? null,
         input.min_notice_min ?? 0, input.increment_min ?? null, json(input.custom_fields ?? {}), json(input.translations ?? {}), json(input.seo ?? {}),
-        input.meter_unit?.trim() || null, input.depreciation_months ?? null, input.residual_bp ?? 0,
+        input.meter_unit?.trim() || null, input.depreciation_months ?? null, input.residual_bp ?? 0, meterRate ? json(meterRate) : null,
       ],
     )
   )[0];
@@ -542,6 +556,11 @@ export async function updateProduct(ctx: Ctx, id: string, patch: Partial<Product
   const data: Record<string, unknown> = { ...patch };
   if (patch.slug) data.slug = slugify(patch.slug);
   if (patch.meter_unit !== undefined) data.meter_unit = patch.meter_unit?.trim() || null;
+  if (patch.meter_rate !== undefined || (patch.meter_unit !== undefined && !data.meter_unit && before.meter_rate)) {
+    // Removing the meter removes its rate.
+    const unit = patch.meter_unit !== undefined ? (data.meter_unit as string | null) : before.meter_unit;
+    data.meter_rate = unit || patch.meter_rate ? checkMeterRate(patch.meter_rate !== undefined ? patch.meter_rate : before.meter_rate, unit) : null;
+  }
   if (patch.custom_fields !== undefined) data.custom_fields = await validateCustomFields(ctx, 'product', patch.custom_fields);
   Object.assign(data, cleanDescriptions(patch));
   const q = updateSql('products', before.id, data, PRODUCT_COLS);

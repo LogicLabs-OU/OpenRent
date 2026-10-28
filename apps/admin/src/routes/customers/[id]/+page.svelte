@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PluginPages from '#lib/components/plugin-pages.svelte';
   import PluginSlot from '#lib/components/plugin-slot.svelte';
   import { page } from '$app/state';
   import * as Card from '@openrent/ui/card';
@@ -27,6 +28,7 @@
   import CustomFieldsForm from '#lib/components/custom-fields-form.svelte';
   import CustomerTermsCard from '#lib/components/customer-terms-card.svelte';
   import CustomerBillingCard from '#lib/components/customer-billing-card.svelte';
+  import CustomerInvoicesCard from '#lib/components/customer-invoices-card.svelte';
 
   const ADDRESS_FIELDS = ['line1', 'line2', 'postal_code', 'city', 'country'] as const;
   const blankAddress = () => Object.fromEntries(ADDRESS_FIELDS.map((k) => [k, ''])) as Record<string, string>;
@@ -42,6 +44,7 @@
   let f = $state<any>({});
   let errors = $state<Record<string, string>>({});
   let mergeId = $state('');
+  let invoicesVersion = $state(0);
 
   async function load() {
     c = await api.get(`/customers/${id}`);
@@ -182,6 +185,7 @@
       <Card.Footer><Button onclick={saveAddresses}>{t('common.save')}</Button></Card.Footer>
     </Card.Root>
     <CustomerBillingCard customerId={c.id} />
+    {#key invoicesVersion}<CustomerInvoicesCard customerId={c.id} />{/key}
     {#if f.type === 'company' || contacts.length}
       <Card.Root data-testid="customer-contacts">
         <Card.Header>
@@ -253,6 +257,13 @@
             <Field.Field orientation="horizontal"><Field.Label for="fw" class="flex-1 font-normal">{t('customer.flag.deposit_waived')}</Field.Label><Switch id="fw" checked={c.flags.deposit_waived} onCheckedChange={(v) => flag('deposit_waived', v)} /></Field.Field>
             <Field.Field orientation="horizontal"><Field.Label for="fi" class="flex-1 font-normal">{t('customer.flag.id_check')}</Field.Label><Switch id="fi" checked={c.flags.requires_id_check} onCheckedChange={(v) => flag('requires_id_check', v)} /></Field.Field>
             {#if c.flags.requires_id_check}<Field.Field orientation="horizontal"><Field.Label for="fv" class="flex-1 font-normal">{t('customer.flag.id_verified')}</Field.Label><Switch id="fv" checked={c.flags.id_verified} onCheckedChange={(v) => flag('id_verified', v)} /></Field.Field>{/if}
+            {#if c.flags.requires_id_check && !c.flags.id_verified}
+              <!-- The check on an ID check service's page (FR-PAY-9), when the shop has one. -->
+              <div class="flex flex-wrap items-center justify-between gap-2 text-sm" data-testid="customer-id-check">
+                <span class="text-muted-foreground">{c.id_check?.status === 'pending' ? t('customer.id_check.pending') : c.id_check?.status === 'failed' ? t('customer.id_check.failed', { reason: c.id_check.reason ?? '' }) : t('customer.id_check.none')}</span>
+                <Button type="button" variant="outline" size="sm" onclick={() => run(() => api.post(`/customers/${id}/actions/start_id_check`, {}), t('customer.id_check.sent'))}>{t('customer.id_check.send')}</Button>
+              </div>
+            {/if}
             <Field.Field orientation="horizontal"><Field.Label for="mc" class="flex-1 font-normal">{t('customer.marketing_consent')}</Field.Label><Switch id="mc" checked={c.marketing_consent} onCheckedChange={(v) => run(() => api.patch(`/customers/${id}`, { marketing_consent: v }), t('common.saved'))} /></Field.Field>
             <Field.Field orientation="horizontal"><Field.Label for="sms-in" class="flex-1 font-normal">{t('customer.sms_opt_in')}</Field.Label><Switch id="sms-in" checked={c.sms_opt_in} onCheckedChange={(v) => run(() => api.patch(`/customers/${id}`, { sms_opt_in: v }), t('common.saved'))} /></Field.Field>
             <Field.Field orientation="horizontal"><Field.Label for="wa-in" class="flex-1 font-normal">{t('customer.whatsapp_opt_in')}</Field.Label><Switch id="wa-in" checked={c.whatsapp_opt_in} onCheckedChange={(v) => run(() => api.patch(`/customers/${id}`, { whatsapp_opt_in: v }), t('common.saved'))} /></Field.Field>
@@ -290,6 +301,8 @@
       </Card.Root>
       <AttachmentsCard ownerPath={`/customers/${c.id}`} />
       <AuditHistory entityType="customer" entityId={c.id} />
+      <!-- A plugin may invoice the customer (a membership fee): the invoices card then shows it. -->
+      <PluginPages placement="customer" customerId={c.id} onchange={() => invoicesVersion++} />
       <PluginSlot slot="customer.tab" context={{ customer_id: c.id }} />
     </div>
   </div>

@@ -39,6 +39,19 @@ export const DEFAULT_NOTIFICATIONS: Record<string, { subject: string; body: stri
     body: wrap(`${HI}<p>{{#if request.due_at}}{{t "email.payment_request.body_due" amount=(money request.amount) number=order.number due=(datetime request.due_at)}}{{else}}{{t "email.payment_request.body" amount=(money request.amount) number=order.number}}{{/if}}</p>{{#if request.message}}<p>{{request.message}}</p>{{/if}}
 <p><a href="{{#if request.url}}{{request.url}}{{else}}{{order_url}}{{/if}}" style="display:inline-block;background:{{brand}};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">{{t "email.payment_request.pay"}}</a></p>`),
   },
+  // A customer invoice without a booking (ADR 0014), e.g. a membership fee, with a link to pay it online.
+  invoice_payment: {
+    audience: 'customer',
+    subject: '{{t "email.invoice_payment.subject" number=document.number shop=tenant.name}}',
+    body: wrap(`${HI}<p>{{t "email.invoice_payment.body" number=document.number amount=(money request.amount)}}</p>
+{{#if request.url}}<p><a href="{{request.url}}" style="display:inline-block;background:{{brand}};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">{{t "email.payment_request.pay"}}</a></p>{{/if}}`),
+  },
+  // An ID check on an outside service's page (FR-PAY-9), before pickup.
+  id_check: {
+    audience: 'customer',
+    subject: '{{t "email.id_check.subject" shop=tenant.name}}',
+    body: wrap(`${HI}<p>{{t "email.id_check.body"}}</p>{{#if check.url}}<p><a href="{{check.url}}" style="display:inline-block;background:{{brand}};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">{{t "email.id_check.button"}}</a></p>{{/if}}`),
+  },
   pickup_reminder: {
     audience: 'customer',
     subject: '{{t "email.pickup_reminder.subject" number=order.number}}',

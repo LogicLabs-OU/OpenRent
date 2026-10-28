@@ -103,6 +103,11 @@ export interface Product {
   variants: Variant[];
   /** Search engine texts (theme API 1.9); the storefront puts them in the page head. */
   seo?: Seo;
+  /**
+   * What the meter costs at return, for construction rentals charged by use (theme API 1.10); null without
+   * one. `description` is ready to print; the storefront's `product.before_add` slot shows it.
+   */
+  meter?: { unit: string; price: Money; included: number; includes_tax: boolean; description: string } | null;
   updated_at?: string;
   /**
    * What always comes with a bundle, and its slots of alternatives (theme API 1.7, FR-CAT-6). The

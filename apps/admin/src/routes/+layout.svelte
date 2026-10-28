@@ -29,7 +29,8 @@
   let palette = $state(false);
   let flash = $state('');
 
-  const bare = $derived(/\/(login|setup|signup)\/?$/.test(page.url.pathname));
+  // The consent page for apps (OAuth) stands on its own too, without the back office around it.
+  const bare = $derived(/\/(login|setup|signup|oauth\/authorize)\/?$/.test(page.url.pathname));
   const section = $derived.by(() => {
     const p = page.url.pathname.replace(/^\/admin/, '') || '/';
     return [...NAV, ...NAV_CONFIGURE].find((n) => (n.href === '/' ? p === '/' : p.startsWith(n.href)));
@@ -41,7 +42,7 @@
       await session.load();
       if (!session.me && !bare) {
         const setup = await api.get('/setup').catch(() => ({ required: false }));
-        goto(to(setup.required ? '/setup' : `/login?next=${encodeURIComponent(page.url.pathname)}`));
+        goto(to(setup.required ? '/setup' : `/login?next=${encodeURIComponent(page.url.pathname + page.url.search)}`));
       }
     })();
 

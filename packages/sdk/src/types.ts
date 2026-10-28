@@ -933,7 +933,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the tenant */
+        /** Get the tenant, with the address of its storefront */
         get: {
             parameters: {
                 query?: never;
@@ -2375,6 +2375,13 @@ export interface paths {
                         tracking?: "serialized" | "bulk" | "none";
                         /** @description What the units’ meter counts (hours, km); null for none */
                         meter_unit?: string | null;
+                        /** @description What the meter costs at return (needs meter_unit); null for none */
+                        meter_rate?: {
+                            /** @description Price per meter unit, in minor units, before tax */
+                            amount: number;
+                            /** @description Meter units free in each rental */
+                            included?: number;
+                        } | null;
                         depreciation_months?: number | null;
                         /** @description Value left at the end of the life, in basis points of the price */
                         residual_bp?: number;
@@ -2674,6 +2681,13 @@ export interface paths {
                         tracking?: "serialized" | "bulk" | "none";
                         /** @description What the units’ meter counts (hours, km); null for none */
                         meter_unit?: string | null;
+                        /** @description What the meter costs at return (needs meter_unit); null for none */
+                        meter_rate?: {
+                            /** @description Price per meter unit, in minor units, before tax */
+                            amount: number;
+                            /** @description Meter units free in each rental */
+                            included?: number;
+                        } | null;
                         depreciation_months?: number | null;
                         /** @description Value left at the end of the life, in basis points of the price */
                         residual_bp?: number;
@@ -3347,6 +3361,13 @@ export interface paths {
                         tracking?: "serialized" | "bulk" | "none";
                         /** @description What the units’ meter counts (hours, km); null for none */
                         meter_unit?: string | null;
+                        /** @description What the meter costs at return (needs meter_unit); null for none */
+                        meter_rate?: {
+                            /** @description Price per meter unit, in minor units, before tax */
+                            amount: number;
+                            /** @description Meter units free in each rental */
+                            included?: number;
+                        } | null;
                         depreciation_months?: number | null;
                         /** @description Value left at the end of the life, in basis points of the price */
                         residual_bp?: number;
@@ -3657,6 +3678,13 @@ export interface paths {
                         tracking?: "serialized" | "bulk" | "none";
                         /** @description What the units’ meter counts (hours, km); null for none */
                         meter_unit?: string | null;
+                        /** @description What the meter costs at return (needs meter_unit); null for none */
+                        meter_rate?: {
+                            /** @description Price per meter unit, in minor units, before tax */
+                            amount: number;
+                            /** @description Meter units free in each rental */
+                            included?: number;
+                        } | null;
                         depreciation_months?: number | null;
                         /** @description Value left at the end of the life, in basis points of the price */
                         residual_bp?: number;
@@ -5490,6 +5518,250 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/stock_items/{id}/contents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Units packed in this case (FR-CAT-11) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            object: "list";
+                            data: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "stock_item";
+                                barcode: string;
+                                status: string;
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/actions/pack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pack units in this case; scanning the case then scans them too (FR-CAT-11) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        stock_item_ids?: string[];
+                        barcodes?: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "stock_item";
+                            barcode: string;
+                            status: string;
+                            contents: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "stock_item";
+                                barcode: string;
+                                status: string;
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/actions/unpack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take units out of this case, or all of them */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        stock_item_ids?: string[];
+                        barcodes?: string[];
+                        all?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "stock_item";
+                            barcode: string;
+                            status: string;
+                            contents: ({
+                                id: string;
+                                /** @enum {string} */
+                                object: "stock_item";
+                                barcode: string;
+                                status: string;
+                            } & {
+                                [key: string]: unknown;
+                            })[];
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/stock_levels": {
         parameters: {
             query?: never;
@@ -6128,6 +6400,8 @@ export interface paths {
                             occurred_at: string;
                             order_id?: string | null;
                             stock_take_id?: string | null;
+                            /** @description An RFID read made offline: every tag at once (with mode check_out or check_in) */
+                            epcs?: string[] | null;
                         }[];
                     };
                 };
@@ -6817,6 +7091,42 @@ export interface paths {
         get?: never;
         put?: never;
         /** Check the customer’s tax number again with the tax plugin (VIES for EU VAT numbers) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/actions/start_id_check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email the customer a link to verify their identity with the ID check service (FR-PAY-9) */
         post: {
             parameters: {
                 query?: never;
@@ -7630,6 +7940,12 @@ export interface paths {
                                 region?: string;
                                 /** @description ISO 3166-1 alpha-2 */
                                 country?: string;
+                            } | null;
+                            /** @description E-invoices for these details, in a format a plugin offers */
+                            einvoice?: {
+                                format: string;
+                                /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                                endpoint?: string | null;
                             } | null;
                             is_default?: boolean;
                         } | null;
@@ -12140,6 +12456,8 @@ export interface paths {
                         every_meter?: number | null;
                         opens_ticket?: boolean;
                         active?: boolean;
+                        /** @description electrical_test: a PAT test every every_days; pickup waits for a valid one */
+                        kind?: "service" | "electrical_test";
                     };
                 };
             };
@@ -12213,6 +12531,8 @@ export interface paths {
                         every_meter?: number | null;
                         opens_ticket?: boolean;
                         active?: boolean;
+                        /** @description electrical_test: a PAT test every every_days; pickup waits for a valid one */
+                        kind?: "service" | "electrical_test";
                     };
                 };
             };
@@ -12226,6 +12546,120 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/electrical_tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The unit's electrical safety tests, newest first, and whether it may go out */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Record an electrical safety test; a pass counts as the interval’s service, a fail takes the unit out of service with a repair ticket */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        tested_at?: string | null;
+                        result: "pass" | "fail";
+                        appliance_class?: ("I" | null) | ("II" | null) | ("III" | null) | null;
+                        readings?: {
+                            /** @description Earth continuity, ohms */
+                            earth_ohm?: number | null;
+                            /** @description Insulation resistance, megohms */
+                            insulation_mohm?: number | null;
+                            /** @description Leakage or touch current, milliamps */
+                            leakage_ma?: number | null;
+                            polarity_ok?: boolean | null;
+                            visual_ok?: boolean | null;
+                        };
+                        tester: string;
+                        instrument?: string | null;
+                        notes?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/electrical_tests/{id}/certificate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The test certificate: a PDF where this installation makes PDFs, else HTML to print */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/service_due": {
@@ -14038,6 +14472,814 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/bi_access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Database logins for BI tools, where they connect and which views they read (passwords are shown only when made or rotated) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Make a database login for a BI tool; the response holds its password once */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bi_access/{id}/actions/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give the login a new password (in the response, once); the old one stops working */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/bi_access/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove the login; its open sessions end */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price_suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Suggested price changes per product and weeks, with how full they are now and were a year ago */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "open" | "accepted" | "dismissed";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price_suggestions/actions/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make the open suggestions again now from the bookings as they stand (the worker does this each Monday) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price_suggestions/{id}/actions/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Make the season price rule; adjustment_bp changes the suggested percentage */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description Basis points: 1000 = 10% more, -1000 = 10% less */
+                        adjustment_bp?: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/price_suggestions/{id}/actions/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Dismiss the suggestion; it is not made again for these weeks */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/stock_items/{id}/rfid_tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The unit's RFID tags (EPCs) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        /** Replace the unit's RFID tags; a tag on another unit is refused */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** @description EPCs in hex; spaces, dashes and colons are dropped */
+                        epcs: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scans/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Take every unit the tags belong to at once: onto the order at pickup (check_out), or back from their orders (check_in) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        epcs: string[];
+                        mode: "check_out" | "check_in";
+                        order_id?: string | null;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rfid/formats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Message formats readers can post in: OpenRent’s own and those of the shop’s RFID plugins */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rfid/readers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RFID readers (their tokens are shown only when added) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Add a reader; the response holds the address and the token its bridge posts reads with, once */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        location_id?: string | null;
+                        format?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rfid/readers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a reader; its token stops working */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rfid/readers/{id}/reads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the reader has read since a time, as units and unknown tags (the scan page asks each second while reading) */
+        get: {
+            parameters: {
+                query?: {
+                    since?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/authorize/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What an app asks for, for the consent page: the app, its address and scopes, or why the request is refused */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        response_type?: string;
+                        client_id?: string;
+                        redirect_uri?: string;
+                        scope?: string;
+                        state?: string;
+                        code_challenge?: string;
+                        code_challenge_method?: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/authorize/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve the app for this shop; answers where to send the person back, with the code */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        response_type?: string;
+                        client_id?: string;
+                        redirect_uri?: string;
+                        scope?: string;
+                        state?: string;
+                        code_challenge?: string;
+                        code_challenge_method?: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth/authorize/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline; answers where to send the person back */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        response_type?: string;
+                        client_id?: string;
+                        redirect_uri?: string;
+                        scope?: string;
+                        state?: string;
+                        code_challenge?: string;
+                        code_challenge_method?: string;
+                    } & {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth_grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Apps connected to this shop, with their scopes */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/oauth_grants/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disconnect an app: its tokens stop working at once */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/operator/oauth_clients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register an app with a client secret (confidential client); the response holds the secret once */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        client_name: string;
+                        redirect_uris: string[];
+                        client_uri?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents": {
         parameters: {
             query?: never;
@@ -14186,6 +15428,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/einvoice_formats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** E-invoice formats the shop can send (plugins that are on and set up) */
+        get: {
+            parameters: {
+                query?: {
+                    locale?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/einvoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The e-invoice of an invoice or credit note, in the format the customer’s billing details ask for (FR-DOC-6) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}/actions/void": {
         parameters: {
             query?: never;
@@ -14212,6 +15526,289 @@ export interface paths {
                     };
                 };
             };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/customers/{id}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The customer’s own invoices that belong to no booking, with what is owed on each */
+        get: {
+            parameters: {
+                query?: {
+                    open?: boolean;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** Invoice the customer for something that is no booking; with `key`, the same invoice comes back instead of a second one */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        lines: {
+                            description: string;
+                            amount: number;
+                            quantity?: number;
+                            tax_rate_bp?: number;
+                        }[];
+                        key?: string;
+                        period?: {
+                            /** Format: date-time */
+                            from: string;
+                            /** Format: date-time */
+                            to: string;
+                        } | null;
+                        /** @description Also email the customer the invoice with a link to pay it online */
+                        request_payment?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/balance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What is owed on a customer invoice */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            id: string;
+                            /** @enum {string} */
+                            object: "invoice_balance";
+                            number: string | null;
+                            status: string;
+                            total: {
+                                /** @description Minor units */
+                                amount: number;
+                                currency: string;
+                            };
+                            paid: {
+                                /** @description Minor units */
+                                amount: number;
+                                currency: string;
+                            };
+                            due: {
+                                /** @description Minor units */
+                                amount: number;
+                                currency: string;
+                            };
+                            einvoice_format: string | null;
+                        };
+                    };
+                };
+                /** @description RFC 9457 problem details */
+                "4XX": {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            type: string;
+                            title: string;
+                            status: number;
+                            code: string;
+                            detail: string;
+                            errors?: {
+                                field: string;
+                                code: string;
+                                message: string;
+                            }[];
+                            request_id: string;
+                        } & {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record cash, a bank transfer or a card terminal payment of a customer invoice */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        amount: number;
+                        method: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/actions/request_payment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Email the customer a link to pay the invoice online */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        notify?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/actions/charge_card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Charge the card the customer saved with an earlier payment */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
             responses: {
                 /** @description Default Response */
                 200: {
@@ -17688,6 +19285,12 @@ export interface paths {
                             /** @description ISO 3166-1 alpha-2 */
                             country?: string;
                         } | null;
+                        /** @description E-invoices for these details, in a format a plugin offers */
+                        einvoice?: {
+                            format: string;
+                            /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                            endpoint?: string | null;
+                        } | null;
                         is_default?: boolean;
                     };
                 };
@@ -17766,6 +19369,12 @@ export interface paths {
                             region?: string;
                             /** @description ISO 3166-1 alpha-2 */
                             country?: string;
+                        } | null;
+                        /** @description E-invoices for these details, in a format a plugin offers */
+                        einvoice?: {
+                            format: string;
+                            /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                            endpoint?: string | null;
                         } | null;
                         is_default?: boolean;
                     };
@@ -17927,6 +19536,83 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/v1/storefront/account/id_check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start the ID check the shop needs before pickup; returns where to do it */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        /** Format: uri */
+                        return_url?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/storefront/account/panels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Panels plugins show in the customer’s account, as cleaned HTML */
+        get: {
+            parameters: {
+                query?: {
+                    locale?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/me/billing_profiles": {
         parameters: {
             query?: never;
@@ -17977,6 +19663,12 @@ export interface paths {
                             region?: string;
                             /** @description ISO 3166-1 alpha-2 */
                             country?: string;
+                        } | null;
+                        /** @description E-invoices for these details, in a format a plugin offers */
+                        einvoice?: {
+                            format: string;
+                            /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                            endpoint?: string | null;
                         } | null;
                         is_default?: boolean;
                     };
@@ -18056,6 +19748,12 @@ export interface paths {
                             region?: string;
                             /** @description ISO 3166-1 alpha-2 */
                             country?: string;
+                        } | null;
+                        /** @description E-invoices for these details, in a format a plugin offers */
+                        einvoice?: {
+                            format: string;
+                            /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                            endpoint?: string | null;
                         } | null;
                         is_default?: boolean;
                     };
@@ -18272,6 +19970,12 @@ export interface paths {
                             /** @description ISO 3166-1 alpha-2 */
                             country?: string;
                         } | null;
+                        /** @description E-invoices for these details, in a format a plugin offers */
+                        einvoice?: {
+                            format: string;
+                            /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                            endpoint?: string | null;
+                        } | null;
                         is_default?: boolean;
                     };
                 };
@@ -18352,6 +20056,12 @@ export interface paths {
                             region?: string;
                             /** @description ISO 3166-1 alpha-2 */
                             country?: string;
+                        } | null;
+                        /** @description E-invoices for these details, in a format a plugin offers */
+                        einvoice?: {
+                            format: string;
+                            /** @description Peppol ID: scheme and identifier, e.g. 0191:10002345 */
+                            endpoint?: string | null;
                         } | null;
                         is_default?: boolean;
                     };
@@ -18608,7 +20318,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Pay a monthly invoice as a whole: one payment for what its bookings still owe, shared out over them when it succeeds */
+        /** Pay an invoice as a whole: a monthly one is shared out over its bookings when it succeeds; one without bookings (ADR 0014) is paid on the provider’s page (`redirect_url`) */
         post: {
             parameters: {
                 query?: never;
@@ -19067,6 +20777,42 @@ export interface paths {
         get: {
             parameters: {
                 query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugin_pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pages of records the plugins this shop has on keep, for the admin to draw (plugin API 1.9) */
+        get: {
+            parameters: {
+                query?: {
+                    locale?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -22632,6 +24378,272 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/memberships/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** memberships: GET /plans */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** memberships: POST /plans */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/memberships/plan_options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** memberships: GET /plan_options */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/memberships/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** memberships: DELETE /plans/:id */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        /** memberships: PATCH /plans/:id */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
+    "/api/v1/plugins/memberships/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** memberships: GET /members */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        /** memberships: POST /members */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/memberships/members/{id}/actions/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** memberships: POST /members/:id/actions/resend */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Default Response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plugins/memberships/members/{id}/actions/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** memberships: POST /members/:id/actions/cancel */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
                 cookie?: never;
             };
             requestBody?: never;

@@ -12,6 +12,9 @@
   import { api, t, toast, notifyError, fieldErrors, session, dt, d, getLocale } from '#lib';
   import { to } from '#lib/nav.ts';
   import InspectionRunner from '#lib/components/inspection-runner.svelte';
+  import CaseContents from '#lib/components/case-contents.svelte';
+  import RfidTags from '#lib/components/rfid-tags.svelte';
+  import ElectricalTests from '#lib/components/electrical-tests.svelte';
 
   /** One unit (FR-CAT-10, FR-MNT-3/4): meter, service, inspections, value and rentals. */
   const id = $derived(page.params.id!);
@@ -40,7 +43,8 @@
   $effect(() => {
     void id;
     load();
-    api.get('/service_intervals').then((r) => (intervals = r.data), () => undefined);
+    // Electrical tests are recorded with their readings, in their own card.
+    api.get('/service_intervals').then((r) => (intervals = r.data.filter((iv: any) => iv.kind !== 'electrical_test')), () => undefined);
   });
 
   async function addReading(e: SubmitEvent) {
@@ -102,6 +106,7 @@
           {#if unit.serial}<dt class="text-muted-foreground">{t('inventory.serial')}</dt><dd>{unit.serial}</dd>{/if}
           <dt class="text-muted-foreground">{t('inventory.condition')}</dt><dd>{unit.condition}</dd>
           {#if unit.bin}<dt class="text-muted-foreground">{t('unit.bin')}</dt><dd>{unit.bin}</dd>{/if}
+          {#if unit.container_id}<dt class="text-muted-foreground">{t('case.packed_in')}</dt><dd><a class="font-medium hover:underline" href={to(`/inventory/units/${unit.container_id}`)}>{unit.container_barcode}</a></dd>{/if}
           <dt class="text-muted-foreground">{t('unit.purchased')}</dt><dd>{unit.purchase_date ? d(`${unit.purchase_date}T12:00:00Z`) : '–'}{#if unit.purchase_price != null} · <Money value={money(unit.purchase_price)} />{/if}</dd>
         </dl>
       </Card.Content>
@@ -193,6 +198,10 @@
         {/if}
       </Card.Content>
     </Card.Root>
+
+    <CaseContents unitId={unit.id} {canEdit} onchange={load} />
+    <ElectricalTests stockItemId={unit.id} onchange={load} />
+    <RfidTags stockItemId={unit.id} />
 
     <Card.Root data-testid="unit-inspections">
       <Card.Header>

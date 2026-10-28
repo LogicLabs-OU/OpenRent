@@ -48,7 +48,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
 
 export function permissionsFor(actor: Actor): readonly Permission[] {
   if (actor.type === 'system') return ['*'];
-  if (actor.type === 'api_key') return (actor.scopes ?? []) as Permission[];
+  if (actor.type === 'api_key' || actor.type === 'app') return (actor.scopes ?? []) as Permission[];
   if (actor.type === 'user' && actor.role === 'custom') return (actor.permissions ?? []) as Permission[];
   if (actor.type === 'user' && actor.role) return ROLE_PERMISSIONS[actor.role];
   return [];

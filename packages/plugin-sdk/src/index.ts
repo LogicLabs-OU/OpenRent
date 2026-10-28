@@ -3,7 +3,7 @@
  * Licensed Apache-2.0 so plugin authors take on no AGPL obligations.
  */
 
-export const PLUGIN_API_VERSION = '1.8.0';
+export const PLUGIN_API_VERSION = '1.10.0';
 
 export interface Logger {
   info(obj: unknown, msg?: string): void;
@@ -30,7 +30,8 @@ export interface ProviderContext {
 // Payments
 // ---------------------------------------------------------------------------
 
-export type PaymentPurpose = 'rental' | 'deposit' | 'damage' | 'late_fee';
+/** `invoice`: a customer invoice that belongs to no booking, such as a membership fee (plugin API 1.9). */
+export type PaymentPurpose = 'rental' | 'deposit' | 'damage' | 'late_fee' | 'invoice';
 
 export interface PaymentCustomer {
   id: string;
@@ -42,8 +43,14 @@ export interface PaymentCustomer {
 export interface CreatePaymentIntentInput {
   amount: number;
   currency: string;
-  orderId: string;
-  orderNumber: number;
+  /**
+   * The booking paid for. Null for a customer invoice without one (plugin API 1.9); then `reference`
+   * names the invoice, for descriptions and idempotency keys.
+   */
+  orderId: string | null;
+  orderNumber: number | null;
+  /** Unique per thing paid for: the order id, or the invoice id when there is no order (plugin API 1.9). */
+  reference: string;
   purpose: PaymentPurpose;
   customer: PaymentCustomer;
   /** Save the payment method so a deposit can be authorised off-session later. */
@@ -68,8 +75,11 @@ export interface PaymentIntentResult {
 export interface PaymentLinkInput {
   amount: number;
   currency: string;
-  orderId: string;
-  orderNumber: number;
+  /** Null for a customer invoice without a booking (plugin API 1.9); see `reference`. */
+  orderId: string | null;
+  orderNumber: number | null;
+  /** The order id, or the invoice id when there is no order (plugin API 1.9). */
+  reference: string;
   description: string;
   customer: PaymentCustomer;
   /** Where the customer lands after paying, and after giving up. */
@@ -89,7 +99,10 @@ export interface PaymentLinkResult {
 export interface AuthorizeInput {
   amount: number;
   currency: string;
-  orderId: string;
+  /** Null when a saved card pays a customer invoice without a booking (plugin API 1.9); see `reference`. */
+  orderId: string | null;
+  /** The order id, or the invoice id when there is no order (plugin API 1.9). */
+  reference?: string;
   customerRef: string;
   paymentMethodRef: string;
   description?: string;
@@ -339,13 +352,25 @@ export interface IdentityCheckResult {
   ref?: string | null;
   /** Where the customer completes the check, when it is still pending. */
   url?: string | null;
+  /** Why a check failed, in the service's words (1.9). */
+  reason?: string | null;
 }
 
-/** Identity checks for customers marked "requires ID check": pickup waits until the check passes. */
+/**
+ * Identity checks for customers marked "requires ID check": pickup waits until the check passes. A service
+ * with its own verification page (Stripe Identity, Veriff) starts a session the customer completes and
+ * reports back by webhook or `status` (plugin API 1.9).
+ */
 export interface IdentityProvider {
   id: string;
   isConfigured(ctx: ProviderContext): boolean;
   check(ctx: ProviderContext, req: { customer: { id: string; name: string; email: string | null }; orderId: string | null }): Promise<IdentityCheckResult>;
+  /** Starts a verification session; the customer goes to `url` and comes back to `returnUrl` (1.9). */
+  start?(ctx: ProviderContext, req: { customer: { id: string; name: string; email: string | null }; orderId: string | null; returnUrl: string; locale?: string | null }): Promise<{ ref: string; url: string }>;
+  /** Where a session stands (1.9). */
+  status?(ctx: ProviderContext, ref: string): Promise<IdentityCheckResult>;
+  /** A webhook from the service at `ctx.webhookUrl` (1.9): which session changed, or null for anything else. */
+  handleWebhook?(ctx: ProviderContext, req: WebhookRequest): Promise<{ ref: string; status: IdentityCheckResult['status']; reason?: string | null } | null>;
 }
 
 /** Product search for the storefront; returns product ids, best match first. Without one, OpenRent searches itself. */
@@ -377,12 +402,135 @@ export interface Geocoder {
   route?(ctx: ProviderContext, from: { lat: number; lon: number }, to: { lat: number; lon: number }): Promise<{ km: number } | null>;
 }
 
-/** Electronic signatures on issued documents (filled by the built-in provider or a plugin). */
+/**
+ * Electronic signatures on issued documents (filled by the built-in provider or a plugin). A service that
+ * signs its own copy (Documenso, DocuSign) takes the PDF, reports back by webhook or `status`, and hands
+ * over the signed PDF (plugin API 1.9).
+ */
 export interface SignatureProvider {
   id: string;
   isConfigured(ctx: ProviderContext): boolean;
-  requestSignature(ctx: ProviderContext, req: { documentId: string; documentUrl: string; signer: { name: string; email: string } }): Promise<{ ref: string; url: string | null }>;
+  requestSignature(
+    ctx: ProviderContext,
+    req: {
+      documentId: string;
+      documentUrl: string;
+      signer: { name: string; email: string };
+      /** The document's title and number, for the signing service's email (1.9). */
+      title?: string;
+      /** The language of the signer (1.9). */
+      locale?: string | null;
+      /** The issued document as a PDF; null where the installation makes no PDFs (1.9). */
+      pdf?: () => Promise<Uint8Array | null>;
+    },
+  ): Promise<{ ref: string; url: string | null }>;
   status?(ctx: ProviderContext, ref: string): Promise<'pending' | 'signed' | 'declined'>;
+  /** A webhook from the service (1.9) at `ctx.webhookUrl`: which request changed, or null for anything else. */
+  handleWebhook?(ctx: ProviderContext, req: WebhookRequest): Promise<{ ref: string; status: 'pending' | 'signed' | 'declined' } | null>;
+  /** The signed PDF of a completed request (1.9). */
+  signedPdf?(ctx: ProviderContext, ref: string): Promise<Uint8Array | null>;
+}
+
+// ---------------------------------------------------------------------------
+// E-invoices (plugin API 1.9, FR-DOC-6)
+// ---------------------------------------------------------------------------
+
+/** A party of an e-invoice. Amounts elsewhere are minor units. */
+export interface EInvoiceParty {
+  name: string;
+  legalName?: string | null;
+  /** Registry code (e.g. an Estonian registrikood). */
+  companyId?: string | null;
+  vatId?: string | null;
+  address: { lines: string[]; city?: string | null; postalCode?: string | null; country: string | null };
+  /** Electronic address, e.g. a Peppol participant id `{ scheme: '0191', id: '10002345' }`. */
+  endpoint?: { scheme: string; id: string } | null;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+}
+
+/**
+ * An invoice line. `taxCategory` is the EN 16931 code: S standard, Z zero rated, E exempt, AE reverse
+ * charge, O outside the scope of VAT.
+ */
+export interface EInvoiceLine {
+  id: string;
+  name: string;
+  quantity: number;
+  /** UN/ECE Recommendation 20 code: C62 (one), DAY, HUR. */
+  unitCode: string;
+  /** Before tax, after discounts. */
+  netAmount: number;
+  /** Net price of one unit, `netAmount / quantity`. */
+  unitPrice: number;
+  taxAmount: number;
+  taxRateBp: number;
+  taxCategory: 'S' | 'Z' | 'E' | 'AE' | 'O' | 'K' | 'G';
+  period?: { start: string; end: string } | null;
+}
+
+/** An issued invoice or credit note in neutral form, for e-invoice formats (plugin API 1.9). Dates are YYYY-MM-DD. */
+export interface EInvoiceData {
+  type: 'invoice' | 'credit_note';
+  number: string;
+  issueDate: string;
+  dueDate?: string | null;
+  currency: string;
+  /** The buyer's reference for the invoice: their purchase order number, else the booking number. */
+  buyerReference?: string | null;
+  orderReference?: string | null;
+  /** For a credit note: the invoice it credits. */
+  precedingInvoice?: { number: string; issueDate: string } | null;
+  period?: { start: string; end: string } | null;
+  note?: string | null;
+  paymentTerms?: string | null;
+  seller: EInvoiceParty;
+  buyer: EInvoiceParty;
+  lines: EInvoiceLine[];
+  taxBreakdown: { category: EInvoiceLine['taxCategory']; rateBp: number; taxable: number; tax: number; exemptionReason?: string | null }[];
+  totals: { lineNet: number; taxExclusive: number; tax: number; taxInclusive: number; prepaid: number; payable: number };
+  /** Where to pay: the shop's bank account. */
+  payment?: { iban?: string | null; bic?: string | null; reference?: string | null } | null;
+}
+
+export type EInvoiceResult = { filename: string; contentType: string; content: string | Buffer } | { missing: string[] };
+
+/**
+ * An e-invoice format (plugin API 1.9): Peppol UBL, Factur-X, a national format. Customers whose billing
+ * details name the format get their invoices and credit notes in it, with the email and on download.
+ */
+export interface EInvoiceFormat {
+  id: string;
+  name: LocalizedText;
+  /** The format needs the buyer's electronic address (a Peppol ID); the billing details then ask for it. */
+  endpoint: boolean;
+  isConfigured(ctx: ProviderContext): boolean;
+  /**
+   * The file for one document, or what the invoice lacks (paths such as `buyer.endpoint`). `files.pdf()`
+   * gives the invoice's own PDF, for formats that carry it (Factur-X).
+   */
+  render(ctx: ProviderContext, invoice: EInvoiceData, files: { pdf(): Promise<Uint8Array | null> }): Promise<EInvoiceResult> | EInvoiceResult;
+}
+
+/** One tag read: the EPC in hex, and when, by which antenna and how strongly, where the reader says. */
+export interface TagRead {
+  epc: string;
+  read_at?: string | null;
+  antenna?: number | null;
+  rssi?: number | null;
+}
+
+/**
+ * An RFID reader's message format (plugin API 1.10, FR-SCAN-7). A reader, or the bridge next to it, posts
+ * batches of reads to the address OpenRent gives it; the format turns one batch into tag reads. Core
+ * checks the reader's token, keeps the reads and maps tags to units.
+ */
+export interface TagReader {
+  id: string;
+  name: LocalizedText;
+  /** `body` is the parsed JSON or form (else the text); `rawBody` the bytes as sent. */
+  parse(req: { headers: Record<string, string | string[] | undefined>; body: unknown; rawBody: Buffer }): TagRead[];
 }
 
 // ---------------------------------------------------------------------------
@@ -735,6 +883,63 @@ export interface PluginScope {
   secrets: { get(key: string): Promise<string | null> };
   /** Emits `plugin.<id>.<name>` events to webhooks and other plugins; other names are refused. */
   events: { emit(type: string, object: Record<string, unknown>): Promise<void> };
+  /**
+   * Invoices and payments for things that are no booking, such as a membership fee (plugin API 1.9,
+   * ADR 0014). Only plugins that list the `billing` permission get it. Money goes through OpenRent's
+   * own invoices and payments, so it is numbered, booked and refundable like any other.
+   */
+  billing?: PluginBilling;
+}
+
+/** A line of a customer invoice: an amount before tax, in minor units, at `tax_rate_bp` or the shop's default rate. */
+export interface PluginInvoiceLine {
+  description: string;
+  amount: number;
+  quantity?: number;
+  tax_rate_bp?: number;
+}
+
+export interface PluginInvoiceBalance {
+  id: string;
+  number: string | null;
+  status: string;
+  total: { amount: number; currency: string };
+  paid: { amount: number; currency: string };
+  due: { amount: number; currency: string };
+}
+
+export interface PluginBilling {
+  /**
+   * Issues an invoice to a customer. With `key`, an invoice issued before with the same key comes back
+   * instead of a second one, so a renewal that runs twice bills once. The `document.paid` event of the
+   * invoice carries the key as `source_key`, with the plugin id in front (`<plugin id>:<key>`).
+   */
+  invoiceCustomer(customerId: string, input: { lines: PluginInvoiceLine[]; key?: string; period?: { from: string; to: string } | null }): Promise<{ id: string; number: string | null; total: { amount: number; currency: string } }>;
+  /** What is owed on the invoice. */
+  invoiceDue(invoiceId: string): Promise<PluginInvoiceBalance>;
+  /** Asks for the money online: emails the customer a payment link (unless `notify` is false) and returns it. */
+  requestPayment(invoiceId: string, opts?: { notify?: boolean; returnUrl?: string }): Promise<{ url: string | null }>;
+  /** Charges the card the customer saved with an earlier online payment. */
+  chargeSavedCard(invoiceId: string, key: string): Promise<'paid' | 'no_card' | 'declined'>;
+  /** Voids an invoice with a credit note, e.g. a fee that is no longer owed. */
+  voidInvoice(invoiceId: string, reason?: string): Promise<void>;
+}
+
+/**
+ * Thrown by a plugin route to answer with an error (plugin API 1.9): 422 with field `errors` shows next to
+ * the fields of an admin page form, other statuses as a message.
+ */
+export class PluginError extends Error {
+  readonly status: 400 | 403 | 404 | 409 | 422;
+  readonly code: string;
+  readonly errors?: { field: string; code: string; message: string }[];
+  constructor(status: 400 | 403 | 404 | 409 | 422, code: string, message: string, errors?: { field: string; code: string; message: string }[]) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.errors = errors;
+    this.name = 'PluginError';
+  }
 }
 
 export type ScheduleHandler = (ctx: HookContext) => void | Promise<void>;
@@ -862,7 +1067,8 @@ export interface PluginSection {
   type: string;
   name: LocalizedText;
   settings?: PluginSectionSetting[];
-  render(ctx: ProviderContext & { locale: string }, settings: Record<string, unknown>): Promise<string> | string;
+  /** `scope` (plugin API 1.9) reads the shop's data, e.g. the plugin's own tables. */
+  render(ctx: ProviderContext & { locale: string; scope?: PluginScope }, settings: Record<string, unknown>): Promise<string> | string;
 }
 
 export interface StorefrontExtensions {
@@ -871,6 +1077,102 @@ export interface StorefrontExtensions {
   scripts?: StorefrontScript[];
   /** Home page section types (plugin API 1.7). */
   sections?: PluginSection[];
+  /** Panels in the customer's account (plugin API 1.9). */
+  accountPanels?: AccountPanel[];
+}
+
+/**
+ * A discount (or surcharge) a plugin adds to a customer's prices (plugin API 1.9), e.g. a member price.
+ * It joins the shop's own price rules: on rental lines in scope, by priority, stacking like them.
+ */
+export interface PluginPriceRule {
+  /** Unique within the plugin. */
+  id: string;
+  /** Shown in the price explanation, e.g. "Member price". */
+  name: string;
+  /** −1000 = 10 % off, 2500 = 25 % more. */
+  adjustment_bp: number;
+  stackable?: boolean;
+  /** Lower runs first; the shop's rules default to 100. */
+  priority?: number;
+  product_ids?: string[];
+  category_ids?: string[];
+}
+
+export interface PriceRuleSource {
+  /** The rules for one quote; `customerId` is null for a shopper who is not signed in. Runs on every quote: keep it quick. */
+  rules(ctx: HookContext, req: { customerId: string | null }): Promise<PluginPriceRule[]> | PluginPriceRule[];
+}
+
+/** A column of an admin page's table. */
+export interface AdminPageColumn {
+  key: string;
+  label: LocalizedText;
+  /** `money` reads `{ amount, currency }`; `badge` shows the value as a status. */
+  type?: 'text' | 'number' | 'money' | 'date' | 'datetime' | 'badge';
+}
+
+/** A field of an admin page's form; `money` is entered in major units and sent in minor units. */
+export interface AdminPageField {
+  key: string;
+  label: LocalizedText;
+  type: 'text' | 'textarea' | 'number' | 'money' | 'select' | 'boolean' | 'date';
+  required?: boolean;
+  help?: LocalizedText;
+  options?: { value: string; label: LocalizedText }[];
+  /** For a `select` whose choices are the shop's own data: a plugin route returning `{ data: [{ value, label }] }`. */
+  optionsPath?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Only when creating; the edit form leaves it out. */
+  createOnly?: boolean;
+}
+
+/** A button on each record: POST `{path}/{id}/actions/{key}`. */
+export interface AdminPageAction {
+  key: string;
+  label: LocalizedText;
+  /** Asked before the action runs. */
+  confirm?: LocalizedText;
+  destructive?: boolean;
+  /** Shown only for records whose `field` is one of `in`. */
+  when?: { field: string; in: string[] };
+}
+
+/**
+ * A page of records a plugin keeps, drawn by the admin itself (plugin API 1.9), so it looks and works
+ * like the rest of OpenRent. The records come from the plugin's own routes below `/api/v1/plugins/{id}`:
+ * GET `path` returns `{ data: [...] }`, each with an `id`. On a customer page the list gets `?customer_id=`
+ * and new records get `customer_id`.
+ */
+export interface AdminPage {
+  key: string;
+  title: LocalizedText;
+  description?: LocalizedText;
+  /** On its own page under Settings → Plugins, or as a card on each customer's page. */
+  placement: 'settings' | 'customer';
+  path: string;
+  /** Needed to see the page; the routes check their own permissions too. */
+  permission?: string;
+  columns: AdminPageColumn[];
+  /** With `create`, a form adds records (POST `path`); with `update`, it edits them (PATCH `path/{id}`). */
+  form?: { fields: AdminPageField[]; create?: boolean; update?: boolean };
+  /** Records can be deleted (DELETE `path/{id}`). */
+  remove?: boolean;
+  actions?: AdminPageAction[];
+  /** Shown when there are no records. */
+  empty?: LocalizedText;
+}
+
+/**
+ * A panel in the signed-in customer's storefront account (plugin API 1.9), e.g. a membership card. The
+ * storefront draws it as a card with `title`; `html` is its content, cleaned like the shop's own. Null
+ * shows nothing for this customer.
+ */
+export interface AccountPanel {
+  key: string;
+  render(ctx: HookContext & { locale: string }, customer: { id: string; email: string | null }): Promise<{ title: string; html: string } | null> | { title: string; html: string } | null;
 }
 
 export interface SettingsField {
@@ -901,6 +1203,10 @@ export interface PluginSetupApi {
   /** Addresses on the map and distances (plugin API 1.7). */
   registerGeocoder(p: Geocoder): void;
   registerSignatureProvider(p: SignatureProvider): void;
+  /** An e-invoice format (plugin API 1.9), e.g. Peppol UBL or Factur-X. */
+  registerEInvoiceFormat(f: EInvoiceFormat): void;
+  /** An RFID reader's message format (plugin API 1.10). */
+  registerTagReader(r: TagReader): void;
   /** A connection to another system (plugin API 1.2), shown on the admin's Integrations page. */
   registerIntegration(p: IntegrationProvider): void;
   /** Runs `handler` on a cron schedule (UTC) once for every shop that has the plugin turned on. */
@@ -915,6 +1221,10 @@ export interface PluginSetupApi {
    */
   adminSlot(slot: AdminSlot, bundleUrl: string, element?: string): void;
   storefront(ext: StorefrontExtensions): void;
+  /** Discounts or surcharges on a customer's prices (plugin API 1.9). */
+  priceRules(source: PriceRuleSource): void;
+  /** A page of the plugin's records, drawn by the admin (plugin API 1.9). */
+  adminPage(page: AdminPage): void;
   /** Environment lookup for installation-level defaults (self-hosters). */
   env(name: string): string | undefined;
   /** Installation-level defaults; per-tenant config stored in the database overrides them. */
@@ -938,6 +1248,11 @@ export interface PluginManifest {
   migrations?: PluginMigration[];
   /** Schedules the plugin declares, for the plugins page; handlers are registered with `api.schedule`. */
   jobs?: { name: string; cron: string }[];
+  /**
+   * False for a plugin each shop turns on itself in Settings → Plugins (plugin API 1.9), such as one that
+   * changes prices or adds pages. Others are on until a shop turns them off.
+   */
+  enabledByDefault?: boolean;
 }
 
 export interface PluginDefinition extends PluginManifest {
@@ -963,11 +1278,15 @@ export interface PluginRuntime {
   /** Every registered tax plugin, in load order (plugin API 1.8). */
   taxProviders(): TaxProvider[];
   identityProvider(): IdentityProvider | undefined;
+  /** Every identity plugin, in load order (plugin API 1.9); a shop uses the first it has on and set up. */
+  identityProviders?(): IdentityProvider[];
   searchProvider(): SearchProvider | undefined;
   /** Every exchange rate provider, in load order (a shop picks one). */
   ratesProviders(): RatesProvider[];
   geocoder(): Geocoder | undefined;
   signatureProvider(): SignatureProvider | undefined;
+  /** Every signature plugin, in load order (plugin API 1.9); a shop uses the first it has on and set up. */
+  signatureProviders?(): SignatureProvider[];
   integrations(): IntegrationProvider[];
   integration(id: string): IntegrationProvider | undefined;
   runHook(phase: 'before' | 'after', name: HookName, payload: unknown, ctx: HookContext): Promise<void>;
@@ -978,6 +1297,18 @@ export interface PluginRuntime {
   defaultConfig(pluginId: string): Record<string, unknown>;
   /** Which plugin registered a provider or channel. */
   pluginIdOf(providerId: string): string | undefined;
+  /** The permissions a plugin's manifest lists (plugin API 1.9). */
+  permissionsOf?(pluginId: string): string[];
+  /** Whether a shop that never chose has the plugin on (plugin API 1.9). */
+  enabledByDefault?(pluginId: string): boolean;
+  /** Price rule sources of plugins (plugin API 1.9). */
+  priceRuleSources?(): { pluginId: string; source: PriceRuleSource }[];
+  /** Admin pages of plugins (plugin API 1.9). */
+  adminPages?(): { pluginId: string; page: AdminPage }[];
+  /** E-invoice formats of plugins (plugin API 1.9). */
+  einvoiceFormats?(): { pluginId: string; format: EInvoiceFormat }[];
+  /** RFID reader formats of plugins (plugin API 1.10). */
+  tagReaders?(): { pluginId: string; reader: TagReader }[];
 }
 
 /** A runtime with nothing registered; used by tests and tools. */
@@ -990,10 +1321,12 @@ export const emptyRuntime: PluginRuntime = {
   taxProvider: () => undefined,
   taxProviders: () => [],
   identityProvider: () => undefined,
+  identityProviders: () => [],
   searchProvider: () => undefined,
   ratesProviders: () => [],
   geocoder: () => undefined,
   signatureProvider: () => undefined,
+  signatureProviders: () => [],
   integrations: () => [],
   integration: () => undefined,
   runHook: async () => undefined,
@@ -1001,6 +1334,12 @@ export const emptyRuntime: PluginRuntime = {
   storefrontExtensions: () => [],
   defaultConfig: () => ({}),
   pluginIdOf: () => undefined,
+  permissionsOf: () => [],
+  enabledByDefault: () => true,
+  priceRuleSources: () => [],
+  adminPages: () => [],
+  einvoiceFormats: () => [],
+  tagReaders: () => [],
 };
 
 export { validateManifest, ADMIN_SLOTS, PLUGIN_PERMISSIONS, type ManifestCheck } from './manifest.ts';

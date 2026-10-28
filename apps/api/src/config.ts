@@ -35,6 +35,8 @@ export interface Config {
   livemode: boolean;
   pdfRenderer: 'none' | 'playwright';
   dbPoolMax: number;
+  /** Shops may make database logins for BI tools (`OPENRENT_BI_ACCESS`, on unless `off`), and where tools connect. */
+  bi: { enabled: boolean; host: string; port: number; database: string; sslmode: string };
 }
 
 /** Proxies whose X-Forwarded-For is believed by default: loopback and private networks. */
@@ -54,6 +56,23 @@ const isUrl = (s: string) => {
     return false;
   }
 };
+
+/** Where BI tools connect: the operator's settings, else the database's own address. */
+function biConnection(env: Record<string, string | undefined>, databaseUrl: string): Config['bi'] {
+  let db: URL | null;
+  try {
+    db = new URL(databaseUrl);
+  } catch {
+    db = null;
+  }
+  return {
+    enabled: !['off', 'false', '0'].includes((env.OPENRENT_BI_ACCESS ?? 'on').trim().toLowerCase()),
+    host: env.OPENRENT_BI_HOST || db?.hostname || 'localhost',
+    port: Number(env.OPENRENT_BI_PORT || db?.port || 5432),
+    database: env.OPENRENT_BI_DATABASE || decodeURIComponent(db?.pathname.replace(/^\//, '') || 'postgres'),
+    sslmode: env.OPENRENT_BI_SSLMODE || 'require',
+  };
+}
 
 export function loadConfig(env: Record<string, string | undefined> = process.env, opts: { requireDatabase?: boolean } = {}): Config {
   const problems: string[] = [];
@@ -112,5 +131,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     livemode: (env.OPENRENT_LIVEMODE ?? 'false') === 'true',
     pdfRenderer: pdf,
     dbPoolMax: Math.max(1, Number(env.DATABASE_POOL_MAX ?? 10) || 10),
+    bi: biConnection(env, databaseUrl),
   };
 }

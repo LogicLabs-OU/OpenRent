@@ -144,6 +144,27 @@ At start the API checks the app role. If the role cannot switch to `openrent_app
 
 `invariants.sql` also creates the role `openrent_maintenance` and grants it to the owner role. Only this role may remove rows from the append-only tables, and only while a shop is being erased through the operator API. If the owner role lacks the right, the migration prints a notice and erasing fails. Then grant it yourself as a superuser: `GRANT openrent_maintenance TO <owner role>;`.
 
+### Data access for BI tools
+
+Shops can make database logins for BI tools in **Settings → Data access** (see [Reports](reports.md#read-your-data-in-a-bi-tool)). Each login is a PostgreSQL role that is a member of `openrent_bi`. It may read the views in the schema `bi`, which show its own shop's rows only, and nothing else: no tables, no writing.
+
+For this to work:
+
+- **The owner role** (`DATABASE_MIGRATION_URL`) needs `CREATEROLE`. The migrations then create the roles `openrent_bi` and `openrent_bi_reader` (without login) and the views, and the API makes and removes the shops' logins with that role. Without `CREATEROLE`, the views are left out and the page says why.
+- **BI tools must reach the database.** Only open it to the networks that need it, and require TLS. In `pg_hba.conf`, allow the logins with `scram-sha-256` from those networks, for example `hostssl all +openrent_bi 203.0.113.0/24 scram-sha-256`.
+
+Logins are made with a connection limit of 5, a statement timeout of two minutes and read-only transactions. Passwords reach the database only as SCRAM-SHA-256 verifiers, so they never show in its logs. Erasing a shop also removes its logins.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `OPENRENT_BI_ACCESS` | `on` | `off` stops shops from making or rotating logins. Logins already made can still be revoked. |
+| `OPENRENT_BI_HOST` | the host in `DATABASE_URL` | The host BI tools connect to, when it differs, such as a public name or a read replica. |
+| `OPENRENT_BI_PORT` | the port in `DATABASE_URL` | |
+| `OPENRENT_BI_DATABASE` | the database in `DATABASE_URL` | |
+| `OPENRENT_BI_SSLMODE` | `require` | What the page tells BI tools to use. |
+
+With a read replica, logins and views are copied to it from the primary, so point `OPENRENT_BI_HOST` at the replica and keep reports off the primary.
+
 ## Migrations
 
 Migrations are SQL files in `packages/db/migrations`, applied in name order. Each one runs in its own transaction and is recorded in `schema_migrations`. A PostgreSQL advisory lock keeps two runs from migrating at the same time. Plugins' own migrations run after OpenRent's.

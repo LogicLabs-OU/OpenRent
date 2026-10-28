@@ -157,6 +157,8 @@ The code shows the products of one category. Set `category` to the last part of 
 
 Customers book in a drawer on your site. Those who pay online go to the payment page and come back to your site, but only to the sites you listed. This keeps the checkout from being used to send people anywhere else.
 
+On WordPress or Shopify, use the OpenRent plugin or app instead of the embed code: see [WordPress and Shopify](wordpress-and-shopify.md).
+
 ## Currencies and the currency switcher
 
 Bookings are always charged in your own currency. Under **Settings → General → Prices and currencies** you can also show prices in other currencies (see the [settings guide](settings-and-team.md#prices-and-currencies)).

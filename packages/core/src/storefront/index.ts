@@ -230,6 +230,22 @@ function publicVariant(v: any, currency: string, locale: string, tax: { incl: bo
   };
 }
 
+/** What the meter costs at return (construction rentals), with the tax shown as for the rental price; null without a price. */
+function publicMeter(p: any, currency: string, locale: string, tax: { incl: boolean; bp: number }, shown: { code: string; rate: number } | null) {
+  if (!p.meter_unit || !p.meter_rate || typeof p.meter_rate !== 'object') return null;
+  const amount = tax.incl ? Math.round((Number(p.meter_rate.amount) * (10000 + tax.bp)) / 10000) : Number(p.meter_rate.amount);
+  const included = Number(p.meter_rate.included ?? 0);
+  const price = shown ? `≈ ${formatMoney(Math.round(amount * shown.rate), shown.code, locale)}` : formatMoney(amount, currency, locale);
+  const num = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(included);
+  return {
+    unit: p.meter_unit as string,
+    price: money(amount, currency),
+    included,
+    includes_tax: tax.incl,
+    description: included > 0 ? msg('storefront.meter_price_over', { price, unit: p.meter_unit, included: num }, locale) : msg('storefront.meter_price', { price, unit: p.meter_unit }, locale),
+  };
+}
+
 /** The price of the shortest rental: one period, or a price table's first row (for "from" prices and structured data). */
 function fromPrice(s: { kind: string; amount: number; price_table?: { periods: number; amount: number }[] }, currency: string) {
   const first = s.kind === 'table' ? [...(s.price_table ?? [])].sort((a, b) => a.periods - b.periods)[0] : null;
@@ -277,6 +293,7 @@ async function publicProduct(ctx: Ctx, p: any, opts: { locale?: string; from?: D
     badges: await productBadges(ctx, p.tags, locale),
     deposit_amount: money(p.deposit_amount, currency), min_duration_min: p.min_duration_min, max_duration_min: p.max_duration_min, min_notice_min: p.min_notice_min,
     increment_min: p.increment_min, images: publicImages(p, tr.name, opts.locale ?? locale), seo: tr.seo, updated_at: p.updated_at, variants, bundle: p.bundle ? await publicBundle(ctx, p.bundle, opts) : null,
+    meter: publicMeter(p, currency, locale, tax, show.shown),
     ...(opts.detail ? await publicRelations(ctx, p.id, currency, opts.locale ?? locale, opts.displayCurrency) : {}),
   };
 }

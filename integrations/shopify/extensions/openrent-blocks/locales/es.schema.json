@@ -1,0 +1,21 @@
+{
+  "blocks": {
+    "product": {
+      "name": "Producto de OpenRent",
+      "product": "Producto",
+      "product_info": "La última parte de la dirección del producto en su tienda OpenRent, después de /p/."
+    },
+    "category": {
+      "name": "Categoría de OpenRent",
+      "category": "Categoría",
+      "category_info": "La última parte de la dirección de la categoría en su tienda OpenRent, después de /c/. Vacío: todos los productos.",
+      "limit": "Productos mostrados"
+    },
+    "book_button": {
+      "name": "Botón de reserva de OpenRent",
+      "product": "Producto",
+      "product_info": "Vacío: el botón lleva a su tienda OpenRent.",
+      "label": "Texto del botón"
+    }
+  }
+}

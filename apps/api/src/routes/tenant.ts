@@ -1,4 +1,4 @@
-import { tenancy, payments, roles, exportTenant, listAudit, resolveSettings, AppError, PERMISSIONS } from '@openrent/core';
+import { tenancy, notifications, payments, roles, exportTenant, listAudit, resolveSettings, AppError, PERMISSIONS } from '@openrent/core';
 import type { Router } from '../http.ts';
 import { parseList } from '../http.ts';
 import { Id, IdParams, Json, ListQuery, Nullable, Type } from '../schemas.ts';
@@ -10,7 +10,10 @@ const OpeningHours = Type.Record(Type.String(), Type.Array(Type.Array(Type.Strin
 
 export function registerTenant(r: Router) {
   const T = ['Tenant'];
-  r.get('/tenant', { permission: 'tenant:read', tags: T, summary: 'Get the tenant' }, async (ctx) => tenancy.tenantToApi(await tenancy.getTenant(ctx)));
+  r.get('/tenant', { permission: 'tenant:read', tags: T, summary: 'Get the tenant, with the address of its storefront' }, async (ctx) => ({
+    ...tenancy.tenantToApi(await tenancy.getTenant(ctx)),
+    storefront_url: await notifications.storefrontBase(ctx),
+  }));
   r.get('/tenant/usage', { permission: 'tenant:read', tags: T, summary: 'This month’s orders, stored files and plugins turned on, against the shop’s limits (managed cloud)' }, async (ctx) => {
     const t = await ctx.db.query(`SELECT limits FROM tenants WHERE id = $1`, [ctx.tenantId]);
     return { object: 'shop_usage', limits: t.rows[0]?.limits ?? {}, usage: await tenancy.usageOf(ctx.db, ctx.tenantId) };

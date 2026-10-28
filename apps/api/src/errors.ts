@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyReply, FastifyRequest } from 'fastify';
 import { AppError, mapDbError } from '@openrent/core';
-import { HookVeto } from '@openrent/plugin-sdk';
+import { HookVeto, PluginError } from '@openrent/plugin-sdk';
 
 export interface Problem {
   type: string;
@@ -35,6 +35,9 @@ export function errorHandler(err: FastifyError & Record<string, any>, req: Fasti
   let p: Problem;
   if (err instanceof AppError) {
     p = problem(err.status, err.code, err.message, req, { ...(err.errors ? { errors: err.errors } : {}), ...(err.extra ?? {}) });
+  } else if (err instanceof PluginError || (err.name === 'PluginError' && typeof err.status === 'number')) {
+    // By name too: a plugin from PLUGINS_DIR may bring its own copy of the SDK.
+    p = problem(err.status, err.code, err.message, req, err.errors?.length ? { errors: err.errors } : {});
   } else if (err instanceof HookVeto) {
     p = problem(422, err.code, err.message, req);
   } else if (err.validation) {

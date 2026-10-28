@@ -162,5 +162,11 @@
   "account.invoices.title": "Facturas por pagar",
   "account.invoices.hint": "Las facturas mensuales de tu cuenta de empresa. Pagar una salda todas las reservas que incluye.",
   "account.invoices.item": "Factura {number} del {date}",
-  "account.invoices.due": "vence el {date}"
+  "account.invoices.due": "vence el {date}",
+  "account.id_check.title": "Verificación de identidad",
+  "account.id_check.hint": "Antes de tu primera recogida, verifica tu identidad con un documento de identidad. Solo tarda unos minutos.",
+  "account.id_check.failed": "La última verificación no se completó. Vuelve a intentarlo con un documento de identidad válido.",
+  "account.id_check.verified": "Tu identidad está verificada.",
+  "account.id_check.start": "Verificar mi identidad",
+  "account.id_check.unavailable": "Ahora mismo no se puede iniciar la verificación. Pregunta en la tienda."
 }

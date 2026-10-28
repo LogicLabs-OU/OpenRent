@@ -1,0 +1,21 @@
+{
+  "blocks": {
+    "product": {
+      "name": "OpenRent 商品",
+      "product": "商品",
+      "product_info": "OpenRent ストアフロントの商品アドレスの最後の部分（/p/ の後）です。"
+    },
+    "category": {
+      "name": "OpenRent カテゴリー",
+      "category": "カテゴリー",
+      "category_info": "OpenRent ストアフロントのカテゴリーアドレスの最後の部分（/c/ の後）です。空欄の場合はすべての商品です。",
+      "limit": "表示する商品数"
+    },
+    "book_button": {
+      "name": "OpenRent 予約ボタン",
+      "product": "商品",
+      "product_info": "空欄の場合、ボタンは OpenRent ストアフロントへ移動します。",
+      "label": "ボタンのテキスト"
+    }
+  }
+}

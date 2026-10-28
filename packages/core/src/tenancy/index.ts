@@ -97,6 +97,22 @@ function checkSeo(seo: TenantSettings['seo'], errors: { field: string; code: str
 }
 
 /** Menus: known kinds, a target where one is needed, labels that fit, and addresses that stay http(s) or on the shop. */
+/** An IBAN passes its mod-97 check (ISO 13616). */
+export function validIban(v: string): boolean {
+  const iban = v.replace(/\s+/g, '').toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)) return false;
+  const digits = (iban.slice(4) + iban.slice(0, 4)).replace(/[A-Z]/g, (c) => String(c.charCodeAt(0) - 55));
+  let rest = 0;
+  for (const d of digits) rest = (rest * 10 + Number(d)) % 97;
+  return rest === 1;
+}
+
+function checkInvoicing(inv: TenantSettings['invoicing'], errors: { field: string; code: string; message: string }[]) {
+  if (inv.iban && !validIban(inv.iban)) errors.push({ field: 'invoicing.iban', code: 'invalid', message: tr('settings.invalid_iban') });
+  if (inv.bic && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(inv.bic.trim().toUpperCase())) errors.push({ field: 'invoicing.bic', code: 'invalid', message: tr('settings.invalid_bic') });
+  if (inv.registry_code && String(inv.registry_code).trim().length > 40) errors.push({ field: 'invoicing.registry_code', code: 'invalid', message: tr('settings.invalid') });
+}
+
 function checkNavigation(nav: TenantSettings['navigation'], errors: { field: string; code: string; message: string }[]) {
   for (const menu of ['header', 'footer'] as const) {
     const list = nav?.[menu];
@@ -163,11 +179,18 @@ function validateSettings(s: TenantSettings, timezone = 'UTC') {
   for (const l of Object.keys(s.terms.translations ?? {})) if (!isLocale(l)) errors.push({ field: `terms.translations.${l}`, code: 'invalid', message: tr('settings.invalid_locales') });
   checkSeo(s.seo, errors);
   checkNavigation(s.navigation, errors);
+  checkInvoicing(s.invoicing, errors);
   const ss = s.self_service;
   if (!['request', 'self'].includes(ss.cancel)) errors.push({ field: 'self_service.cancel', code: 'invalid', message: tr('settings.invalid') });
   if (!['off', 'request', 'self'].includes(ss.change_dates)) errors.push({ field: 'self_service.change_dates', code: 'invalid', message: tr('settings.invalid') });
   for (const k of ['cancel_until_hours', 'change_until_hours'] as const)
     if (!Number.isInteger(ss[k]) || ss[k] < 0 || ss[k] > 720) errors.push({ field: `self_service.${k}`, code: 'out_of_range', message: tr('settings.invalid_hours_before') });
+  const ps = s.price_suggestions;
+  if (typeof ps.enabled !== 'boolean') errors.push({ field: 'price_suggestions.enabled', code: 'invalid', message: tr('settings.invalid') });
+  const whole = (v: unknown, lo: number, hi: number) => Number.isInteger(v) && (v as number) % 100 === 0 && (v as number) >= lo && (v as number) <= hi;
+  if (!whole(ps.quiet_bp, 100, 5000)) errors.push({ field: 'price_suggestions.quiet_bp', code: 'out_of_range', message: tr('settings.invalid_suggestion_quiet') });
+  if (!whole(ps.busy_bp, 5000, 10000) || ps.busy_bp <= ps.quiet_bp) errors.push({ field: 'price_suggestions.busy_bp', code: 'out_of_range', message: tr('settings.invalid_suggestion_busy') });
+  if (!whole(ps.step_bp, 100, 5000)) errors.push({ field: 'price_suggestions.step_bp', code: 'out_of_range', message: tr('settings.invalid_suggestion_step') });
   const tiers = s.cancellation_policy;
   if (!Array.isArray(tiers) || !tiers.length || tiers.length > 8) errors.push({ field: 'cancellation_policy', code: 'invalid', message: tr('settings.invalid_tiers') });
   else tiers.forEach((x, i) => {

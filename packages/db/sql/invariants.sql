@@ -58,6 +58,34 @@ BEGIN
 END $$;
 DROP TRIGGER IF EXISTS meter_readings_in_order ON meter_readings;
 CREATE TRIGGER meter_readings_in_order BEFORE INSERT OR UPDATE ON meter_readings FOR EACH ROW EXECUTE FUNCTION openrent_meter_in_order();
+-- Cases (FR-CAT-11): a unit is packed in a case at its own location, never in itself or in a case it holds.
+-- A unit that moves to another location leaves its case, and a case that moves is emptied first.
+CREATE OR REPLACE FUNCTION openrent_container_ok() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE cur text; loc text; hops int := 0;
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.location_id <> OLD.location_id THEN
+    IF NEW.container_id IS NOT DISTINCT FROM OLD.container_id THEN NEW.container_id := NULL; END IF;
+    UPDATE stock_items SET container_id = NULL WHERE container_id = NEW.id;
+  END IF;
+  IF NEW.container_id IS NULL THEN RETURN NEW; END IF;
+  IF NEW.container_id = NEW.id THEN RAISE EXCEPTION 'A unit cannot be packed in itself' USING HINT = 'container_cycle'; END IF;
+  SELECT location_id INTO loc FROM stock_items WHERE id = NEW.container_id;
+  IF loc IS DISTINCT FROM NEW.location_id THEN RAISE EXCEPTION 'A unit can only be packed in a case at its location' USING HINT = 'container_location'; END IF;
+  cur := NEW.container_id;
+  WHILE cur IS NOT NULL LOOP
+    hops := hops + 1;
+    IF cur = NEW.id OR hops > 50 THEN RAISE EXCEPTION 'A case cannot be packed in a unit it holds' USING HINT = 'container_cycle'; END IF;
+    SELECT container_id INTO cur FROM stock_items WHERE id = cur;
+  END LOOP;
+  RETURN NEW;
+END $$;
+-- Only once the column exists: the invariants also run on a database of an earlier release before its upgrade.
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'stock_items' AND column_name = 'container_id') THEN
+    DROP TRIGGER IF EXISTS stock_items_container_ok ON stock_items;
+    CREATE TRIGGER stock_items_container_ok BEFORE INSERT OR UPDATE OF container_id, location_id ON stock_items FOR EACH ROW EXECUTE FUNCTION openrent_container_ok();
+  END IF;
+END $$;
 DROP TRIGGER IF EXISTS signatures_append_only ON signatures;
 CREATE TRIGGER signatures_append_only BEFORE UPDATE OR DELETE ON signatures FOR EACH ROW EXECUTE FUNCTION openrent_append_only();
 
@@ -121,6 +149,15 @@ END $$;
 DROP TRIGGER IF EXISTS accounting_entry_lines_balance ON accounting_entry_lines;
 CREATE CONSTRAINT TRIGGER accounting_entry_lines_balance AFTER INSERT ON accounting_entry_lines DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION openrent_entry_balances();
 
+-- Electrical safety tests are a record of what was measured (FR-MNT-5): never changed or removed afterwards.
+-- (An older schema on its way through an upgrade has no such table yet.)
+DO $$
+BEGIN
+  IF to_regclass('public.electrical_tests') IS NULL THEN RETURN; END IF;
+  DROP TRIGGER IF EXISTS electrical_tests_append_only ON electrical_tests;
+  CREATE TRIGGER electrical_tests_append_only BEFORE UPDATE OR DELETE ON electrical_tests FOR EACH ROW EXECUTE FUNCTION openrent_append_only();
+END $$;
+
 -- Erasing a shop (managed cloud): only the openrent_maintenance role may remove rows from the
 -- append-only tables, and only for the shop named in openrent.erasing_tenant (packages/db/src/erase.ts).
 DO $$
@@ -174,3 +211,139 @@ CREATE OR REPLACE FUNCTION openrent_user_in_other_shops(uid text, current_tenant
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT EXISTS (SELECT 1 FROM memberships WHERE user_id = uid AND tenant_id <> current_tenant)
 $$;
+
+-- Reporting views for BI tools (FR-REP-5). Each shop may have database logins of its own (members of
+-- openrent_bi, made in Settings → Data access); they read the views in schema `bi` and nothing else.
+-- The views belong to openrent_bi_reader, which may read the tables, and each view keeps only the rows
+-- of the login's shop (`bi_access`). The shop's own filter is in the view itself: a login may set
+-- app.tenant_id or app.system in its session, which the tenant policy trusts, but no setting reaches
+-- the view's filter. Without the rights to make these roles, the views are left out.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_bi') THEN CREATE ROLE openrent_bi NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_bi_reader') THEN CREATE ROLE openrent_bi_reader NOLOGIN; END IF;
+  EXECUTE format('GRANT openrent_bi_reader TO %I', current_user);
+  EXECUTE format('GRANT openrent_bi TO %I WITH ADMIN OPTION', current_user);
+EXCEPTION WHEN insufficient_privilege THEN
+  RAISE NOTICE 'openrent_bi could not be created or granted; data access for BI tools needs it';
+END $$;
+
+-- Whether a staff account belongs to another shop is for the app to ask, not for every database login.
+REVOKE ALL ON FUNCTION openrent_user_in_other_shops(text, text) FROM PUBLIC;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_app') THEN
+    GRANT EXECUTE ON FUNCTION openrent_user_in_other_shops(text, text) TO openrent_app;
+  END IF;
+END $$;
+
+-- Older schemas (an upgrade on its way) have no bi_access yet; the views come with it.
+DO $$
+DECLARE t text;
+BEGIN
+  IF to_regclass('public.bi_access') IS NULL THEN RETURN; END IF;
+  -- The shop a BI login reads: its row in bi_access, or none. A suspended shop's logins read nothing.
+  CREATE OR REPLACE FUNCTION openrent_bi_tenant(login name) RETURNS text
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public SET app.system = 'on' AS $fn$
+    SELECT b.tenant_id FROM bi_access b JOIN tenants t ON t.id = b.tenant_id AND t.status = 'active' WHERE b.role_name = login
+  $fn$;
+  REVOKE ALL ON FUNCTION openrent_bi_tenant(name) FROM PUBLIC;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'openrent_bi_reader') OR NOT pg_has_role(current_user, 'openrent_bi_reader', 'SET') THEN
+    DROP SCHEMA IF EXISTS bi CASCADE;
+    RETURN;
+  END IF;
+  GRANT EXECUTE ON FUNCTION openrent_bi_tenant(name) TO openrent_bi, openrent_bi_reader;
+  -- The reader may read what the views show, of the login's shop only.
+  FOREACH t IN ARRAY ARRAY['tenants', 'locations', 'products', 'variants', 'categories', 'product_categories', 'stock_items', 'stock_levels', 'customers', 'orders', 'order_lines', 'allocations', 'payments', 'documents'] LOOP
+    IF to_regclass('public.' || t) IS NULL THEN CONTINUE; END IF;
+    EXECUTE format('GRANT SELECT ON %I TO openrent_bi_reader', t);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = t AND policyname = 'bi_read') THEN
+      EXECUTE format('CREATE POLICY bi_read ON %I FOR SELECT TO openrent_bi_reader USING (%s = openrent_bi_tenant(current_user))', t, CASE t WHEN 'tenants' THEN 'id' ELSE 'tenant_id' END);
+    END IF;
+  END LOOP;
+
+  DROP SCHEMA IF EXISTS bi CASCADE;
+  CREATE SCHEMA bi;
+  GRANT USAGE, CREATE ON SCHEMA bi TO openrent_bi_reader;
+
+  CREATE VIEW bi.shop WITH (security_barrier) AS
+    SELECT id, name, currency, timezone, locale FROM tenants WHERE id = openrent_bi_tenant(current_user);
+  COMMENT ON VIEW bi.shop IS 'The shop: its currency and time zone. Money everywhere is in minor units (cents).';
+
+  CREATE VIEW bi.locations WITH (security_barrier) AS
+    SELECT id, name, timezone, created_at, deleted_at FROM locations WHERE tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.products WITH (security_barrier) AS
+    SELECT p.id, p.type, p.name, p.slug, p.visibility, p.tags, p.meter_unit, p.created_at, p.deleted_at,
+           (SELECT c.name FROM product_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = p.id ORDER BY c.name LIMIT 1) AS category
+      FROM products p WHERE p.tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.variants WITH (security_barrier) AS
+    SELECT id, product_id, sku, name, tracking, is_default, created_at, deleted_at FROM variants WHERE tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.stock_items WITH (security_barrier) AS
+    SELECT s.id, s.variant_id, v.product_id, s.location_id, s.barcode, s.serial, s.status, s.condition, s.purchase_date, s.purchase_price, s.container_id, s.retired_at, s.created_at
+      FROM stock_items s JOIN variants v ON v.id = s.variant_id WHERE s.tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.customers WITH (security_barrier) AS
+    SELECT id, type, name, email, phone, company_name, tax_id, CASE jsonb_typeof(addresses) WHEN 'array' THEN addresses->0->>'country' ELSE coalesce(addresses->'billing'->>'country', addresses->'shipping'->>'country') END AS country, locale, tags, marketing_consent,
+           on_account, payment_terms_days, credit_limit, merged_into_id, anonymized_at, created_at, deleted_at
+      FROM customers WHERE tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.orders WITH (security_barrier) AS
+    SELECT id, number, status, customer_id, location_id, starts_at, ends_at, currency, payment_status, source, po_number, coupon_codes, tags,
+           coalesce((totals->>'subtotal')::bigint, 0) AS subtotal, coalesce((totals->>'discount')::bigint, 0) AS discount, coalesce((totals->>'tax')::bigint, 0) AS tax,
+           coalesce((totals->>'total')::bigint, 0) AS total, coalesce((totals->>'deposit')::bigint, 0) AS deposit, coalesce((totals->>'paid')::bigint, 0) AS paid,
+           coalesce((totals->>'balance')::bigint, (totals->>'total')::bigint, 0) AS balance, billing_cycle, created_at, closed_at, cancelled_at, cancel_reason
+      FROM orders WHERE tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.order_lines WITH (security_barrier) AS
+    SELECT id, order_id, type, product_id, variant_id, bundle_id, parent_line_id, quantity, starts_at, ends_at, description,
+           unit_price, subtotal, discount, tax, total, deposit, coalesce((price_snapshot->>'tax_rate_bp')::int, 0) AS tax_rate_bp,
+           picked_up_qty, returned_qty, lost_qty, created_at
+      FROM order_lines WHERE tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.payments WITH (security_barrier) AS
+    SELECT id, order_id, customer_id, document_id, provider, kind, purpose, method, amount, currency, status, parent_payment_id, created_at
+      FROM payments WHERE tenant_id = openrent_bi_tenant(current_user);
+
+  CREATE VIEW bi.invoices WITH (security_barrier) AS
+    SELECT id, type, number, status, order_id, customer_id, issued_at, currency, total,
+           coalesce((data->'totals'->>'tax')::bigint, 0) AS tax, coalesce(total, 0) - coalesce((data->'totals'->>'tax')::bigint, 0) AS net, voided_by_id
+      FROM documents WHERE tenant_id = openrent_bi_tenant(current_user) AND type IN ('invoice', 'credit_note') AND issued_at IS NOT NULL;
+
+  -- Booked unit-hours per product variant, location and day (the shop's days), from a year back to 90 days ahead.
+  -- Capacity is today's: units not retired or lost, or the bulk quantity.
+  CREATE VIEW bi.utilisation_daily WITH (security_barrier) AS
+    WITH shop AS (SELECT id, timezone FROM tenants WHERE id = openrent_bi_tenant(current_user)),
+    days AS (
+      SELECT d::date AS day, (d::date::timestamp AT TIME ZONE shop.timezone) AS from_at, ((d::date + 1)::timestamp AT TIME ZONE shop.timezone) AS to_at
+        FROM shop, generate_series((now() AT TIME ZONE shop.timezone)::date - 365, (now() AT TIME ZONE shop.timezone)::date + 90, interval '1 day') d
+    ),
+    cap AS (
+      SELECT s.variant_id, s.location_id, count(*)::int AS capacity FROM stock_items s, shop
+       WHERE s.tenant_id = shop.id AND s.status NOT IN ('retired', 'lost') GROUP BY 1, 2
+      UNION ALL
+      SELECT sl.variant_id, sl.location_id, sum(sl.quantity)::int FROM stock_levels sl JOIN variants v ON v.id = sl.variant_id AND v.tracking = 'bulk', shop
+       WHERE sl.tenant_id = shop.id GROUP BY 1, 2
+    ),
+    used AS (
+      SELECT a.variant_id, a.location_id, days.day,
+             sum(a.quantity * extract(epoch FROM least(coalesce(upper(a.period), days.to_at), days.to_at) - greatest(lower(a.period), days.from_at)) / 3600) AS unit_hours
+        FROM allocations a, shop, days
+       WHERE a.tenant_id = shop.id AND a.kind = 'reservation' AND a.period && tstzrange(days.from_at, days.to_at)
+       GROUP BY 1, 2, 3
+    )
+    SELECT days.day, cap.variant_id, v.product_id, cap.location_id, cap.capacity,
+           round(coalesce(used.unit_hours, 0)::numeric, 2) AS booked_unit_hours,
+           CASE WHEN cap.capacity > 0 THEN round((coalesce(used.unit_hours, 0) / (cap.capacity * extract(epoch FROM days.to_at - days.from_at) / 3600))::numeric, 4) ELSE 0 END AS utilisation
+      FROM days CROSS JOIN cap JOIN variants v ON v.id = cap.variant_id
+      LEFT JOIN used ON used.variant_id = cap.variant_id AND used.location_id = cap.location_id AND used.day = days.day;
+
+  FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'bi' AND c.relkind = 'v' LOOP
+    EXECUTE format('ALTER VIEW bi.%I OWNER TO openrent_bi_reader', t);
+  END LOOP;
+  REVOKE CREATE ON SCHEMA bi FROM openrent_bi_reader;
+  GRANT USAGE ON SCHEMA bi TO openrent_bi;
+  GRANT SELECT ON ALL TABLES IN SCHEMA bi TO openrent_bi;
+END $$;

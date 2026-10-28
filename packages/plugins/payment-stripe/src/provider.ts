@@ -41,6 +41,9 @@ export const defaultFactory: StripeFactory = (key) => {
 };
 
 const str = (v: unknown) => (typeof v === 'string' && v.length > 0 ? v : null);
+/** The booking in a payment's metadata; a customer invoice without one has none (plugin API 1.9). */
+const orderMeta = (input: { orderId: string | null; orderNumber: number | null }) =>
+  input.orderId ? { order_id: input.orderId, ...(input.orderNumber != null ? { order_number: String(input.orderNumber) } : {}) } : {};
 
 function mapIntentStatus(s: string): PaymentIntentResult['status'] {
   switch (s) {
@@ -107,9 +110,9 @@ export function createStripeProvider(factory: StripeFactory = defaultFactory): P
           automatic_payment_methods: { enabled: true },
           // Keep the card for the off-session deposit hold before pickup.
           ...(input.savePaymentMethod ? { setup_future_usage: 'off_session' } : {}),
-          metadata: { ...input.metadata, order_id: input.orderId, purpose: input.purpose, tenant_id: ctx.tenantId, order_number: String(input.orderNumber) },
+          metadata: { ...input.metadata, ...orderMeta(input), purpose: input.purpose, tenant_id: ctx.tenantId },
         },
-        idem(ctx, `pi:${input.orderId}:${input.purpose}:${input.amount}`),
+        idem(ctx, `pi:${input.reference ?? input.orderId}:${input.purpose}:${input.amount}`),
       );
       return { ref: pi.id, clientSecret: pi.client_secret ?? null, status: mapIntentStatus(pi.status), customerRef };
     },
@@ -118,7 +121,7 @@ export function createStripeProvider(factory: StripeFactory = defaultFactory): P
       // Stripe Checkout pages live 30 minutes to 24 hours.
       const max = Date.now() + 23.5 * 3600_000;
       const expires = input.expiresAt ? Math.min(input.expiresAt.getTime(), max) : max;
-      const metadata = { ...input.metadata, order_id: input.orderId, purpose: 'rental', tenant_id: ctx.tenantId, order_number: String(input.orderNumber) };
+      const metadata = { ...input.metadata, ...orderMeta(input), purpose: input.orderId ? 'rental' : 'invoice', tenant_id: ctx.tenantId };
       const session = await client(ctx).checkout.sessions.create(
         {
           mode: 'payment',
@@ -131,7 +134,7 @@ export function createStripeProvider(factory: StripeFactory = defaultFactory): P
           cancel_url: input.cancelUrl,
           expires_at: Math.floor(Math.max(expires, Date.now() + 31 * 60_000) / 1000),
         },
-        idem(ctx, `link:${input.metadata?.payment_request_id ?? input.orderId}:${input.amount}`),
+        idem(ctx, `link:${input.metadata?.payment_request_id ?? input.reference ?? input.orderId}:${input.amount}`),
       );
       return { ref: session.id, url: session.url!, expiresAt: session.expires_at ? new Date(session.expires_at * 1000) : null };
     },
@@ -149,9 +152,9 @@ export function createStripeProvider(factory: StripeFactory = defaultFactory): P
             off_session: true,
             confirm: true,
             description: input.description,
-            metadata: { ...input.metadata, order_id: input.orderId, purpose: 'deposit', tenant_id: ctx.tenantId },
+            metadata: { ...input.metadata, ...(input.orderId ? { order_id: input.orderId } : {}), purpose: input.metadata?.purpose ?? 'deposit', tenant_id: ctx.tenantId },
           },
-          idem(ctx, `deposit:${input.orderId}:${input.amount}`),
+          idem(ctx, `deposit:${input.reference ?? input.orderId}:${input.amount}`),
         );
         if (pi.status === 'requires_capture') {
           return { ref: pi.id, status: 'held', expiresAt: new Date(Date.now() + 7 * 86400_000) };

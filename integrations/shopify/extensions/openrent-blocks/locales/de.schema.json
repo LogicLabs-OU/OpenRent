@@ -1,0 +1,21 @@
+{
+  "blocks": {
+    "product": {
+      "name": "OpenRent-Produkt",
+      "product": "Produkt",
+      "product_info": "Der letzte Teil der Produktadresse in Ihrem OpenRent-Webshop, nach /p/."
+    },
+    "category": {
+      "name": "OpenRent-Kategorie",
+      "category": "Kategorie",
+      "category_info": "Der letzte Teil der Kategorieadresse in Ihrem OpenRent-Webshop, nach /c/. Leer: alle Produkte.",
+      "limit": "Angezeigte Produkte"
+    },
+    "book_button": {
+      "name": "OpenRent-Buchungsbutton",
+      "product": "Produkt",
+      "product_info": "Leer: Der Button führt zu Ihrem OpenRent-Webshop.",
+      "label": "Buttontext"
+    }
+  }
+}

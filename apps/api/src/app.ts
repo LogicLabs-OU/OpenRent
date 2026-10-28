@@ -32,6 +32,10 @@ import { registerIntegrations } from './routes/integrations.ts';
 import { registerAccounting } from './routes/accounting.ts';
 import { registerPortal } from './routes/portal.ts';
 import { registerCalendar } from './routes/calendar.ts';
+import { registerBi } from './routes/bi.ts';
+import { registerPriceSuggestions } from './routes/price-suggestions.ts';
+import { registerRfid } from './routes/rfid.ts';
+import { registerOAuth, registerOAuthEndpoints } from './routes/oauth.ts';
 import { registerDocuments } from './routes/documents.ts';
 import { registerWebhooks } from './routes/webhooks.ts';
 import { registerReports } from './routes/reports.ts';
@@ -160,6 +164,10 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
   registerIntegrations(r);
   registerAccounting(r);
   registerCalendar(r);
+  registerBi(r);
+  registerPriceSuggestions(r);
+  registerRfid(r);
+  registerOAuth(r);
   registerDocuments(r);
   registerWebhooks(r);
   registerReports(r);
@@ -178,6 +186,7 @@ export async function buildApp(deps: AppDeps, opts: { logger?: boolean | object 
   registerDomains(r);
   registerStrings(r);
   await registerInbound(app, deps);
+  await registerOAuthEndpoints(app, deps);
 
   // Plugin routes under /api/v1/plugins/{id}/... with the same auth (FR-PLG-3).
   for (const { pluginId, handler: route } of deps.plugins.routes) {

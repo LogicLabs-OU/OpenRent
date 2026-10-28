@@ -30,10 +30,21 @@ describe('stripe provider', () => {
   it('creates a customer and a payment intent that saves the card for the deposit', async () => {
     const f = fake();
     const p = createStripeProvider(() => f);
-    const r = await p.createPaymentIntent(ctx, { amount: 6000, currency: 'EUR', orderId: 'ord_1', orderNumber: 1001, purpose: 'rental', customer: { id: 'cus_1', name: 'Ann', email: 'a@x.ee' }, savePaymentMethod: true });
+    const r = await p.createPaymentIntent(ctx, { amount: 6000, currency: 'EUR', orderId: 'ord_1', orderNumber: 1001, reference: 'ord_1', purpose: 'rental', customer: { id: 'cus_1', name: 'Ann', email: 'a@x.ee' }, savePaymentMethod: true });
     expect(r).toMatchObject({ ref: 'pi_1', clientSecret: 'pi_1_secret', customerRef: 'cus_s1' });
     const pi = f.calls.find((c) => c[0] === 'pi')[1];
     expect(pi).toMatchObject({ amount: 6000, currency: 'eur', setup_future_usage: 'off_session', metadata: { order_id: 'ord_1', purpose: 'rental' } });
+  });
+
+  it('names an invoice instead of a booking when there is none (plugin API 1.9)', async () => {
+    const f = fake();
+    const p = createStripeProvider(() => f);
+    await p.createPaymentLink!(ctx, {
+      amount: 2500, currency: 'EUR', orderId: null, orderNumber: null, reference: 'doc_9', description: 'Membership', customer: { id: 'cus_1', name: 'Ann', email: 'a@x.ee' },
+      successUrl: 'https://shop.test/account', cancelUrl: 'https://shop.test/account', metadata: { payment_request_id: 'prq_9' },
+    });
+    const call = f.calls.at(-1);
+    expect(call[1].metadata).toEqual({ payment_request_id: 'prq_9', purpose: 'invoice', tenant_id: expect.any(String) });
   });
 
   it('holds deposits with manual capture off-session and captures partially', async () => {
@@ -59,7 +70,7 @@ describe('stripe provider', () => {
     const f = fake();
     const p = createStripeProvider(() => f);
     const r = await p.createPaymentLink!(ctx, {
-      amount: 4500, currency: 'EUR', orderId: 'ord_1', orderNumber: 1001, description: 'Order #1001', customer: { id: 'cus_1', name: 'Ann', email: 'a@x.ee' },
+      amount: 4500, currency: 'EUR', orderId: 'ord_1', orderNumber: 1001, reference: 'ord_1', description: 'Order #1001', customer: { id: 'cus_1', name: 'Ann', email: 'a@x.ee' },
       successUrl: 'https://shop.test/order/tok?paid=1', cancelUrl: 'https://shop.test/order/tok', metadata: { payment_request_id: 'prq_1' },
     });
     expect(r).toMatchObject({ ref: 'cs_1', url: 'https://checkout.stripe.com/c/cs_1' });

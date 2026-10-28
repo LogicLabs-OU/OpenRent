@@ -52,6 +52,11 @@ export async function shot(page: Page, name: string) {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
 }
 
+/** Waits for transitions to end (a dialog fading in), so colour checks see the final colours. Spinners never end and are left out. */
+export async function settled(page: Page) {
+  await page.evaluate(() => Promise.all(document.getAnimations().filter((a) => a.effect?.getComputedTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null))));
+}
+
 export const isoDate = (days: number) => new Date(Date.now() + days * 86400_000).toISOString().slice(0, 10);
 
 /** Next date at least `days` ahead that falls on a weekday (the demo shop is closed on Sundays). */

@@ -72,6 +72,26 @@ Season, holiday and weekday rules count only for the share of the rental on thei
 
 Rules change rental lines only, and not a line where staff typed a price. The **Active** switch turns a rule off without deleting it. Deleting a rule does not change orders already priced.
 
+## Price suggestions
+
+**Pricing → Suggestions** lists price changes OpenRent suggests for the coming weeks. Nothing changes until you accept one.
+
+Each Monday, OpenRent looks at every rental product's next twelve weeks, starting the week after next, and asks two things for each week:
+
+- **Booked now:** how much of the product is booked already.
+- **A year ago:** how much was booked in the same week last year. This counts only for products booked more than a year ago; for newer products the column shows a dash.
+
+A week is **busy** when either share reaches **Busy from** (85 % unless you change it). It is **quiet** when both are below **Quiet below** (30 %). Busy weeks get a suggested rise and quiet weeks a cut, by **Change by** (10 %). Weeks in a row that lean the same way become one suggestion.
+
+For each suggestion:
+
+- **Accept** opens a window with the percentage, which you can change. **Make price rule** adds a season price rule for those dates and that product. It is an ordinary rule: change or delete it under **Price rules**.
+- **Dismiss** removes the suggestion. Those weeks are not suggested again for that product in the same direction.
+
+Weeks that a season or holiday rule already covers are left out. **Check now** makes the suggestions again from the bookings as they stand.
+
+Change the thresholds or turn suggestions off under **When to suggest**. That needs the right to change settings; accepting and dismissing need the right to change prices.
+
 ## Coupons
 
 Go to **Pricing → Coupons** and click **New coupon**.
@@ -157,6 +177,19 @@ Turn on **Charge late returns** in **Settings → Policies** and set the **Late 
 
 - With an active **Late return** fee, the fee is priced for the late time.
 - Without one, the rental is priced again for the time it was really out, and the difference is charged.
+
+### Charging by the meter
+
+Construction machines and generators are often charged for their use: running hours or kilometres. A product with a meter (see [Meter readings](maintenance-and-inspections.md)) can have a price for it:
+
+1. On the product page, fill in **Meter counts**, for example "h".
+2. Fill in **Price per h used** (before tax) and, if a rental includes some use, **h included per rental**.
+
+At pickup and at return, staff must then read the meter of each unit; the order refuses the pickup or return without the reading. At return, what the meter ran beyond the included amount becomes a line on the order, for example "Excavator EX-1: 4.5 h beyond the 8 h included (100 to 112.5)", with the rental's tax rate.
+
+- **An order that is invoiced already** gets the charge on an invoice of its own; the first invoice never changes. The purchase order number goes on it too.
+- **Shoppers** see the price under the add button, for example "8 h included; then €12.50 per h, charged at return".
+- **Leave the price empty** to charge nothing for use; the meter is then read for servicing only.
 
 ## Price explanations
 

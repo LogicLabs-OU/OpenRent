@@ -73,6 +73,8 @@ export interface TenantSettings {
   /** Rental terms; `translations` holds the text in other storefront languages (falls back to `text`). */
   terms: { text: string; version: string; translations?: Record<string, string> };
   document_prefixes: Record<string, string>;
+  /** Printed on invoices and given to e-invoices (FR-DOC-6): the company's registry code and where to pay. */
+  invoicing: { registry_code: string | null; iban: string | null; bic: string | null };
   staff_email: string | null;
   email_from: string | null;
   /** Plugin that sends the shop's email (FR-NOT-1); null picks the first one that is set up. */
@@ -115,6 +117,11 @@ export interface TenantSettings {
   self_service: { cancel: 'request' | 'self'; cancel_until_hours: number; change_dates: 'off' | 'request' | 'self'; change_until_hours: number };
   /** The storefront's own menus; an empty header menu leaves the theme's (the categories). */
   navigation: { header: NavItem[]; footer: NavItem[] };
+  /**
+   * Weekly price suggestions (FR-PR-9): a week is busy from `busy_bp` booked (now or a year ago), quiet
+   * below `quiet_bp` (both), and the suggested change is `step_bp`. Basis points: 8500 = 85 %.
+   */
+  price_suggestions: { enabled: boolean; busy_bp: number; quiet_bp: number; step_bp: number };
 }
 
 /**
@@ -170,6 +177,7 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   terms: { text: DEFAULT_TERMS, version: '1' },
   cart_reminders: { enabled: false, after_hours: 4 },
   document_prefixes: { invoice: 'INV', credit_note: 'CN', receipt: 'RC', quote: 'Q', confirmation: 'OC', contract: 'RA' },
+  invoicing: { registry_code: null, iban: null, bic: null },
   staff_email: null,
   email_from: null,
   email_channel: null,
@@ -185,6 +193,7 @@ export const DEFAULT_SETTINGS: TenantSettings = {
   seo: { title: null, description: null, image_url: null },
   navigation: { header: [], footer: [] },
   self_service: { cancel: 'request', cancel_until_hours: 48, change_dates: 'off', change_until_hours: 48 },
+  price_suggestions: { enabled: true, busy_bp: 8500, quiet_bp: 3000, step_bp: 1000 },
 };
 
 function isObj(v: unknown): v is Record<string, any> {

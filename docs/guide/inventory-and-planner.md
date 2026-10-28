@@ -96,6 +96,17 @@ Click a barcode on the inventory page or the planner. The unit's page shows:
 - **Inspections:** the checklists it went through, with **Pass** or **Fail**.
 - **Rentals:** each order it was on, with the dates and how it came back.
 
+## Cases
+
+A unit can hold other units, like a flight case with four microphones. Scanning the case at pickup or return then scans what is packed in it.
+
+- **Pack:** open the case's page and type or scan each unit's barcode under **Case contents**, then **Pack**. A unit can be in one case at a time; packing it in another case moves it.
+- **Take out:** **Take out** next to a unit, or **Empty the case**.
+- **Rules:** a unit and its case are at the same location. A case cannot go inside a unit it holds. A unit that moves to another location (by a transfer or by changing its location) leaves its case, and a case that moves is emptied.
+- **A unit's page** shows **Packed in** with a link to its case.
+
+A case is packaging, not a set for sale. Booking the case's product does not book what is in it. To rent a kit as one product, make a [bundle](products-and-catalogue.md#bundles); the case then makes picking it faster.
+
 ## The planner
 
 Go to **Planner**. Every unit of the location is a row, and its bookings are bars across the days.

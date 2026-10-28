@@ -88,6 +88,15 @@ On an order that is out or partly returned, the field **Scan to check a unit in*
 
 A scan always checks a unit in as OK. For a unit that is damaged, lost or needs inspection, use **Check in** on the order and choose the outcome there. Late fees work as for any return. See [Orders](orders.md#returns).
 
+## Scanning a case
+
+Scan a case (see [Cases](inventory-and-planner.md#cases)) instead of each unit in it:
+
+- **Pick up and prepare:** the units in the case that the order needs are assigned. Units the order does not need are listed as **Not on this order**. The case itself is assigned only when the order rents it.
+- **Return:** every unit from the case that is out on the order comes back.
+- **A unit is missing from the case:** take it out of the case first, or mark it on the order's return as lost.
+- **Offline:** a case scanned without a connection is applied the same way once the device is online.
+
 ## Swapping a unit by scanning
 
 Use **Swap** on the **Scan** page:
@@ -101,6 +110,36 @@ Use **Swap** on the **Scan** page:
 - **Stock take:** choose the **Location** if you have several and click **Start counting**. Scan every unit on the shelves. The counts show **Found**, **Not seen yet**, **Belongs elsewhere** and **Unknown codes**. Units out on rental are not expected. **Finish count** lets you mark the units not seen as lost and move the units found here to this location; click **Apply**. **Discard count** changes nothing.
 - **Inspect:** scan a unit and its checklist opens. A failure takes the unit out of service with a repair ticket.
 - **Receive:** lists the transfers on their way. Scan each unit that arrives; it is booked in on its transfer.
+
+## RFID
+
+With RFID tags on your gear, a reader takes a whole pile of items at once: everything on a pallet at the dock door, or a box of chairs at the counter.
+
+### Tag your units
+
+On a unit's page, **RFID tags** lists its tags. Click **Edit** and put one EPC per line; with a USB reader, read the tag into the box. A unit may have several tags, and a tag belongs to one unit only: OpenRent says which unit already has it.
+
+### Add a reader
+
+1. Go to **Settings → RFID readers** and click **New reader**.
+2. Give it a **Name**, such as `Loading dock`, and choose the **Format** it sends: **OpenRent JSON**, **Zebra IoT Connector** or **Impinj Speedway Connect**. The last two come with the **RFID reader formats** plugin.
+3. Click **Create** and copy the **Address** and the **Token**. The token is shown only now.
+4. In the reader's software, or the bridge next to it, send reads by HTTP POST to the address, with the header `Authorization: Bearer <token>`. If the reader cannot send headers, add `?token=<token>` to the address.
+
+OpenRent's own format is JSON: `{"reads": [{"epc": "E280…", "read_at": "2026-11-02T08:00:00Z", "antenna": 1}]}`, or just `{"epcs": ["E280…"]}`.
+
+**Revoke** removes a reader; its token stops working at once.
+
+### Take everything read at once
+
+On the **Scan** page, the **RFID** card shows when you have a reader:
+
+- **Pick up:** scan the order's QR code or number first. Click **Start reading** and hold the items to the reader. The card lists the units read; **Add … units to the order** puts them all on the order, as far as they fit. Then pick up as usual.
+- **Check in returns:** click **Start reading**, hold what came back to the reader, and click **Check in … units**. Each unit goes back from the booking it was out on.
+
+A unit read many times counts once. Tags that belong to no unit are listed apart, so you can find untagged or foreign items. Units that do not fit the order are listed in **Results** with the reason.
+
+An RFID read made offline is sent later like other scans, as one batch.
 
 ## Offline scans
 

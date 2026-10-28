@@ -27,6 +27,8 @@
   import TrashIcon from '@lucide/svelte/icons/trash-2';
   import PlusIcon from '@lucide/svelte/icons/plus';
   import FileDownIcon from '@lucide/svelte/icons/file-down';
+  import FileCodeIcon from '@lucide/svelte/icons/file-code';
+  import { download } from '#lib/api.ts';
   import SendIcon from '@lucide/svelte/icons/send';
   import FileTextIcon from '@lucide/svelte/icons/file-text';
   import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
@@ -221,9 +223,13 @@
       } else if (e instanceof ApiError && action === 'reserve' && e.code === 'exceeds_availability' && session.can('orders:overbook') && !body.overbook) {
         // Staff allowed to may book past stock on purpose, with a reason (FR-AV-8).
         overbook = { message: e.message, reason: '', error: '' };
-      } else if (Object.keys(fieldErrors(e)).some((k) => k.startsWith('meter_readings['))) {
+      } else if (Object.keys(fieldErrors(e)).some((k) => k.startsWith('meter_readings[') || k.startsWith('meter_readings.'))) {
         const fe = fieldErrors(e);
-        meterErrors = Object.fromEntries(meterOrder.map((sid, i) => [sid, fe[`meter_readings[${i}].value`] ?? fe[`meter_readings[${i}]`]]).filter(([, v]) => v));
+        // By position for readings sent; by unit for a reading that is needed and was left empty.
+        meterErrors = {
+          ...Object.fromEntries(meterOrder.map((sid, i) => [sid, fe[`meter_readings[${i}].value`] ?? fe[`meter_readings[${i}]`]]).filter(([, v]) => v)),
+          ...Object.fromEntries(Object.entries(fe).filter(([k]) => k.startsWith('meter_readings.')).map(([k, v]) => [k.slice('meter_readings.'.length), v])),
+        };
       } else notifyError(e);
       return false;
     } finally {
@@ -833,6 +839,7 @@
               <Button variant="ghost" size="sm" class="min-w-0 flex-1 justify-start" title={`${t(`document.type.${doc.type}` as any)} ${doc.number ?? ''}`} onclick={() => openHtml(`/documents/${doc.id}/html`).catch(notifyError)}><FileTextIcon /><span class="truncate">{t(`document.type.${doc.type}` as any)} {doc.number}</span></Button>
               <StatusBadge status={doc.status} label={t(`status.${doc.status}` as any)} />
               <Button variant="ghost" size="icon-sm" aria-label={t('document.pdf')} title={t('document.pdf')} onclick={() => openPdf(doc)}><FileDownIcon /></Button>
+              {#if doc.einvoice_format}<Button variant="ghost" size="icon-sm" aria-label={t('document.einvoice')} title={t('document.einvoice')} onclick={() => download(`/documents/${doc.id}/einvoice`).catch(notifyError)}><FileCodeIcon /></Button>{/if}
               {#if o.customer?.email && ['quote', 'confirmation', 'invoice', 'contract', 'receipt'].includes(doc.type) && doc.status !== 'voided'}
                 <Button variant="ghost" size="icon-sm" aria-label={t('document.send')} title={t('document.send')} onclick={() => call(() => api.post(`/documents/${doc.id}/actions/send`), t('document.toast.sent', { email: o.customer.email }))}><SendIcon /></Button>
               {/if}

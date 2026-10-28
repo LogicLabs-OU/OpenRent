@@ -2,7 +2,7 @@ import { inventory, availability, scans, maintenance, planner, AppError, invalid
 import type { Router } from '../http.ts';
 import { parseList } from '../http.ts';
 import { renderLabels } from '../labels.ts';
-import { Availability, Id, IdParams, Json, ListQuery, Nullable, Page, StockItem, Type, ok } from '../schemas.ts';
+import { Availability, Id, IdParams, Json, ListQuery, Nullable, Page, Resource, StockItem, Type, ok } from '../schemas.ts';
 
 const StockItemBody = Type.Object(
   {
@@ -40,6 +40,23 @@ export function registerInventory(r: Router) {
   );
   r.post('/stock_items/:id/actions/retire', { permission: 'inventory:write', tags: I, summary: 'Retire a unit', params: IdParams, body: Type.Object({ reason: Type.Optional(Type.String()) }), status: 200 }, async (ctx, req) =>
     inventory.setStockItemStatus(ctx, req.params.id, 'retired', req.body?.reason),
+  );
+
+  const Units = Type.Object({ stock_item_ids: Type.Optional(Type.Array(Id, { maxItems: 200 })), barcodes: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 128 }), { maxItems: 200 })) }, { additionalProperties: false });
+  const CaseWithContents = Resource('stock_item', { barcode: Type.String(), status: Type.String(), contents: Type.Array(StockItem) });
+  r.get('/stock_items/:id/contents', { permission: 'inventory:read', tags: I, summary: 'Units packed in this case (FR-CAT-11)', params: IdParams, response: ok(Type.Object({ object: Type.Literal('list'), data: Type.Array(StockItem) })) }, async (ctx, req) => ({
+    object: 'list' as const,
+    data: await inventory.caseContents(ctx, req.params.id),
+  }));
+  r.post(
+    '/stock_items/:id/actions/pack',
+    { permission: 'inventory:write', tags: I, summary: 'Pack units in this case; scanning the case then scans them too (FR-CAT-11)', params: IdParams, body: Units, response: ok(CaseWithContents), status: 200 },
+    async (ctx, req) => inventory.packUnits(ctx, req.params.id, req.body),
+  );
+  r.post(
+    '/stock_items/:id/actions/unpack',
+    { permission: 'inventory:write', tags: I, summary: 'Take units out of this case, or all of them', params: IdParams, body: Type.Object({ stock_item_ids: Type.Optional(Type.Array(Id, { maxItems: 200 })), barcodes: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 128 }), { maxItems: 200 })), all: Type.Optional(Type.Boolean()) }, { additionalProperties: false }), response: ok(CaseWithContents), status: 200 },
+    async (ctx, req) => inventory.unpackUnits(ctx, req.params.id, req.body),
   );
 
   r.get('/stock_levels', { permission: 'inventory:read', tags: I, summary: 'Bulk stock levels', querystring: Type.Object({ variant_id: Type.Optional(Id), location_id: Type.Optional(Id) }) }, async (ctx, req) => ({
@@ -172,6 +189,7 @@ export function registerInventory(r: Router) {
               {
                 client_id: Type.String({ minLength: 8, maxLength: 64 }), mode: Type.Union(['lookup', 'prepare', 'check_out', 'check_in', 'stock_take', 'receive'].map((m) => Type.Literal(m))),
                 code: Type.String({ minLength: 1, maxLength: 128 }), occurred_at: Type.String({ format: 'date-time' }), order_id: Type.Optional(Nullable(Id)), stock_take_id: Type.Optional(Nullable(Id)),
+                epcs: Type.Optional(Nullable(Type.Array(Type.String({ maxLength: 80 }), { maxItems: 2000, description: 'An RFID read made offline: every tag at once (with mode check_out or check_in)' }))),
               },
               { additionalProperties: false },
             ),

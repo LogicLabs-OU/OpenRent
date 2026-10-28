@@ -1,5 +1,5 @@
 import { DeliveryError, type Attachment, type DomainEvent } from '@openrent/plugin-sdk';
-import { webhooks, notifications, orders, customers, storefront, catalog, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, imports, tenancy, domains, exportZip, hookContext, serverT, type Ctx, guardedFetch } from '@openrent/core';
+import { webhooks, notifications, signatures, orders, customers, storefront, catalog, priceSuggestions, rfid, servicing, integrations, accounting, payments, documents, plugins, files, jobs, reports, imports, tenancy, domains, exportZip, hookContext, serverT, type Ctx, guardedFetch } from '@openrent/core';
 import { readSheet, rowsSheet, writeCsv, writeXlsx } from '@openrent/api/spreadsheets';
 import { withSystem, withTenant, type PoolClient } from '@openrent/db';
 import type { AppDeps } from '@openrent/api/deps';
@@ -244,6 +244,11 @@ async function attachmentsFor(deps: AppDeps, ctx: Ctx, ids: string[], logger: Wo
         out.push({ filename: cal.filename, contentType: 'text/calendar; charset=utf-8; method=PUBLISH', content: cal.content });
         continue;
       }
+      if (id.startsWith('einvoice:')) {
+        const f = await documents.einvoiceFile(ctx, id.slice(9));
+        out.push({ filename: f.filename, contentType: f.contentType, content: f.content });
+        continue;
+      }
       if (id.startsWith('fil_')) {
         const f = await files.getFile(ctx, id);
         out.push({ filename: f.filename, contentType: f.content_type, content: await files.readFile(ctx, f) });
@@ -390,6 +395,10 @@ export async function runPluginSchedule(deps: AppDeps, logger: WorkerLogger, job
 export const SCHEDULED = {
   'orders.expire_quotes': { cron: '* * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.expireQuotes(ctx), l) },
   'orders.reminders': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.sendReminders(ctx), l) },
+  // ID check services whose webhook never came (plugin API 1.9).
+  'identity.sync': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => customers.syncIdentityChecks(ctx), l) },
+  // Signing services whose webhook never came (plugin API 1.9).
+  'signatures.sync': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => signatures.syncExternalSignatures(ctx), l) },
   'payments.balance_requests': { cron: '7 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => payments.requestDueBalances(ctx), l) },
   // One reminder to carts left with an email and items, when the shop turned them on (FR-SF-9).
   'storefront.cart_reminders': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => storefront.sendCartReminders(ctx), l) },
@@ -397,6 +406,10 @@ export const SCHEDULED = {
   'currency.rates': { cron: '17 6 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => tenancy.refreshRates(ctx), l) },
   'reports.saved': { cron: '*/15 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => reports.queueDueReports(ctx), l) },
   'catalog.often_rented_with': { cron: '41 3 * * 1', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => catalog.computeOftenRentedWith(ctx), l) },
+  // FR-PR-9: busy and quiet weeks ahead, each Monday after the night's bookings.
+  // FR-SCAN-7: RFID reads are only kept a day.
+  'rfid.purge_reads': { cron: '37 4 * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => rfid.purgeReads(ctx), l) },
+  'pricing.suggestions': { cron: '51 3 * * 1', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => priceSuggestions.computePriceSuggestions(ctx), l) },
   // Long rentals billed weekly or monthly while out (FR-OR-11).
   'billing.recurring': { cron: '13 * * * *', run: (deps: AppDeps, l: WorkerLogger) => forEachTenant(deps, (ctx) => orders.billRecurring(ctx), l) },
   // Customers invoiced monthly get last month's finished bookings on one invoice (FR-CUS-7).

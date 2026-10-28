@@ -18,6 +18,9 @@
   import PlusIcon from '@lucide/svelte/icons/plus';
   import EmailSettings from '#lib/components/email-settings.svelte';
   import CalendarFeeds from '#lib/components/calendar-feeds.svelte';
+  import DataAccessSettings from '#lib/components/data-access-settings.svelte';
+  import RfidReaders from '#lib/components/rfid-readers.svelte';
+  import ConnectedApps from '#lib/components/connected-apps.svelte';
   import MigrationSettings from '#lib/components/migration-settings.svelte';
   import CurrencySettings from '#lib/components/currency-settings.svelte';
   import PlanUsage from '#lib/components/plan-usage.svelte';
@@ -38,7 +41,7 @@
   import SelfServiceSettings from '#lib/components/self-service-settings.svelte';
   import { api, session, t, toast, notifyError, fieldErrors, rel, confirmAction, majorFromMinor, minorFromInput } from '#lib';
 
-  const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'import', 'webhooks', 'api_keys', 'team', 'sso', 'security'] as const;
+  const TABS = ['general', 'locations', 'domains', 'payments', 'email', 'policies', 'documents', 'translations', 'custom_fields', 'calendar', 'rfid', 'import', 'webhooks', 'api_keys', 'apps', 'data_access', 'team', 'sso', 'security'] as const;
   // ?tab=email opens a tab directly (links from the Plugins page and email errors).
   // Old links used ?tab=hours for what is now the locations tab.
   let tab = $state<string>(new URLSearchParams(location.search).get('tab')?.replace(/^hours$/, 'locations') ?? 'general');
@@ -77,6 +80,23 @@
     }
   }
   const saveSettings = (patch: any, msg = t('common.saved')) => run(() => api.patch('/tenant/settings', patch), msg);
+
+  // The company's registry code and bank account, for invoices and e-invoices.
+  let invoicing = $state<Record<'registry_code' | 'iban' | 'bic', string>>({ registry_code: '', iban: '', bic: '' });
+  let invoicingErrors = $state<Record<string, string>>({});
+  $effect(() => {
+    if (settings?.invoicing) invoicing = { registry_code: settings.invoicing.registry_code ?? '', iban: settings.invoicing.iban ?? '', bic: settings.invoicing.bic ?? '' };
+  });
+  async function saveInvoicing() {
+    invoicingErrors = {};
+    try {
+      settings = await api.patch('/tenant/settings', { invoicing: { registry_code: invoicing.registry_code.trim() || null, iban: invoicing.iban.trim() || null, bic: invoicing.bic.trim().toUpperCase() || null } });
+      toast.success(t('common.saved'));
+    } catch (e) {
+      invoicingErrors = fieldErrors(e);
+      if (!Object.keys(invoicingErrors).length) notifyError(e);
+    }
+  }
   let termsErrors = $state<Record<string, string>>({});
   /** Payment terms are validated by the API; problems show next to the field (error-handling §3.1). */
   async function saveTerms(patch: Record<string, unknown>) {
@@ -122,6 +142,22 @@
           </Field.Group>
         </Card.Content>
         <Card.Footer><Button onclick={() => run(() => api.patch('/tenant', { name: tenant.name, legal_name: tenant.legal_name, address: tenant.address, tax_ids: tenant.tax_ids, branding: tenant.branding }), t('common.saved'))}>{t('common.save')}</Button></Card.Footer>
+      </Card.Root>
+      <!-- Printed on invoices and given to e-invoices (FR-DOC-6). -->
+      <Card.Root data-testid="settings-invoicing">
+        <Card.Header><Card.Title>{t('settings.invoicing')}</Card.Title><Card.Description>{t('settings.invoicing_hint')}</Card.Description></Card.Header>
+        <Card.Content>
+          <Field.Group class="grid gap-4 sm:grid-cols-3">
+            {#each [['registry_code', 'settings.registry_code'], ['iban', 'settings.iban'], ['bic', 'settings.bic']] as const as [k, label] (k)}
+              <Field.Field data-invalid={!!invoicingErrors[`invoicing.${k}`] || undefined}>
+                <Field.Label for={`inv-${k}`}>{t(label)}</Field.Label>
+                <Input id={`inv-${k}`} bind:value={invoicing[k]} aria-invalid={!!invoicingErrors[`invoicing.${k}`]} />
+                {#if invoicingErrors[`invoicing.${k}`]}<Field.Error>{invoicingErrors[`invoicing.${k}`]}</Field.Error>{/if}
+              </Field.Field>
+            {/each}
+          </Field.Group>
+        </Card.Content>
+        <Card.Footer><Button onclick={saveInvoicing}>{t('common.save')}</Button></Card.Footer>
       </Card.Root>
       <PlanUsage />
       <LanguageSettings {settings} onsaved={() => load().catch(notifyError)} />
@@ -326,6 +362,7 @@
     </Tabs.Content>
 
     <Tabs.Content value="calendar" class="max-w-4xl"><CalendarFeeds /></Tabs.Content>
+    <Tabs.Content value="rfid" class="max-w-4xl"><RfidReaders /></Tabs.Content>
     <Tabs.Content value="import" class="flex max-w-4xl flex-col gap-6"><MigrationSettings /></Tabs.Content>
 
     <Tabs.Content value="api_keys" class="max-w-4xl">
@@ -352,6 +389,9 @@
         </Card.Content>
       </Card.Root>
     </Tabs.Content>
+
+    <Tabs.Content value="apps" class="max-w-4xl"><ConnectedApps /></Tabs.Content>
+    <Tabs.Content value="data_access" class="max-w-4xl"><DataAccessSettings /></Tabs.Content>
 
     <Tabs.Content value="team" class="max-w-4xl">
       <TeamSettings />

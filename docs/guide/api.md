@@ -53,6 +53,20 @@ curl -b jar.txt -X PATCH https://rent.example.com/api/v1/orders/1042 \
 
 Use secret keys for integrations. Sessions are for the admin.
 
+### OAuth for apps
+
+An app that many shops use, such as a WordPress plugin or a Shopify app, signs in with OAuth 2.1 instead of asking each shop for a secret key. The shop's owner or an admin approves it once, and can disconnect it under **Settings → Apps**.
+
+OpenRent describes itself at `/.well-known/oauth-authorization-server` (RFC 8414). The steps:
+
+1. **Register the app** once per installation. An app registers itself as a public client with `POST /oauth/register` (RFC 7591): `{"client_name": "…", "redirect_uris": ["https://…"]}`. Addresses must be `https`, or `http` on `localhost`. The answer holds the `client_id`. An app that keeps a secret on a server can be registered by the operator instead, with `POST /api/v1/operator/oauth_clients` and the `X-Operator-Key` header; the answer then also holds a `client_secret`, shown once.
+2. **Send the person to `/oauth/authorize`** with `response_type=code`, `client_id`, `redirect_uri`, `scope` (scopes like those of secret keys, separated by spaces, such as `catalog:read orders:read`), `state`, and a PKCE `code_challenge` with `code_challenge_method=S256`. PKCE is required. They sign in to the admin if they are not yet, see what the app asks for, and choose **Connect** or **Decline**. The app gets at most the scopes the person has.
+3. **Exchange the code** at `POST /oauth/token` (form or JSON) with `grant_type=authorization_code`, `code`, `code_verifier`, `redirect_uri` and `client_id` (a confidential client authenticates with HTTP Basic or `client_secret`). Codes last ten minutes and work once.
+4. **Call the API** with `Authorization: Bearer <access_token>`. The token names the shop; it lasts an hour.
+5. **Refresh** with `grant_type=refresh_token`. Each refresh token works once and comes back with a new one. If an old refresh token is used again, OpenRent takes it as stolen and ends the app's access to the shop; the person must connect it again. Refresh tokens last 60 days.
+
+`POST /oauth/revoke` (RFC 7009) ends a token; a refresh token ends the app's access. Errors follow OAuth: `{"error": "invalid_grant", "error_description": "…"}`.
+
 ## Conventions
 
 ### Request ids
@@ -149,7 +163,7 @@ curl https://rent.example.com/api/v1/webhook_endpoints \
 
 The answer includes `secret` (`whsec_…`) once. `events` takes exact types, `prefix.*` or `*` (the default). Endpoint URLs must use HTTPS and a public host, unless the operator sets `WEBHOOKS_ALLOW_PRIVATE_NETWORK=true`.
 
-Some event types: `order.created`, `order.updated`, `order.status_changed`, `order.overdue`, `payment.succeeded`, `payment.failed`, `payment.refunded`, `deposit.authorized`, `customer.created`, `document.issued`, `document.signed`, `product.updated`, `stock_item.status_changed` and `webhook_endpoint.disabled`. Plugins add `plugin.<id>.<name>`. `GET /api/v1/webhook_events` lists recent events with their payloads.
+Some event types: `order.created`, `order.updated`, `order.status_changed`, `order.overdue`, `payment.succeeded`, `payment.failed`, `payment.refunded`, `deposit.authorized`, `customer.created`, `document.issued`, `document.signed`, `product.updated`, `stock_item.status_changed`, `stock_item.packed`, `stock_item.unpacked`, `document.paid` (a customer invoice without a booking is paid in full) and `webhook_endpoint.disabled`. Plugins add `plugin.<id>.<name>`. `GET /api/v1/webhook_events` lists recent events with their payloads.
 
 Each delivery is a `POST` with this body:
 

@@ -1,6 +1,6 @@
 import { t as msg } from '../i18n/index.ts';
 import type { Ctx } from '../context.ts';
-import { one } from '../sql.ts';
+import { many, one } from '../sql.ts';
 
 export type ScanMode = 'lookup' | 'prepare' | 'check_out' | 'check_in' | 'stock_take' | 'receive';
 
@@ -32,6 +32,23 @@ export async function resolveScan(ctx: Ctx, input: { code: string; mode?: ScanMo
     [code],
   );
   if (unit) {
+    // A case (FR-CAT-11) shows what it holds; at a return it stands for the order its contents are out on.
+    const contents = await many(
+      ctx,
+      `SELECT s.id, s.barcode, s.serial, s.status, p.name AS product_name, v.name AS variant_name FROM stock_items s
+         JOIN variants v ON v.id = s.variant_id JOIN products p ON p.id = v.product_id WHERE s.container_id = $1 ORDER BY p.name, s.barcode`,
+      [unit.id],
+    );
+    unit.container_barcode = (await one<{ barcode: string }>(ctx, `SELECT c.barcode FROM stock_items c JOIN stock_items s ON s.container_id = c.id WHERE s.id = $1`, [unit.id]))?.barcode ?? null;
+    unit.contents = contents;
+    if (contents.length && !unit.current_order_id) {
+      unit.current_order_id = (await one<{ id: string }>(
+        ctx,
+        `SELECT o.id FROM order_line_units u JOIN order_lines l ON l.id = u.order_line_id JOIN orders o ON o.id = l.order_id
+          WHERE u.stock_item_id = ANY($1) AND u.checked_out_at IS NOT NULL AND u.checked_in_at IS NULL ORDER BY o.starts_at LIMIT 1`,
+        [contents.map((c: any) => c.id)],
+      ))?.id ?? null;
+    }
     let suggested: string | null = null;
     if (unit.transfer_id && (mode === 'receive' || mode === 'lookup')) suggested = 'receive';
     else if (mode === 'check_in' || unit.status === 'out') suggested = 'check_in';

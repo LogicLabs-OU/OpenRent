@@ -1,3 +1,15 @@
+<script lang="ts" module>
+  import { api, getLocale } from '#lib';
+
+  type Format = { id: string; name: string; endpoint: boolean };
+  let formats: Promise<Format[]> | null = null;
+  /** E-invoice formats the shop can send (FR-DOC-6), loaded once. */
+  function einvoiceFormats() {
+    formats ??= api.get(`/einvoice_formats?locale=${encodeURIComponent(getLocale())}`).then((r) => r.data as Format[], () => []);
+    return formats;
+  }
+</script>
+
 <script lang="ts">
   import * as Dialog from '@openrent/ui/dialog';
   import * as Field from '@openrent/ui/field';
@@ -21,16 +33,22 @@
   }: { open?: boolean; mode: Mode; title: string; initial?: Record<string, any>; save: (data: Record<string, unknown>) => Promise<unknown> } = $props();
 
   const FIELDS = ['line1', 'line2', 'postal_code', 'city', 'country'] as const;
-  let form = $state<Record<string, any>>({});
+  // Complete from the start: the fields render before the effect below fills them.
+  const blank = () => ({ kind: 'private', name: '', company_name: '', tax_id: '', einvoice_format: '', einvoice_endpoint: '', label: '', recipient: '', phone: '', address: Object.fromEntries(FIELDS.map((k) => [k, ''])) });
+  let form = $state<Record<string, any>>(blank());
   let errors = $state<Record<string, string>>({});
   let busy = $state(false);
+  let available = $state<Format[]>([]);
+  const chosen = $derived(available.find((f) => f.id === form.einvoice_format));
 
   $effect(() => {
     if (!open) return;
     errors = {};
+    if (mode === 'billing') einvoiceFormats().then((f) => (available = f));
     const a = initial.address ?? {};
     form = {
       kind: initial.kind ?? 'private', name: initial.name ?? '', company_name: initial.company_name ?? '', tax_id: initial.tax_id ?? '',
+      einvoice_format: initial.einvoice?.format ?? '', einvoice_endpoint: initial.einvoice?.endpoint ?? '',
       label: initial.label ?? '', recipient: initial.recipient ?? '', phone: initial.phone ?? '',
       address: Object.fromEntries(FIELDS.map((k) => [k, a[k] ?? ''])),
     };
@@ -43,7 +61,10 @@
     const address = Object.fromEntries(Object.entries(form.address as Record<string, string>).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v));
     const data =
       mode === 'billing'
-        ? { kind: form.kind, name: form.name, company_name: form.kind === 'company' ? form.company_name || null : null, tax_id: form.kind === 'company' ? form.tax_id || null : null, address }
+        ? {
+            kind: form.kind, name: form.name, company_name: form.kind === 'company' ? form.company_name || null : null, tax_id: form.kind === 'company' ? form.tax_id || null : null, address,
+            einvoice: form.kind === 'company' && form.einvoice_format ? { format: form.einvoice_format, endpoint: form.einvoice_endpoint.trim() || null } : null,
+          }
         : { label: form.label || null, recipient: form.recipient || null, phone: form.phone || null, address };
     try {
       await save(data);
@@ -86,6 +107,25 @@
               <Input id="bd-tax" maxlength={40} bind:value={form.tax_id} aria-invalid={!!errors.tax_id} />
               {#if errors.tax_id}<Field.Error>{errors.tax_id}</Field.Error>{/if}
             </Field.Field>
+            {#if available.length || form.einvoice_format}
+              <!-- E-invoices (FR-DOC-6): in a format a plugin offers, with the buyer's Peppol ID where it needs one. -->
+              <Field.Field data-invalid={!!errors['einvoice.format'] || undefined}>
+                <Field.Label for="bd-einvoice">{t('billing.einvoice')}</Field.Label>
+                <NativeSelect id="bd-einvoice" bind:value={form.einvoice_format} aria-invalid={!!errors['einvoice.format']}>
+                  <NativeSelectOption value="">{t('billing.einvoice_none')}</NativeSelectOption>
+                  {#each available as f (f.id)}<NativeSelectOption value={f.id}>{f.name}</NativeSelectOption>{/each}
+                </NativeSelect>
+                <Field.Description>{t('billing.einvoice_hint')}</Field.Description>
+                {#if errors['einvoice.format']}<Field.Error>{errors['einvoice.format']}</Field.Error>{/if}
+              </Field.Field>
+              {#if chosen?.endpoint}
+                <Field.Field data-invalid={!!errors['einvoice.endpoint'] || undefined}>
+                  <Field.Label for="bd-peppol">{t('billing.peppol_id')}</Field.Label>
+                  <Input id="bd-peppol" maxlength={60} placeholder="0191:12345678" bind:value={form.einvoice_endpoint} aria-invalid={!!errors['einvoice.endpoint']} />
+                  {#if errors['einvoice.endpoint']}<Field.Error>{errors['einvoice.endpoint']}</Field.Error>{/if}
+                </Field.Field>
+              {/if}
+            {/if}
           {/if}
         {:else}
           <Field.Field>

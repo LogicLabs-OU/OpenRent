@@ -1,0 +1,21 @@
+{
+  "blocks": {
+    "product": {
+      "name": "OpenRent-product",
+      "product": "Product",
+      "product_info": "Het laatste deel van het productadres in uw OpenRent-webwinkel, na /p/."
+    },
+    "category": {
+      "name": "OpenRent-categorie",
+      "category": "Categorie",
+      "category_info": "Het laatste deel van het categorieadres in uw OpenRent-webwinkel, na /c/. Leeg: alle producten.",
+      "limit": "Getoonde producten"
+    },
+    "book_button": {
+      "name": "OpenRent-boekknop",
+      "product": "Product",
+      "product_info": "Leeg: de knop leidt naar uw OpenRent-webwinkel.",
+      "label": "Knoptekst"
+    }
+  }
+}

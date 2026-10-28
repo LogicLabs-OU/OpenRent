@@ -182,6 +182,7 @@ The **Documents** card lists what was issued. Some documents are made for you: t
 - **Void** on an invoice keeps it on record and issues a credit note.
 - **Files** holds other files for the booking. Turn on **Customer can see** to share one in the customer's account and on the order page.
 - **Ask the customer to sign** (on a quote, confirmation or rental agreement) emails a signing link. The document shows **Awaiting signature**, then **Signed**, with the **Signed PDF**. **Withdraw signature request** stops the link.
+- **Signing through Documenso or DocuSign:** with the **Documenso e-signatures** or **DocuSign e-signatures** plugin on and set up under **Plugins**, the document goes to that service instead, which emails the customer. When they sign, the service's signed PDF is kept as the **Signed PDF**; when they refuse, the document shows **Declined** and you can ask again. Add the webhook address the plugin names in the service, so results come at once; otherwise OpenRent asks every 15 minutes.
 
 ## Messages and activity
 

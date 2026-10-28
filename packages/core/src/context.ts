@@ -15,7 +15,8 @@ export type Role = 'owner' | 'admin' | 'staff' | 'warehouse' | 'read_only' | 'cu
 export const SYSTEM_ROLES = ['owner', 'admin', 'staff', 'warehouse', 'read_only'] as const;
 
 export interface Actor {
-  type: 'user' | 'api_key' | 'system' | 'customer' | 'storefront';
+  /** `app`: a third-party app with an OAuth grant (its id), limited to the granted scopes like an API key. */
+  type: 'user' | 'api_key' | 'app' | 'system' | 'customer' | 'storefront';
   id: string | null;
   role?: Role;
   scopes?: string[];

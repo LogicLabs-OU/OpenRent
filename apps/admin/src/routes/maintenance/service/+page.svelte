@@ -22,7 +22,7 @@
   let intervals = $state<any[]>([]);
   let products = $state<{ id: string; name: string; meter_unit: string | null }[]>([]);
   let categories = $state<{ id: string; name: string }[]>([]);
-  type Form = { id: string | null; name: string; scope: 'all' | 'product' | 'category'; product_id: string; category_id: string; every_days: string; every_rentals: string; every_meter: string; opens_ticket: boolean; active: boolean };
+  type Form = { id: string | null; name: string; scope: 'all' | 'product' | 'category'; product_id: string; category_id: string; every_days: string; every_rentals: string; every_meter: string; opens_ticket: boolean; active: boolean; kind: 'service' | 'electrical_test' };
   let form = $state<Form | null>(null);
   let errors = $state<Record<string, string>>({});
   let busy = $state(false);
@@ -55,9 +55,9 @@
     form = iv
       ? {
           id: iv.id, name: iv.name, scope: iv.product_id ? 'product' : iv.category_id ? 'category' : 'all', product_id: iv.product_id ?? '', category_id: iv.category_id ?? '',
-          every_days: iv.every_days ?? '', every_rentals: iv.every_rentals ?? '', every_meter: iv.every_meter ?? '', opens_ticket: iv.opens_ticket, active: iv.active,
+          every_days: iv.every_days ?? '', every_rentals: iv.every_rentals ?? '', every_meter: iv.every_meter ?? '', opens_ticket: iv.opens_ticket, active: iv.active, kind: iv.kind ?? 'service',
         }
-      : { id: null, name: '', scope: 'all', product_id: '', category_id: '', every_days: '', every_rentals: '', every_meter: '', opens_ticket: true, active: true };
+      : { id: null, name: '', scope: 'all', product_id: '', category_id: '', every_days: '', every_rentals: '', every_meter: '', opens_ticket: true, active: true, kind: 'service' };
   }
 
   async function save(e: SubmitEvent) {
@@ -68,8 +68,8 @@
     const f = form;
     const body = {
       name: f.name, product_id: f.scope === 'product' ? f.product_id || null : null, category_id: f.scope === 'category' ? f.category_id || null : null,
-      every_days: blank(f.every_days) ? null : Number(f.every_days), every_rentals: blank(f.every_rentals) ? null : Number(f.every_rentals), every_meter: blank(f.every_meter) ? null : Number(f.every_meter),
-      opens_ticket: f.opens_ticket, active: f.active,
+      every_days: blank(f.every_days) ? null : Number(f.every_days), every_rentals: f.kind === 'electrical_test' || blank(f.every_rentals) ? null : Number(f.every_rentals), every_meter: f.kind === 'electrical_test' || blank(f.every_meter) ? null : Number(f.every_meter),
+      opens_ticket: f.opens_ticket, active: f.active, kind: f.kind,
     };
     try {
       await (f.id ? api.patch(`/service_intervals/${f.id}`, body) : api.post('/service_intervals', body));
@@ -154,7 +154,7 @@
         <Table.Body>
           {#each intervals as iv (iv.id)}
             <Table.Row class="cursor-pointer" data-testid="interval-row" onclick={() => canEdit && edit(iv)}>
-              <Table.Cell class="font-medium">{iv.name}</Table.Cell><Table.Cell>{scope(iv)}</Table.Cell><Table.Cell class="text-muted-foreground">{every(iv)}</Table.Cell>
+              <Table.Cell class="font-medium">{iv.name}{#if iv.kind === 'electrical_test'} <Badge variant="outline">{t('service.kind.pat_short')}</Badge>{/if}</Table.Cell><Table.Cell>{scope(iv)}</Table.Cell><Table.Cell class="text-muted-foreground">{every(iv)}</Table.Cell>
               <Table.Cell class="text-right">{#if !iv.active}<Badge variant="secondary">{t('checklists.inactive')}</Badge>{:else if iv.opens_ticket}<Badge variant="outline">{t('service.opens_ticket_short')}</Badge>{/if}</Table.Cell>
             </Table.Row>
           {:else}
@@ -176,6 +176,14 @@
             <Field.Label for="svi-name">{t('field.name')}</Field.Label>
             <Input id="svi-name" bind:value={form.name} aria-invalid={!!errors.name} />
             {#if errors.name}<Field.Error>{errors.name}</Field.Error>{/if}
+          </Field.Field>
+          <Field.Field>
+            <Field.Label for="svi-kind">{t('service.kind')}</Field.Label>
+            <NativeSelect id="svi-kind" class="w-full" bind:value={form.kind}>
+              <NativeSelectOption value="service">{t('service.kind.service')}</NativeSelectOption>
+              <NativeSelectOption value="electrical_test">{t('service.kind.electrical_test')}</NativeSelectOption>
+            </NativeSelect>
+            {#if form.kind === 'electrical_test'}<Field.Description>{t('service.kind.electrical_test_hint')}</Field.Description>{/if}
           </Field.Field>
           <Field.Field>
             <Field.Label for="svi-scope">{t('service.applies_to')}</Field.Label>
@@ -205,7 +213,7 @@
             </Field.Field>
           {/if}
           <div class="grid grid-cols-3 gap-3">
-            {#each [['every_days', 'service.days'], ['every_rentals', 'service.rentals'], ['every_meter', 'service.meter']] as [k, label] (k)}
+            {#each form.kind === 'electrical_test' ? [['every_days', 'service.days']] : [['every_days', 'service.days'], ['every_rentals', 'service.rentals'], ['every_meter', 'service.meter']] as [k, label] (k)}
               <Field.Field data-invalid={!!errors[k] || undefined}>
                 <Field.Label for={`svi-${k}`}>{t(label as any)}</Field.Label>
                 <Input id={`svi-${k}`} type="number" min="0" step={k === 'every_meter' ? 'any' : '1'} bind:value={form[k as 'every_days']} aria-invalid={!!errors[k]} />

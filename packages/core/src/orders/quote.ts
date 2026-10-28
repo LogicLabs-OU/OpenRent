@@ -1,10 +1,10 @@
 import { currentLocale, t as msg } from '../i18n/index.ts';
 import type { Ctx } from '../context.ts';
-import { hookContext } from '../plugins/scope.ts';
-import { activeTaxProvider } from '../plugins/index.ts';
+import { hookContext, pluginScope } from '../plugins/scope.ts';
+import { activeTaxProvider, isPluginEnabled } from '../plugins/index.ts';
 import { invalid, type FieldError } from '../errors.ts';
 import { many, must, one } from '../sql.ts';
-import { quote, type CouponRule, type QuoteBreakdown, type QuoteLineInput, type QuoteOptions } from '../pricing/engine.ts';
+import { quote, type CouponRule, type PriceRule, type QuoteBreakdown, type QuoteLineInput, type QuoteOptions } from '../pricing/engine.ts';
 import { activeFeeRules, activePriceRules, taxProfileAt, toEngineStructure } from '../catalog/index.ts';
 import { resolveSettings } from '../tenancy/settings.ts';
 import { addressLine, distanceKm } from '../deliveries/geo.ts';
@@ -232,7 +232,7 @@ export async function priceQuote(ctx: Ctx, req: QuoteRequest): Promise<{ breakdo
       couponCodes: req.coupon_codes ?? [],
       depositPolicy: req.deposit ?? settings.deposit_policy,
       customer: customer ? { depositWaived: !!customer.flags?.deposit_waived, tags: (customer.tags ?? []).filter(Boolean) } : null,
-      priceRules: await activePriceRules(ctx),
+      priceRules: [...(await activePriceRules(ctx)), ...(await pluginPriceRules(ctx, req.customer_id ?? null))],
       feeRules,
       options,
       locale: req.locale ?? currentLocale(),
@@ -242,6 +242,30 @@ export async function priceQuote(ctx: Ctx, req: QuoteRequest): Promise<{ breakdo
   breakdown.tax_note = taxNote;
   await ctx.plugins.runHook('after', 'pricing.quote', breakdown, hookContext(ctx));
   return { breakdown, resolved, timezone, currency: tenant.currency.trim() };
+}
+
+/**
+ * Price rules plugins give for this customer (plugin API 1.9), e.g. a member price. A plugin that fails
+ * or the shop turned off adds nothing; the quote never waits on an error.
+ */
+async function pluginPriceRules(ctx: Ctx, customerId: string | null): Promise<PriceRule[]> {
+  const out: PriceRule[] = [];
+  for (const { pluginId, source } of ctx.plugins.priceRuleSources?.() ?? []) {
+    if (!(await isPluginEnabled(ctx, pluginId))) continue;
+    try {
+      const rules = await source.rules({ ...hookContext(ctx), scope: pluginScope(ctx, pluginId) }, { customerId });
+      for (const r of rules ?? []) {
+        if (!r?.id || !Number.isInteger(r.adjustment_bp) || r.adjustment_bp < -10000 || r.adjustment_bp > 100000) continue;
+        out.push({
+          id: `plg:${pluginId}:${r.id}`, name: String(r.name ?? r.id), kind: 'plugin', priority: Number.isFinite(r.priority) ? Number(r.priority) : 100,
+          adjustment_bp: r.adjustment_bp, stackable: !!r.stackable, product_ids: r.product_ids ?? [], category_ids: r.category_ids ?? [],
+        });
+      }
+    } catch (err) {
+      ctx.logger.warn({ err, plugin: pluginId }, 'plugin price rules failed; quoted without them');
+    }
+  }
+  return out;
 }
 
 const m = (amount: number, currency: string) => ({ amount, currency });

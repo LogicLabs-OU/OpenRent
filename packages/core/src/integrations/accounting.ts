@@ -42,13 +42,14 @@ export async function invoice(ctx: Ctx, documentId: string): Promise<AccountingI
   const tax = lines.reduce((s, l) => s + l.tax_amount, 0);
   // A monthly invoice covers several bookings; payments of each count towards it.
   const orderIds = d.order_id ? [d.order_id] : ((d.data?.orders ?? []) as { id: string }[]).map((o) => o.id);
+  // A customer invoice without bookings (ADR 0014) is paid on its own.
   const pays = orderIds.length
     ? await many<{ id: string; amount: string }>(
         ctx,
         `SELECT id, amount FROM payments WHERE order_id = ANY($1) AND status = 'succeeded' AND kind IN ('charge', 'manual') AND purpose <> 'deposit' AND method IS DISTINCT FROM 'deposit' ORDER BY created_at`,
         [orderIds],
       )
-    : [];
+    : await many<{ id: string; amount: string }>(ctx, `SELECT id, amount FROM payments WHERE document_id = $1 AND status = 'succeeded' AND kind IN ('charge', 'manual') ORDER BY created_at`, [d.id]);
   return {
     id: d.id, type: d.type, number: d.number, issued_at: new Date(d.issued_at ?? d.created_at).toISOString(), due_at: d.data?.due_at ?? null,
     currency: String(d.currency ?? '').trim(), contact: who, order_number: d.order_number ?? null, lines, net_total: net, tax_total: tax, total: net + tax,
@@ -86,7 +87,9 @@ export async function payment(ctx: Ctx, paymentId: string): Promise<AccountingPa
         `SELECT id FROM documents WHERE type = 'invoice' AND status <> 'voided' AND (order_id = $1 OR id = (SELECT invoice_id FROM orders WHERE id = $1)) ORDER BY issued_at DESC LIMIT 1`,
         [p.order_id],
       )
-    : null;
+    : p.document_id
+      ? { id: p.document_id as string }
+      : null;
   return {
     id: p.id, kind: p.kind === 'refund' ? 'refund' : 'payment', purpose: p.purpose, amount: Math.abs(Number(p.amount)), currency: String(p.currency).trim(),
     paid_at: new Date(p.created_at).toISOString(), method: p.method ?? null, provider: p.provider ?? null, invoice_id: inv?.id ?? null, order_number: p.order_number ?? null,

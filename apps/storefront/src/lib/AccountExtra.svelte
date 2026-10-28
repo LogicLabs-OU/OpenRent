@@ -13,6 +13,7 @@
   import BookAgain from './BookAgain.svelte';
   import SelfService from './SelfService.svelte';
   import InvoicePay from './InvoicePay.svelte';
+  import IdCheck from './IdCheck.svelte';
 
   /**
    * The account page's portal extras (FR-CUS-6), shown by the `account.extra` slot in every theme: what
@@ -142,9 +143,17 @@
         </Card.Content>
       </Card.Root>
     {/if}
+    <IdCheck />
     <SelfService />
     <BookAgain />
     <BillingBook />
+    {#each page.data.accountPanels ?? [] as panel (`${panel.plugin}:${panel.key}`)}
+      <Card.Root data-testid={`account-panel-${panel.plugin}`}>
+        <Card.Header><Card.Title>{panel.title}</Card.Title></Card.Header>
+        <!-- Cleaned by OpenRent before it gets here (plugin API 1.9). -->
+        <Card.Content class="flex flex-col gap-2 text-sm">{@html panel.html}</Card.Content>
+      </Card.Root>
+    {/each}
     <Card.Root data-testid="account-insurance">
       <Card.Header><Card.Title>{tr('account.insurance.title')}</Card.Title><Card.Description>{tr('account.insurance.hint')}</Card.Description></Card.Header>
       <Card.Content class="flex flex-col gap-4">

@@ -1,4 +1,4 @@
-import type { HookContext, PluginScope } from '@openrent/plugin-sdk';
+import type { PluginBilling, HookContext, PluginScope } from '@openrent/plugin-sdk';
 import type { Ctx } from '../context.ts';
 import { emit } from '../events.ts';
 import { pluginConfig } from './index.ts';
@@ -62,6 +62,8 @@ export function pluginScope(ctx: Ctx, pluginId: string): PluginScope {
         return typeof v === 'string' ? v : null;
       },
     },
+    // Invoices and payments (plugin API 1.9, ADR 0014): only for plugins whose manifest asks for `billing`.
+    billing: (ctx.plugins.permissionsOf?.(pluginId) ?? []).includes('billing') ? pluginBilling(ctx, pluginId) : undefined,
     events: {
       async emit(type, object) {
         if (!type.startsWith(`plugin.${pluginId}.`) || !/^[a-z0-9_.-]+$/.test(type)) throw new Error(`plugin ${pluginId}: events must be named plugin.${pluginId}.<name>`);
@@ -74,4 +76,29 @@ export function pluginScope(ctx: Ctx, pluginId: string): PluginScope {
 /** The context hooks get: each plugin receives its own scope from `scopeFor`. */
 export function hookContext(ctx: Ctx): HookContext {
   return { tenantId: ctx.tenantId, actor: ctx.actor, logger: ctx.logger, scopeFor: (pluginId) => pluginScope(ctx, pluginId) };
+}
+
+/** Billing for a plugin: core's own customer invoices and payments. Keys get the plugin id in front. */
+function pluginBilling(ctx: Ctx, pluginId: string): PluginBilling {
+  const as = ctx;
+  const docs = () => import('../documents/index.ts');
+  const pay = () => import('../payments/index.ts');
+  return {
+    async invoiceCustomer(customerId, input) {
+      const d = await (await docs()).issueCustomerInvoice(as, customerId, { lines: input.lines, key: input.key ? `${pluginId}:${input.key}` : undefined, period: input.period ?? null });
+      return { id: d.id, number: d.number, total: d.total! };
+    },
+    invoiceDue: async (id) => (await pay()).invoiceDue(as, id),
+    async requestPayment(id, opts = {}) {
+      const r = await (await pay()).requestInvoicePayment(as, id, opts);
+      return { url: r.url };
+    },
+    async chargeSavedCard(id, key) {
+      const r = await (await pay()).chargeInvoiceCard(as, id, `${pluginId}:${key}`);
+      return !r ? 'no_card' : 'failed' in r ? 'declined' : 'paid';
+    },
+    async voidInvoice(id, reason) {
+      await (await docs()).voidDocument(as, id, reason);
+    },
+  };
 }

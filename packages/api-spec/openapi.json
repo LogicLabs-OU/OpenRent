@@ -911,7 +911,7 @@
     },
     "/api/v1/tenant": {
       "get": {
-        "summary": "Get the tenant",
+        "summary": "Get the tenant, with the address of its storefront",
         "tags": [
           "Tenant"
         ],
@@ -2987,6 +2987,29 @@
                     "maxLength": 20,
                     "description": "What the units’ meter counts (hours, km); null for none"
                   },
+                  "meter_rate": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "amount"
+                    ],
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Price per meter unit, in minor units, before tax"
+                      },
+                      "included": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Meter units free in each rental"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "What the meter costs at return (needs meter_unit); null for none"
+                  },
                   "depreciation_months": {
                     "type": [
                       "integer",
@@ -4063,6 +4086,29 @@
                     ],
                     "maxLength": 20,
                     "description": "What the units’ meter counts (hours, km); null for none"
+                  },
+                  "meter_rate": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "amount"
+                    ],
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Price per meter unit, in minor units, before tax"
+                      },
+                      "included": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Meter units free in each rental"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "What the meter costs at return (needs meter_unit); null for none"
                   },
                   "depreciation_months": {
                     "type": [
@@ -6204,6 +6250,29 @@
                         "maxLength": 20,
                         "description": "What the units’ meter counts (hours, km); null for none"
                       },
+                      "meter_rate": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "required": [
+                          "amount"
+                        ],
+                        "properties": {
+                          "amount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Price per meter unit, in minor units, before tax"
+                          },
+                          "included": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "Meter units free in each rental"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "description": "What the meter costs at return (needs meter_unit); null for none"
+                      },
                       "depreciation_months": {
                         "type": [
                           "integer",
@@ -7351,6 +7420,29 @@
                     ],
                     "maxLength": 20,
                     "description": "What the units’ meter counts (hours, km); null for none"
+                  },
+                  "meter_rate": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "amount"
+                    ],
+                    "properties": {
+                      "amount": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Price per meter unit, in minor units, before tax"
+                      },
+                      "included": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "Meter units free in each rental"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "What the meter costs at return (needs meter_unit); null for none"
                   },
                   "depreciation_months": {
                     "type": [
@@ -11888,6 +11980,532 @@
         }
       }
     },
+    "/api/v1/stock_items/{id}/contents": {
+      "get": {
+        "summary": "Units packed in this case (FR-CAT-11)",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "object",
+                    "data"
+                  ],
+                  "properties": {
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "list"
+                      ]
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object",
+                          "barcode",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "stock_item"
+                            ]
+                          },
+                          "barcode": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock_items/{id}/actions/pack": {
+      "post": {
+        "summary": "Pack units in this case; scanning the case then scans them too (FR-CAT-11)",
+        "tags": [
+          "Inventory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "stock_item_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 200
+                  },
+                  "barcodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "maxItems": 200
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "barcode",
+                    "status",
+                    "contents"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "stock_item"
+                      ]
+                    },
+                    "barcode": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "contents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object",
+                          "barcode",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "stock_item"
+                            ]
+                          },
+                          "barcode": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stock_items/{id}/actions/unpack": {
+      "post": {
+        "summary": "Take units out of this case, or all of them",
+        "tags": [
+          "Inventory"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "stock_item_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 64
+                    },
+                    "maxItems": 200
+                  },
+                  "barcodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "maxItems": 200
+                  },
+                  "all": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "barcode",
+                    "status",
+                    "contents"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "stock_item"
+                      ]
+                    },
+                    "barcode": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "contents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "object",
+                          "barcode",
+                          "status"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "object": {
+                            "type": "string",
+                            "enum": [
+                              "stock_item"
+                            ]
+                          },
+                          "barcode": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/stock_levels": {
       "get": {
         "summary": "Bulk stock levels",
@@ -13061,6 +13679,18 @@
                           ],
                           "minLength": 1,
                           "maxLength": 64
+                        },
+                        "epcs": {
+                          "type": [
+                            "array",
+                            "null"
+                          ],
+                          "items": {
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          "maxItems": 2000,
+                          "description": "An RFID read made offline: every tag at once (with mode check_out or check_in)"
                         }
                       },
                       "additionalProperties": false
@@ -14485,6 +15115,40 @@
     "/api/v1/customers/{id}/actions/check_tax_id": {
       "post": {
         "summary": "Check the customer’s tax number again with the tax plugin (VIES for EU VAT numbers)",
+        "tags": [
+          "Customers"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "customers:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/actions/start_id_check": {
+      "post": {
+        "summary": "Email the customer a link to verify their identity with the ID check service (FR-PAY-9)",
         "tags": [
           "Customers"
         ],
@@ -16272,6 +16936,31 @@
                           }
                         },
                         "additionalProperties": false
+                      },
+                      "einvoice": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "required": [
+                          "format"
+                        ],
+                        "properties": {
+                          "format": {
+                            "type": "string",
+                            "maxLength": 40
+                          },
+                          "endpoint": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "maxLength": 60,
+                            "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "description": "E-invoices for these details, in a format a plugin offers"
                       },
                       "is_default": {
                         "type": "boolean"
@@ -24123,6 +24812,23 @@
                   },
                   "active": {
                     "type": "boolean"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "service"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "electrical_test"
+                        ]
+                      }
+                    ],
+                    "description": "electrical_test: a PAT test every every_days; pickup waits for a valid one"
                   }
                 },
                 "additionalProperties": false
@@ -24205,6 +24911,23 @@
                   },
                   "active": {
                     "type": "boolean"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "service"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "electrical_test"
+                        ]
+                      }
+                    ],
+                    "description": "electrical_test: a PAT test every every_days; pickup waits for a valid one"
                   }
                 }
               }
@@ -24264,6 +24987,234 @@
           }
         ],
         "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/stock_items/{id}/electrical_tests": {
+      "get": {
+        "summary": "The unit's electrical safety tests, newest first, and whether it may go out",
+        "tags": [
+          "Service"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Record an electrical safety test; a pass counts as the interval’s service, a fail takes the unit out of service with a repair ticket",
+        "tags": [
+          "Service"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "result",
+                  "tester"
+                ],
+                "properties": {
+                  "tested_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time"
+                  },
+                  "result": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "pass"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "fail"
+                        ]
+                      }
+                    ]
+                  },
+                  "appliance_class": {
+                    "anyOf": [
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "I"
+                        ]
+                      },
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "II"
+                        ]
+                      },
+                      {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "III"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "readings": {
+                    "type": "object",
+                    "properties": {
+                      "earth_ohm": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "Earth continuity, ohms"
+                      },
+                      "insulation_mohm": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "Insulation resistance, megohms"
+                      },
+                      "leakage_ma": {
+                        "type": [
+                          "number",
+                          "null"
+                        ],
+                        "description": "Leakage or touch current, milliamps"
+                      },
+                      "polarity_ok": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      },
+                      "visual_ok": {
+                        "type": [
+                          "boolean",
+                          "null"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "tester": {
+                    "type": "string",
+                    "maxLength": 120
+                  },
+                  "instrument": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "maxLength": 120
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/electrical_tests/{id}/certificate": {
+      "get": {
+        "summary": "The test certificate: a PDF where this installation makes PDFs, else HTML to print",
+        "tags": [
+          "Service"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
         "responses": {
           "200": {
             "description": "Default Response"
@@ -26353,6 +27304,902 @@
         }
       }
     },
+    "/api/v1/bi_access": {
+      "get": {
+        "summary": "Database logins for BI tools, where they connect and which views they read (passwords are shown only when made or rotated)",
+        "tags": [
+          "Data access"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Make a database login for a BI tool; the response holds its password once",
+        "tags": [
+          "Data access"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/bi_access/{id}/actions/rotate": {
+      "post": {
+        "summary": "Give the login a new password (in the response, once); the old one stops working",
+        "tags": [
+          "Data access"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/bi_access/{id}": {
+      "delete": {
+        "summary": "Remove the login; its open sessions end",
+        "tags": [
+          "Data access"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/price_suggestions": {
+      "get": {
+        "summary": "Suggested price changes per product and weeks, with how full they are now and were a year ago",
+        "tags": [
+          "Pricing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "open"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "accepted"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "dismissed"
+                  ]
+                }
+              ]
+            },
+            "in": "query",
+            "name": "status",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "pricing:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/price_suggestions/actions/refresh": {
+      "post": {
+        "summary": "Make the open suggestions again now from the bookings as they stand (the worker does this each Monday)",
+        "tags": [
+          "Pricing"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "pricing:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/price_suggestions/{id}/actions/accept": {
+      "post": {
+        "summary": "Make the season price rule; adjustment_bp changes the suggested percentage",
+        "tags": [
+          "Pricing"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "adjustment_bp": {
+                    "type": "integer",
+                    "description": "Basis points: 1000 = 10% more, -1000 = 10% less"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "pricing:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/price_suggestions/{id}/actions/dismiss": {
+      "post": {
+        "summary": "Dismiss the suggestion; it is not made again for these weeks",
+        "tags": [
+          "Pricing"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "pricing:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/stock_items/{id}/rfid_tags": {
+      "get": {
+        "summary": "The unit's RFID tags (EPCs)",
+        "tags": [
+          "Scanning"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace the unit's RFID tags; a tag on another unit is refused",
+        "tags": [
+          "Scanning"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "epcs"
+                ],
+                "properties": {
+                  "epcs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "maxItems": 20,
+                    "description": "EPCs in hex; spaces, dashes and colons are dropped"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/scans/tags": {
+      "post": {
+        "summary": "Take every unit the tags belong to at once: onto the order at pickup (check_out), or back from their orders (check_in)",
+        "tags": [
+          "Scanning"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "epcs",
+                  "mode"
+                ],
+                "properties": {
+                  "epcs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "minItems": 1,
+                    "maxItems": 2000
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "check_out"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "enum": [
+                          "check_in"
+                        ]
+                      }
+                    ]
+                  },
+                  "order_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "orders:fulfil",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/rfid/formats": {
+      "get": {
+        "summary": "Message formats readers can post in: OpenRent’s own and those of the shop’s RFID plugins",
+        "tags": [
+          "Scanning"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/rfid/readers": {
+      "get": {
+        "summary": "RFID readers (their tokens are shown only when added)",
+        "tags": [
+          "Scanning"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a reader; the response holds the address and the token its bridge posts reads with, once",
+        "tags": [
+          "Scanning"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "location_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "format": {
+                    "type": "string",
+                    "maxLength": 64
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/rfid/readers/{id}": {
+      "delete": {
+        "summary": "Remove a reader; its token stops working",
+        "tags": [
+          "Scanning"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/rfid/readers/{id}/reads": {
+      "get": {
+        "summary": "What the reader has read since a time, as units and unknown tags (the scan page asks each second while reading)",
+        "tags": [
+          "Scanning"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "in": "query",
+            "name": "since",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "inventory:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/oauth/authorize/check": {
+      "post": {
+        "summary": "What an app asks for, for the consent page: the app, its address and scopes, or why the request is refused",
+        "tags": [
+          "Apps"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "response_type": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "code_challenge": {
+                    "type": "string"
+                  },
+                  "code_challenge_method": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/oauth/authorize/approve": {
+      "post": {
+        "summary": "Approve the app for this shop; answers where to send the person back, with the code",
+        "tags": [
+          "Apps"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "response_type": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "code_challenge": {
+                    "type": "string"
+                  },
+                  "code_challenge_method": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/oauth/authorize/deny": {
+      "post": {
+        "summary": "Decline; answers where to send the person back",
+        "tags": [
+          "Apps"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "response_type": {
+                    "type": "string"
+                  },
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "code_challenge": {
+                    "type": "string"
+                  },
+                  "code_challenge_method": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/oauth_grants": {
+      "get": {
+        "summary": "Apps connected to this shop, with their scopes",
+        "tags": [
+          "Apps"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/oauth_grants/{id}": {
+      "delete": {
+        "summary": "Disconnect an app: its tokens stop working at once",
+        "tags": [
+          "Apps"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "api_keys:manage",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/operator/oauth_clients": {
+      "post": {
+        "summary": "Register an app with a client secret (confidential client); the response holds the secret once",
+        "tags": [
+          "Operator"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "client_name",
+                  "redirect_uris"
+                ],
+                "properties": {
+                  "client_name": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "redirect_uris": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "minItems": 1,
+                    "maxItems": 10
+                  },
+                  "client_uri": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/documents": {
       "get": {
         "summary": "List documents",
@@ -26515,6 +28362,72 @@
         }
       }
     },
+    "/api/v1/einvoice_formats": {
+      "get": {
+        "summary": "E-invoice formats the shop can send (plugins that are on and set up)",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "locale",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/einvoice": {
+      "get": {
+        "summary": "The e-invoice of an invoice or credit note, in the format the customer’s billing details ask for (FR-DOC-6)",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/documents/{id}/actions/void": {
       "post": {
         "summary": "Void; invoices get a credit note",
@@ -26557,6 +28470,500 @@
           }
         ],
         "x-permission": "documents:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/customers/{id}/invoices": {
+      "get": {
+        "summary": "The customer’s own invoices that belong to no booking, with what is owed on each",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "open",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "Invoice the customer for something that is no booking; with `key`, the same invoice comes back instead of a second one",
+        "tags": [
+          "Documents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "lines"
+                ],
+                "properties": {
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "description",
+                        "amount"
+                      ],
+                      "properties": {
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "amount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "tax_rate_bp": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 10000
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "minItems": 1,
+                    "maxItems": 50
+                  },
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "period": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "properties": {
+                      "from": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "to": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  },
+                  "request_payment": {
+                    "type": "boolean",
+                    "description": "Also email the customer the invoice with a link to pay it online"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/balance": {
+      "get": {
+        "summary": "What is owed on a customer invoice",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "documents:read",
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "object",
+                    "number",
+                    "status",
+                    "total",
+                    "paid",
+                    "due",
+                    "einvoice_format"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "object": {
+                      "type": "string",
+                      "enum": [
+                        "invoice_balance"
+                      ]
+                    },
+                    "number": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "type": "object",
+                      "required": [
+                        "amount",
+                        "currency"
+                      ],
+                      "properties": {
+                        "amount": {
+                          "type": "integer",
+                          "description": "Minor units"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 3
+                        }
+                      }
+                    },
+                    "paid": {
+                      "type": "object",
+                      "required": [
+                        "amount",
+                        "currency"
+                      ],
+                      "properties": {
+                        "amount": {
+                          "type": "integer",
+                          "description": "Minor units"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 3
+                        }
+                      }
+                    },
+                    "due": {
+                      "type": "object",
+                      "required": [
+                        "amount",
+                        "currency"
+                      ],
+                      "properties": {
+                        "amount": {
+                          "type": "integer",
+                          "description": "Minor units"
+                        },
+                        "currency": {
+                          "type": "string",
+                          "minLength": 3,
+                          "maxLength": 3
+                        }
+                      }
+                    },
+                    "einvoice_format": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "RFC 9457 problem details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "detail",
+                    "request_id"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "field",
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "request_id": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true,
+                  "description": "RFC 9457 problem details"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/payments": {
+      "post": {
+        "summary": "Record cash, a bank transfer or a card terminal payment of a customer invoice",
+        "tags": [
+          "Documents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amount",
+                  "method"
+                ],
+                "properties": {
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "method": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "payments:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/actions/request_payment": {
+      "post": {
+        "summary": "Email the customer a link to pay the invoice online",
+        "tags": [
+          "Documents"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "notify": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "payments:write",
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/actions/charge_card": {
+      "post": {
+        "summary": "Charge the card the customer saved with an earlier payment",
+        "tags": [
+          "Documents"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "x-permission": "payments:write",
         "responses": {
           "200": {
             "description": "Default Response"
@@ -31824,6 +34231,31 @@
                     },
                     "additionalProperties": false
                   },
+                  "einvoice": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "format"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "endpoint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 60,
+                        "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "E-invoices for these details, in a format a plugin offers"
+                  },
                   "is_default": {
                     "type": "boolean"
                   }
@@ -31928,6 +34360,31 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "einvoice": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "format"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "endpoint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 60,
+                        "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "E-invoices for these details, in a format a plugin offers"
                   },
                   "is_default": {
                     "type": "boolean"
@@ -32242,6 +34699,76 @@
         }
       }
     },
+    "/api/v1/storefront/account/id_check": {
+      "post": {
+        "summary": "Start the ID check the shop needs before pickup; returns where to do it",
+        "tags": [
+          "Customer accounts"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "return_url": {
+                    "type": "string",
+                    "format": "uri",
+                    "maxLength": 500
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/storefront/account/panels": {
+      "get": {
+        "summary": "Panels plugins show in the customer’s account, as cleaned HTML",
+        "tags": [
+          "Customer accounts"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "locale",
+            "required": false
+          }
+        ],
+        "security": [
+          {
+            "publishableKey": []
+          },
+          {
+            "tenantSlug": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/api/v1/portal/me/billing_profiles": {
       "get": {
         "summary": "Saved billing details, the default first",
@@ -32343,6 +34870,31 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "einvoice": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "format"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "endpoint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 60,
+                        "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "E-invoices for these details, in a format a plugin offers"
                   },
                   "is_default": {
                     "type": "boolean"
@@ -32450,6 +35002,31 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "einvoice": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "format"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "endpoint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 60,
+                        "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "E-invoices for these details, in a format a plugin offers"
                   },
                   "is_default": {
                     "type": "boolean"
@@ -32889,6 +35466,31 @@
                     },
                     "additionalProperties": false
                   },
+                  "einvoice": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "format"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "endpoint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 60,
+                        "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "E-invoices for these details, in a format a plugin offers"
+                  },
                   "is_default": {
                     "type": "boolean"
                   }
@@ -33006,6 +35608,31 @@
                       }
                     },
                     "additionalProperties": false
+                  },
+                  "einvoice": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "required": [
+                      "format"
+                    ],
+                    "properties": {
+                      "format": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "endpoint": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "maxLength": 60,
+                        "description": "Peppol ID: scheme and identifier, e.g. 0191:10002345"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "description": "E-invoices for these details, in a format a plugin offers"
                   },
                   "is_default": {
                     "type": "boolean"
@@ -33477,7 +36104,7 @@
     },
     "/api/v1/portal/invoices/{id}/payment_intents": {
       "post": {
-        "summary": "Pay a monthly invoice as a whole: one payment for what its bookings still owe, shared out over them when it succeeds",
+        "summary": "Pay an invoice as a whole: a monthly one is shared out over its bookings when it succeeds; one without bookings (ADR 0014) is paid on the provider’s page (`redirect_url`)",
         "tags": [
           "Portal"
         ],
@@ -33916,6 +36543,37 @@
         "summary": "Admin extensions (custom elements) of the plugins this shop has on",
         "tags": [
           "Plugins"
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "secretKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugin_pages": {
+      "get": {
+        "summary": "Pages of records the plugins this shop has on keep, for the admin to draw (plugin API 1.9)",
+        "tags": [
+          "Plugins"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "locale",
+            "required": false
+          }
         ],
         "security": [
           {
@@ -39260,6 +41918,157 @@
         "summary": "search-meilisearch: POST /reindex",
         "tags": [
           "Plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/memberships/plans": {
+      "get": {
+        "summary": "memberships: GET /plans",
+        "tags": [
+          "Plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "memberships: POST /plans",
+        "tags": [
+          "Plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/memberships/plan_options": {
+      "get": {
+        "summary": "memberships: GET /plan_options",
+        "tags": [
+          "Plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/memberships/plans/{id}": {
+      "patch": {
+        "summary": "memberships: PATCH /plans/:id",
+        "tags": [
+          "Plugins"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "memberships: DELETE /plans/:id",
+        "tags": [
+          "Plugins"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/memberships/members": {
+      "get": {
+        "summary": "memberships: GET /members",
+        "tags": [
+          "Plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "post": {
+        "summary": "memberships: POST /members",
+        "tags": [
+          "Plugins"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/memberships/members/{id}/actions/resend": {
+      "post": {
+        "summary": "memberships: POST /members/:id/actions/resend",
+        "tags": [
+          "Plugins"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/memberships/members/{id}/actions/cancel": {
+      "post": {
+        "summary": "memberships: POST /members/:id/actions/cancel",
+        "tags": [
+          "Plugins"
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
         ],
         "responses": {
           "200": {

@@ -159,7 +159,8 @@ async function draftsFor(ctx: Ctx, q: { source_type: string; source_id: string; 
         [p.order_id],
       )
     : null;
-  const draft = paymentDraft(p, { number: o?.number ?? null, customer_id: o?.customer_id ?? null, damageInvoiced: !!o?.damage_invoiced }, words);
+  // A payment of a customer invoice without a booking names the customer itself (ADR 0014).
+  const draft = paymentDraft(p, { number: o?.number ?? null, customer_id: o?.customer_id ?? p.customer_id ?? null, damageInvoiced: !!o?.damage_invoiced }, words);
   return draft ? [draft] : [];
 }
 

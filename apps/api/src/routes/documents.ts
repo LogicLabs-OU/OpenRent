@@ -1,6 +1,6 @@
-import { documents, notifications, plugins, tenancy, AppError, serverT } from '@openrent/core';
+import { documents, notifications, payments, plugins, tenancy, AppError, serverT } from '@openrent/core';
 import type { Router } from '../http.ts';
-import { Id, IdParams, Locale, Nullable, Type } from '../schemas.ts';
+import { Id, IdParams, Locale, Money, Nullable, Type, ok } from '../schemas.ts';
 
 export function registerDocuments(r: Router) {
   const D = ['Documents'];
@@ -27,14 +27,71 @@ export function registerDocuments(r: Router) {
       .header('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="${pdf.filename}"`)
       .send(pdf.body);
   });
+  r.get('/einvoice_formats', { permission: 'documents:read', tags: D, summary: 'E-invoice formats the shop can send (plugins that are on and set up)', querystring: Type.Object({ locale: Type.Optional(Type.String()) }) }, async (ctx, req) => ({
+    object: 'list',
+    data: await documents.einvoiceFormats(ctx, req.query.locale ?? null),
+  }));
+  r.get('/documents/:id/einvoice', { permission: 'documents:read', tags: D, summary: 'The e-invoice of an invoice or credit note, in the format the customer’s billing details ask for (FR-DOC-6)', params: IdParams, raw: true }, async (ctx, req, reply) => {
+    const f = await documents.einvoiceFile(ctx, req.params.id);
+    return reply.type(f.contentType).header('Cache-Control', 'private, max-age=3600').header('Content-Disposition', `attachment; filename="${f.filename.replace(/[^\w.-]+/g, '-')}"`).send(f.content);
+  });
   r.post('/documents/:id/actions/void', { permission: 'documents:write', tags: D, summary: 'Void; invoices get a credit note', params: IdParams, body: Type.Object({ reason: Type.Optional(Type.String()) }), status: 200 }, async (ctx, req) =>
     documents.voidDocument(ctx, req.params.id, req.body?.reason),
+  );
+  // Customer invoices without a booking (ADR 0014), e.g. a membership fee: issued, paid and owed on their own.
+  const InvoiceBalance = Type.Object({ id: Type.String(), object: Type.Literal('invoice_balance'), number: Nullable(Type.String()), status: Type.String(), total: Money, paid: Money, due: Money, einvoice_format: Nullable(Type.String()) }, { additionalProperties: false });
+  r.get('/customers/:id/invoices', { permission: 'documents:read', tags: D, summary: 'The customer’s own invoices that belong to no booking, with what is owed on each', params: IdParams, querystring: Type.Object({ open: Type.Optional(Type.Boolean()) }) }, async (ctx, req) => ({
+    object: 'list',
+    data: await payments.listCustomerInvoices(ctx, req.params.id, { open: req.query.open }),
+  }));
+  r.post(
+    '/customers/:id/invoices',
+    {
+      permission: 'documents:write', tags: D, summary: 'Invoice the customer for something that is no booking; with `key`, the same invoice comes back instead of a second one', params: IdParams, status: 201,
+      body: Type.Object(
+        {
+          lines: Type.Array(Type.Object({ description: Type.String({ minLength: 1, maxLength: 500 }), amount: Type.Integer({ minimum: 0 }), quantity: Type.Optional(Type.Integer({ minimum: 1 })), tax_rate_bp: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000 })) }, { additionalProperties: false }), { minItems: 1, maxItems: 50 }),
+          key: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+          period: Type.Optional(Nullable(Type.Object({ from: Type.String({ format: 'date-time' }), to: Type.String({ format: 'date-time' }) }))),
+          request_payment: Type.Optional(Type.Boolean({ description: 'Also email the customer the invoice with a link to pay it online' })),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    async (ctx, req) => {
+      const doc = await documents.issueCustomerInvoice(ctx, req.params.id, req.body);
+      if (req.body.request_payment) await payments.requestInvoicePayment(ctx, doc.id);
+      return doc;
+    },
+  );
+  r.get('/documents/:id/balance', { permission: 'documents:read', tags: D, summary: 'What is owed on a customer invoice', params: IdParams, response: ok(InvoiceBalance) }, async (ctx, req) => payments.invoiceDue(ctx, req.params.id));
+  r.post(
+    '/documents/:id/payments',
+    { permission: 'payments:write', tags: D, summary: 'Record cash, a bank transfer or a card terminal payment of a customer invoice', params: IdParams, status: 201, body: Type.Object({ amount: Type.Integer({ minimum: 1 }), method: Type.String({ minLength: 1, maxLength: 40 }), note: Type.Optional(Type.String({ maxLength: 500 })) }, { additionalProperties: false }) },
+    async (ctx, req) => payments.recordInvoicePayment(ctx, req.params.id, req.body),
+  );
+  r.post(
+    '/documents/:id/actions/request_payment',
+    { permission: 'payments:write', tags: D, summary: 'Email the customer a link to pay the invoice online', params: IdParams, status: 200, body: Type.Object({ notify: Type.Optional(Type.Boolean()) }, { additionalProperties: false }) },
+    async (ctx, req) => payments.requestInvoicePayment(ctx, req.params.id, { notify: req.body?.notify }),
+  );
+  r.post(
+    '/documents/:id/actions/charge_card',
+    { permission: 'payments:write', tags: D, summary: 'Charge the card the customer saved with an earlier payment', params: IdParams, status: 200 },
+    async (ctx, req) => {
+      const r = await payments.chargeInvoiceCard(ctx, req.params.id, `charge:${req.params.id}:${ctx.idempotencyKey ?? Date.now()}`);
+      if (!r) throw new AppError('no_saved_card', 409, serverT('payments.no_saved_card'));
+      if ('failed' in r) throw new AppError('card_declined', 409, serverT('payments.card_declined', { reason: r.failed }));
+      return r.payment;
+    },
   );
   r.post('/documents/:id/actions/send', { permission: 'documents:write', tags: D, summary: 'Email the document link to the customer', params: IdParams, status: 202 }, async (ctx, req) => {
     const d = await documents.getDocument(ctx, req.params.id);
     if (!d.order_id) throw new AppError('no_order', 422, serverT('error.only_order_documents_can_be_sent'));
     const tpl = d.type === 'quote' ? 'quote_sent' : 'order_confirmed';
-    await notifications.notifyCustomer(ctx, d.order_id, tpl, {}, undefined, { attachments: [d.id] });
+    // An invoice for customers who asked for e-invoices goes with its e-invoice file too (FR-DOC-6).
+    const attachments = d.data?.einvoice?.format && ['invoice', 'credit_note'].includes(d.type) ? [d.id, `einvoice:${d.id}`] : [d.id];
+    await notifications.notifyCustomer(ctx, d.order_id, tpl, {}, undefined, { attachments });
     await documents.markSent(ctx, d.id);
     return { object: 'document', id: d.id, status: 'sent' };
   });

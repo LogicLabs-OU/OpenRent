@@ -162,5 +162,11 @@
   "account.invoices.title": "Te betalen facturen",
   "account.invoices.hint": "Maandfacturen van je zakelijke account. Betalen rekent alle boekingen erop af.",
   "account.invoices.item": "Factuur {number} van {date}",
-  "account.invoices.due": "vervalt op {date}"
+  "account.invoices.due": "vervalt op {date}",
+  "account.id_check.title": "ID-controle",
+  "account.id_check.hint": "Bevestig voor je eerste ophaalmoment je identiteit met een identiteitsbewijs. Het duurt een paar minuten.",
+  "account.id_check.failed": "De laatste controle is niet gelukt. Probeer het opnieuw met een geldig identiteitsbewijs.",
+  "account.id_check.verified": "Je identiteit is bevestigd.",
+  "account.id_check.start": "Mijn identiteit bevestigen",
+  "account.id_check.unavailable": "De ID-controle kan nu niet worden gestart. Vraag het de winkel."
 }

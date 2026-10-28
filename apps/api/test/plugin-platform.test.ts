@@ -66,7 +66,9 @@ suite('plugin platform: scope, migrations, hooks, providers and schedules', () =
 
   it('applies a plugin’s migration once and puts its table under row-level security', async () => {
     const first = await migratePlugins(dbinfo!.url, t.deps.plugins.migrations);
-    expect(first).toEqual({ applied: ['loyalty/0001_points'], refused: [] });
+    // The first-party plugins' migrations (memberships) run with it.
+    expect(first.refused).toEqual([]);
+    expect(first.applied).toContain('loyalty/0001_points');
     expect((await migratePlugins(dbinfo!.url, t.deps.plugins.migrations)).applied).toEqual([]);
     const rls = await withSystem(t.deps.db, (c) => c.query(`SELECT relrowsecurity FROM pg_class WHERE relname = 'plg_loyalty_points'`));
     expect(rls.rows[0].relrowsecurity).toBe(true);

@@ -31,6 +31,10 @@ export function registerCustomers(r: Router) {
   r.post('/customers/:id/actions/check_tax_id', { permission: 'customers:write', tags: C, summary: 'Check the customer’s tax number again with the tax plugin (VIES for EU VAT numbers)', params: IdParams, status: 200 }, async (ctx, req) =>
     customers.recheckTaxId(ctx, req.params.id),
   );
+  r.post('/customers/:id/actions/start_id_check', { permission: 'customers:write', tags: C, summary: 'Email the customer a link to verify their identity with the ID check service (FR-PAY-9)', params: IdParams, status: 200 }, async (ctx, req) => ({
+    object: 'id_check',
+    ...(await customers.startIdentityCheck(ctx, req.params.id, { notify: true })),
+  }));
   r.post('/customers/:id/actions/send_portal_link', { permission: 'customers:write', tags: C, summary: 'Email the customer a link to their account, valid for a week (also before the first booking)', params: IdParams, status: 202 }, async (ctx, req) =>
     accounts.sendPortalLink(ctx, req.params.id),
   );

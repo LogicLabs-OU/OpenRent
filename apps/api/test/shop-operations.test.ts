@@ -88,6 +88,11 @@ suite('shop operations', () => {
     const count = (table: string) => withSystem(t.deps.db, async (c) => Number((await c.query(`SELECT count(*) FROM ${table} WHERE tenant_id = $1`, [shopB.tenant_id])).rows[0].count));
     expect(await count('accounting_entries')).toBeGreaterThan(0);
     expect(await count('audit_log')).toBeGreaterThan(0);
+    // A database login for a BI tool, which is a role outside the shop's rows.
+    const login = await b.post('/api/v1/bi_access', { name: 'Metabase' });
+    expect(login.status, JSON.stringify(login.body)).toBe(201);
+    const roleLeft = async () => (await withSystem(t.deps.db, (c) => c.query(`SELECT 1 FROM pg_roles WHERE rolname = $1`, [login.body.username]))).rowCount;
+    expect(await roleLeft()).toBe(1);
 
     expect((await op('DELETE', `/shops/${shopB.tenant_id}?confirm=bike-hire`)).status).toBe(409);
     await op('POST', `/shops/${shopB.tenant_id}/actions/suspend`, {});
@@ -105,6 +110,7 @@ suite('shop operations', () => {
       return out;
     });
     expect(left).toEqual({});
+    expect(await roleLeft()).toBe(0);
     const rest = await withSystem(t.deps.db, async (c) => ({
       tenants: (await c.query(`SELECT slug FROM tenants ORDER BY created_at`)).rows.map((r) => r.slug),
       users: (await c.query(`SELECT email FROM users ORDER BY email`)).rows.map((r) => r.email),

@@ -124,6 +124,55 @@ The forecast covers 1 to 62 days. Bundles are not listed, because their parts ar
 
 Use it to see where you are short in good time: move stock with a transfer, rent stock in, or contact the customer.
 
+## Read your data in a BI tool
+
+A BI tool such as Metabase, Power BI or Looker Studio can read your shop's data straight from the database, through a login of its own. It reads views of your orders, payments, invoices, stock and utilisation, and cannot change anything.
+
+### Make a login
+
+1. Go to **Settings → Data access**.
+2. Click **New login**.
+3. Name it after the tool, for example `Metabase`, and click **Create**.
+4. Copy the **Username** and **Password** into the BI tool. The password is shown only now.
+
+The page also shows where the tool connects: the **Host**, **Port**, **Database** and **SSL mode**. A shop can have up to five logins.
+
+**New password** gives a login a new password, shown once; the old one stops working at once. **Revoke** removes the login and ends its open connections.
+
+The page needs the right to manage API keys, which owners and admins have, because a login reads all of the shop's data, including customers' names and email addresses.
+
+If the page says data access is not available, the message says why. Whoever runs your installation can turn it on: see [Operations](operations.md#data-access-for-bi-tools).
+
+### Connect a tool
+
+The login is a PostgreSQL login. In each tool:
+
+- **Metabase:** **Admin → Databases → Add database**, type **PostgreSQL**. Fill in the host, port, database name, username and password, turn on **Use a secure connection (SSL)**, and under **Schemas** choose **Only these…** with `bi`.
+- **Power BI Desktop:** **Get data → PostgreSQL database**. Enter `host:port` as the **Server** and the database name, then the username and password under **Database**. Choose the views under `bi`.
+- **Looker Studio:** **Create → Data source → PostgreSQL**. Fill in the host, port, database, username and password, and turn on **Enable SSL**. Looker Studio connects from Google's servers, so your database must accept connections from them.
+
+### The views
+
+Every view is in the schema `bi` and holds only your shop's rows.
+
+| View | One row per |
+|---|---|
+| `bi.shop` | your shop: its currency and time zone |
+| `bi.locations` | location |
+| `bi.products` | product, with its first category |
+| `bi.variants` | product variant |
+| `bi.stock_items` | unit, with its product, location, status and purchase price |
+| `bi.customers` | customer, with their country |
+| `bi.orders` | booking, with its totals, payment status and dates |
+| `bi.order_lines` | line of a booking, with its prices, tax rate and quantities picked up, returned and lost |
+| `bi.payments` | payment or refund |
+| `bi.invoices` | issued invoice or credit note, with its net amount and tax |
+| `bi.utilisation_daily` | product variant, location and day: capacity, booked unit-hours and utilisation |
+
+As in report files, amounts are in the smallest unit of the currency (cents), so 1250 is 12.50, and utilisation is a fraction, so 0.25 is 25 %. Times are timestamps with a time zone; `bi.utilisation_daily` uses your shop's days, from a year back to 90 days ahead, with today's stock as the capacity.
+
+A query may run for up to two minutes, and a login may have five connections open at once.
+
 ## The audit log
 
 **Audit log** lists every change in your shop: who made it, when and what changed. Each entry shows **When**, **By**, the **Record** and the **Action**.

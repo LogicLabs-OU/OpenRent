@@ -162,5 +162,11 @@
   "account.invoices.title": "Offene Rechnungen",
   "account.invoices.hint": "Monatsrechnungen Ihres Firmenkontos. Die Zahlung begleicht alle Buchungen darauf.",
   "account.invoices.item": "Rechnung {number} vom {date}",
-  "account.invoices.due": "fällig am {date}"
+  "account.invoices.due": "fällig am {date}",
+  "account.id_check.title": "Ausweisprüfung",
+  "account.id_check.hint": "Bestätigen Sie vor Ihrer ersten Abholung Ihre Identität mit einem Ausweisdokument. Das dauert nur wenige Minuten.",
+  "account.id_check.failed": "Die letzte Prüfung war nicht erfolgreich. Bitte versuchen Sie es mit einem gültigen Ausweisdokument erneut.",
+  "account.id_check.verified": "Ihre Identität ist bestätigt.",
+  "account.id_check.start": "Identität bestätigen",
+  "account.id_check.unavailable": "Die Ausweisprüfung kann gerade nicht gestartet werden. Bitte wenden Sie sich an den Shop."
 }

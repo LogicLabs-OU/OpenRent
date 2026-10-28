@@ -5,7 +5,6 @@ import { orderLocale, tenantLocale } from '../i18n/context.ts';
 import { setOwner } from '../files/index.ts';
 import type { Ctx } from '../context.ts';
 import { hookContext } from '../plugins/scope.ts';
-import { enabledProvider } from '../plugins/index.ts';
 import { money } from '../crud.ts';
 import { AppError, invalid, type FieldError } from '../errors.ts';
 import { can } from '../permissions.ts';
@@ -14,10 +13,12 @@ import { newId, randomToken } from '../ids.ts';
 import { allPages, exec, json, listPage, many, must, one, type ListParams } from '../sql.ts';
 import { addMinutes } from '../time.ts';
 import * as availability from '../availability/index.ts';
-import { setStockItemStatus, createDowntime, adjustStockLevel } from '../inventory/index.ts';
+import { setStockItemStatus, createDowntime, adjustStockLevel, withContents } from '../inventory/index.ts';
 import { ensureTicket, openTicketOf } from '../maintenance/tickets.ts';
 import { needsInspectionOnReturn } from '../inspections/index.ts';
 import { recordReadings } from '../servicing/index.ts';
+import { activeIdentityProvider, identityGate, prepareIdentityCheck } from '../customers/identity.ts';
+import { electricalRefusal, expiredUnits } from '../servicing/electrical.ts';
 import { issueDocument, voidDocument } from '../documents/index.ts';
 import { notifyCustomer, notifyStaff } from '../notifications/index.ts';
 import { ensureDeposit, recomputePaymentStatus, refundPayment, releaseDeposit, paymentToApi, paymentRequestToApi, depositToApi, listDamageCharges, createDamageCharge } from '../payments/index.ts';
@@ -495,7 +496,7 @@ export async function createOrder(ctx: Ctx, input: CreateOrderInput): Promise<Re
     `INSERT INTO orders (id, tenant_id, number, customer_id, location_id, starts_at, ends_at, timezone, currency, deposit_policy, coupon_codes, source, public_token, notes, tags, custom_fields, created_by, options, po_number, billing)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
     [id, ctx.tenantId, number, input.customer_id ?? null, loc.id, startsAt, endsAt, loc.timezone, tenant.currency, json(input.deposit ?? { mode: 'auto' }),
-      input.coupon_codes ?? [], input.source ?? (ctx.actor.type === 'api_key' ? 'api' : 'admin'), randomToken(24), json(input.notes ?? {}), input.tags ?? [],
+      input.coupon_codes ?? [], input.source ?? (ctx.actor.type === 'api_key' || ctx.actor.type === 'app' ? 'api' : 'admin'), randomToken(24), json(input.notes ?? {}), input.tags ?? [],
       json(input.custom_fields ?? {}), ctx.actor.id, json(cleanOptions(input.options)), cleanPo(input.po_number), input.billing ? json(input.billing) : null],
   );
   if (input.billing_cycle) await setBillingCycle(ctx, { id, status: 'draft' }, input.billing_cycle);
@@ -721,33 +722,61 @@ async function resolveUnits(ctx: Ctx, body: { stock_item_ids?: string[]; barcode
   return [...new Set(ids)];
 }
 
-/** Assigns units to matching lines; explains wrong product, location or status (FR-OR-4). */
-export async function assignUnits(ctx: Ctx, ref: string, body: { line_id?: string; stock_item_ids?: string[]; barcodes?: string[] }) {
+/**
+ * Assigns units to matching lines; explains wrong product, location or status (FR-OR-4). A scanned case brings
+ * what it holds (FR-CAT-11): its units that fit the order are assigned, the rest are listed in `skipped`, and the
+ * case itself is assigned only when the order rents it.
+ */
+export async function assignUnits(ctx: Ctx, ref: string, body: { line_id?: string; stock_item_ids?: string[]; barcodes?: string[]; partial?: boolean }) {
   const o = await orderRow(ctx, ref, true);
   if (!['reserved', 'prepared', 'out', 'returned_partial'].includes(o.status)) throw new AppError('invalid_transition', 409, msg('error.units_can_be_assigned_once_the_order', { status: o.status }));
   const ids = await resolveUnits(ctx, body);
   if (!ids.length) throw invalid(msg('error.send_stock_item_ids_or_barcodes'));
+  const all = await withContents(ctx, ids);
+  const cases = new Set((await many<{ container_id: string }>(ctx, `SELECT DISTINCT container_id FROM stock_items WHERE container_id = ANY($1)`, [all])).map((r) => r.container_id));
+  // Only units scanned on their own must fit; a case and its contents are taken as far as they do, and so
+  // is everything in a batch (`partial`, an RFID read), where the units that do not fit are listed.
+  const optional = new Set(all.filter((id) => body.partial || !ids.includes(id) || cases.has(id)));
   const assigned: string[] = [];
-  for (const sti of ids) {
+  const skipped: { barcode: string; reason: string }[] = [];
+  for (const sti of all) {
     const unit = await must<any>(ctx, `SELECT s.id, s.barcode, s.variant_id, s.status, s.location_id, l.name AS location_name FROM stock_items s JOIN locations l ON l.id = s.location_id WHERE s.id = $1`, [sti], 'stock_item', sti);
-    if (unit.status === 'needs_inspection' || unit.status === 'hard_down') throw new AppError('unit_needs_inspection', 409, msg('error.unit_has_status', { barcode: unit.barcode, status: unit.status.replace('_', ' ') }));
-    if (unit.status === 'in_transit') throw new AppError('unit_in_transit', 409, msg('error.unit_in_transit', { barcode: unit.barcode }));
-    if (unit.location_id !== o.location_id) throw new AppError('wrong_location', 422, t('orders.wrong_location', { code: unit.barcode, location: unit.location_name }));
     const lines = await lineRows(ctx, o.id);
-    const candidates = lines.filter((l) => l.type === 'rental' && l.tracking === 'serialized' && (body.line_id ? l.id === body.line_id || l.parent_line_id === body.line_id : true));
-    const line = candidates.find((l) => l.variant_id === unit.variant_id && activeUnits(l).length < l.quantity);
-    if (!line) {
-      const sameProduct = candidates.find((l) => l.variant_id === unit.variant_id);
-      if (sameProduct) throw new AppError('fully_assigned', 409, msg('error.every_on_this_order_already_has_a', { description: sameProduct.description }));
-      throw new AppError('wrong_item', 422, msg('error.is_not_on_this_order', { barcode: unit.barcode }));
+    let line: any;
+    try {
+      line = pickLine(o, unit, lines, body.line_id);
+      // A unit whose electrical safety test has run out may not go out (FR-MNT-5).
+      if (line && (await expiredUnits(ctx, [sti])).length) throw electricalRefusal([unit]);
+    } catch (e) {
+      if (!(e instanceof AppError) || !optional.has(sti)) throw e;
+      // The case is the box, not something rented: it is left out without a word.
+      if (!(cases.has(sti) && e.code === 'wrong_item')) skipped.push({ barcode: unit.barcode, reason: e.message });
+      continue;
     }
+    if (!line) continue;
     await availability.assignUnit(ctx, line, o.location_id, sti);
     assigned.push(unit.barcode);
   }
-  await event(ctx, o.id, 'units_assigned', null, null, { barcodes: assigned });
+  if (!assigned.length && skipped.length) throw new AppError('wrong_item', 422, skipped[0]!.reason, { extra: { skipped } });
+  if (assigned.length) await event(ctx, o.id, 'units_assigned', null, null, { barcodes: assigned });
   const api = await orderToApi(ctx, await orderRow(ctx, o.id));
-  await emit(ctx, 'order.units_assigned', { type: 'order', id: o.id }, { ...api, barcodes: assigned });
-  return api;
+  if (assigned.length) await emit(ctx, 'order.units_assigned', { type: 'order', id: o.id }, { ...api, barcodes: assigned });
+  if (body.partial) return { ...api, skipped, assigned };
+  return skipped.length ? { ...api, skipped } : api;
+}
+
+/** The line a unit goes on, or null when it is on the order already; throws with the reason it cannot go on. */
+function pickLine(o: any, unit: any, lines: any[], lineId?: string) {
+  if (lines.some((l) => activeUnits(l).some((u: any) => u.stock_item_id === unit.id))) return null;
+  if (unit.status === 'needs_inspection' || unit.status === 'hard_down') throw new AppError('unit_needs_inspection', 409, msg('error.unit_has_status', { barcode: unit.barcode, status: unit.status.replace('_', ' ') }));
+  if (unit.status === 'in_transit') throw new AppError('unit_in_transit', 409, msg('error.unit_in_transit', { barcode: unit.barcode }));
+  if (unit.location_id !== o.location_id) throw new AppError('wrong_location', 422, t('orders.wrong_location', { code: unit.barcode, location: unit.location_name }));
+  const candidates = lines.filter((l) => l.type === 'rental' && l.tracking === 'serialized' && (lineId ? l.id === lineId || l.parent_line_id === lineId : true));
+  const line = candidates.find((l) => l.variant_id === unit.variant_id && activeUnits(l).length < l.quantity);
+  if (line) return line;
+  const sameProduct = candidates.find((l) => l.variant_id === unit.variant_id);
+  if (sameProduct) throw new AppError('fully_assigned', 409, msg('error.every_on_this_order_already_has_a', { description: sameProduct.description }));
+  throw new AppError('wrong_item', 422, msg('error.is_not_on_this_order', { barcode: unit.barcode }));
 }
 
 export async function unassignUnits(ctx: Ctx, ref: string, body: { stock_item_ids?: string[]; barcodes?: string[] }) {
@@ -760,6 +789,98 @@ export async function unassignUnits(ctx: Ctx, ref: string, body: { stock_item_id
   }
   await event(ctx, o.id, 'units_unassigned', null, null, { stock_item_ids: ids });
   return orderToApi(ctx, await orderRow(ctx, o.id));
+}
+
+/**
+ * Units whose product is charged by the meter need a reading at pickup and at return (a return only when
+ * the pickup was read), or the use cannot be charged. Lost units are not read.
+ */
+async function requireMeterReadings(ctx: Ctx, orderId: string, source: 'check_out' | 'check_in', stockItemIds: string[]) {
+  if (!stockItemIds.length) return;
+  const unread = await many<{ id: string; barcode: string; meter_unit: string }>(
+    ctx,
+    `SELECT s.id, s.barcode, p.meter_unit FROM stock_items s JOIN variants v ON v.id = s.variant_id JOIN products p ON p.id = v.product_id
+      WHERE s.id = ANY($2) AND jsonb_typeof(p.meter_rate) = 'object' AND p.meter_unit IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM meter_readings r WHERE r.stock_item_id = s.id AND r.order_id = $1 AND r.source = $3)
+        AND ($3 = 'check_out' OR EXISTS (SELECT 1 FROM meter_readings r WHERE r.stock_item_id = s.id AND r.order_id = $1 AND r.source = 'check_out'))
+      ORDER BY s.barcode`,
+    [orderId, stockItemIds, source],
+  );
+  if (unread.length)
+    throw invalid(
+      msg('error.check_the_reading'),
+      unread.map((u) => ({ field: `meter_readings.${u.id}`, code: 'required', message: msg('error.field.meter_reading_needed', { barcode: u.barcode, unit: u.meter_unit }) })),
+    );
+}
+
+/**
+ * Meter billing (construction rentals): a returned unit whose product has a meter rate is charged for what its
+ * meter ran between pickup and return, less the amount included, as one fee line per unit. An invoiced order
+ * gets the charge on its own invoice, since issued documents never change; a long rental billed per period
+ * takes it in its next period. Returns the amount charged before tax.
+ */
+async function chargeMeters(ctx: Ctx, o: any, stockItemIds: string[]): Promise<number> {
+  if (!stockItemIds.length) return 0;
+  const rows = await many<any>(
+    ctx,
+    `SELECT s.id, s.barcode, p.name, p.meter_unit, p.meter_rate, coalesce((l.price_snapshot->>'tax_rate_bp')::int, 0) AS rate,
+            (SELECT value FROM meter_readings r WHERE r.stock_item_id = s.id AND r.order_id = $1 AND r.source = 'check_out' ORDER BY recorded_at, created_at LIMIT 1) AS start_value,
+            (SELECT value FROM meter_readings r WHERE r.stock_item_id = s.id AND r.order_id = $1 AND r.source = 'check_in' ORDER BY recorded_at DESC, created_at DESC LIMIT 1) AS end_value
+       FROM order_line_units u JOIN order_lines l ON l.id = u.order_line_id JOIN stock_items s ON s.id = u.stock_item_id
+       JOIN variants v ON v.id = s.variant_id JOIN products p ON p.id = v.product_id
+      WHERE l.order_id = $1 AND u.stock_item_id = ANY($2) AND jsonb_typeof(p.meter_rate) = 'object'
+        AND NOT EXISTS (SELECT 1 FROM order_lines f WHERE f.order_id = $1 AND f.type = 'fee' AND f.price_snapshot->>'kind' = 'meter' AND f.price_snapshot->>'stock_item_id' = s.id)
+      ORDER BY s.barcode`,
+    [o.id, stockItemIds],
+  );
+  const locale = await orderLocale(ctx, o.id);
+  const num = (v: number) => new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(v);
+  const added: any[] = [];
+  let net = 0;
+  let tax = 0;
+  for (const r of rows) {
+    if (r.start_value == null || r.end_value == null) continue;
+    const used = Math.max(0, Number(r.end_value) - Number(r.start_value));
+    const billable = Math.max(0, used - Number(r.meter_rate.included ?? 0));
+    const amount = Math.round(billable * Number(r.meter_rate.amount));
+    if (amount <= 0) continue;
+    const lineTax = Math.round((amount * r.rate) / 10000);
+    const included = Number(r.meter_rate.included ?? 0);
+    const words = { name: r.name, barcode: r.barcode, used: num(billable), unit: r.meter_unit, from: num(Number(r.start_value)), to: num(Number(r.end_value)), included: num(included) };
+    const description = included > 0 ? msg('order.line.meter_over', words, locale) : msg('order.line.meter', words, locale);
+    const pos = (await one<{ n: number }>(ctx, `SELECT coalesce(max(position), 0) + 1 AS n FROM order_lines WHERE order_id = $1`, [o.id]))!.n;
+    await exec(
+      ctx,
+      `INSERT INTO order_lines (id, tenant_id, order_id, type, quantity, description, price_snapshot, unit_price, subtotal, tax, total, position)
+       VALUES ($1,$2,$3,'fee',1,$4,$5,$6,$6,$7,$8,$9)`,
+      [
+        newId('oln'), ctx.tenantId, o.id, description,
+        json({ kind: 'meter', tax_rate_bp: r.rate, stock_item_id: r.id, start: Number(r.start_value), end: Number(r.end_value), included: Number(r.meter_rate.included ?? 0), per_unit: Number(r.meter_rate.amount), unit: r.meter_unit }),
+        amount, lineTax, amount + lineTax, pos,
+      ],
+    );
+    added.push({ name: description, type: 'fee', quantity: 1, unit_price: amount, discount: 0, tax_rate_bp: r.rate, tax: lineTax, total: amount + lineTax, units: [] });
+    net += amount;
+    tax += lineTax;
+  }
+  if (!added.length) return 0;
+  await recalcTotalsFromLines(ctx, o.id);
+  const invoiced = !o.billing_cycle && (await one(ctx, `SELECT 1 FROM documents WHERE order_id = $1 AND type = 'invoice' AND status = 'issued' LIMIT 1`, [o.id]));
+  if (invoiced) {
+    const rates = new Map<number, { net: number; tax: number }>();
+    for (const l of added) {
+      const x = rates.get(l.tax_rate_bp) ?? { net: 0, tax: 0 };
+      rates.set(l.tax_rate_bp, { net: x.net + l.unit_price, tax: x.tax + l.tax });
+    }
+    await issueDocument(ctx, o.id, 'invoice', {
+      overrides: {
+        lines: added,
+        totals: { subtotal: net, discount: 0, fees: 0, tax, total: net + tax, deposit: 0 },
+        tax_breakdown: [...rates].map(([rate_bp, v]) => ({ rate_bp, net: v.net, tax: v.tax })),
+      },
+    });
+  }
+  return net;
 }
 
 const HANDLERS: Record<OrderAction, Handler> = {
@@ -809,6 +930,8 @@ const HANDLERS: Record<OrderAction, Handler> = {
       await notifyCustomer(ctx, o.id, 'order_confirmed', {}, undefined, { attachments: [doc.id, `ics:${o.id}`] });
       if (o.source === 'storefront') await notifyStaff(ctx, o.id, 'staff_new_order');
     }
+    // A customer who must show ID gets the check's link now, to verify before pickup (FR-PAY-9).
+    await prepareIdentityCheck(ctx, o.customer_id, o.id);
     return api;
   },
 
@@ -828,6 +951,8 @@ const HANDLERS: Record<OrderAction, Handler> = {
       const toAssign = ids.filter((id) => !already.has(id));
       if (toAssign.length) await assignUnits(ctx, o.id, { stock_item_ids: toAssign });
     }
+    const goingOut = (await many<{ stock_item_id: string }>(ctx, `SELECT u.stock_item_id FROM order_line_units u JOIN order_lines l ON l.id = u.order_line_id WHERE l.order_id = $1 AND u.checked_out_at IS NULL`, [o.id])).map((r) => r.stock_item_id);
+    await requireMeterReadings(ctx, o.id, 'check_out', goingOut);
     const lines = await lineRows(ctx, o.id);
     const missing: string[] = [];
     for (const l of lines.filter((x) => x.type === 'rental' && x.tracking === 'serialized')) {
@@ -886,10 +1011,17 @@ const HANDLERS: Record<OrderAction, Handler> = {
         sti = (await one(ctx, `SELECT id FROM stock_items WHERE barcode = $1`, [String(u.barcode).trim()]))?.id;
         if (!sti) throw new AppError('unknown_barcode', 404, msg('error.no_unit_with_barcode_2', { barcode: u.barcode }));
       }
-      const idx = units.findIndex((x) => x.stock_item_id === sti);
-      if (idx >= 0) units.splice(idx, 1);
-      units.push({ stock_item_id: sti, outcome: u.outcome ?? 'ok' });
+      // A case brings back what it holds and is still out on this order (FR-CAT-11).
+      const inside = (await withContents(ctx, [sti])).slice(1);
+      const outHere = inside.length ? new Set(lines.flatMap((l) => (l.units ?? []).filter((x: any) => x.checked_out_at && !x.checked_in_at).map((x: any) => x.stock_item_id))) : null;
+      const onOrder = lines.some((l) => (l.units ?? []).some((x: any) => x.stock_item_id === sti));
+      for (const id of [...(outHere && !onOrder ? [] : [sti]), ...inside.filter((id) => outHere!.has(id))]) {
+        const idx = units.findIndex((x) => x.stock_item_id === id);
+        if (idx >= 0) units.splice(idx, 1);
+        units.push({ stock_item_id: id, outcome: u.outcome ?? 'ok' });
+      }
     }
+    await requireMeterReadings(ctx, o.id, 'check_in', units.filter((u) => u.outcome !== 'lost').map((u) => u.stock_item_id));
     const returned: string[] = [];
     for (const u of units) {
       const row = await one<any>(
@@ -911,6 +1043,7 @@ const HANDLERS: Record<OrderAction, Handler> = {
       await setStockItemStatus(ctx, u.stock_item_id, status, `returned ${u.outcome} on order #${o.number}`, { system: true });
       returned.push(row.barcode);
     }
+    const meterCharge = await chargeMeters(ctx, o, units.filter((u) => u.outcome !== 'lost').map((u) => u.stock_item_id));
     // Bulk lines: returned / damaged / lost quantities.
     const bulkInput: any[] = body?.all
       ? lines.filter((l) => l.tracking === 'bulk' && l.type === 'rental').map((l) => ({ line_id: l.id, returned: l.picked_up_qty - l.returned_qty - l.lost_qty }))
@@ -970,7 +1103,7 @@ const HANDLERS: Record<OrderAction, Handler> = {
     const done = facts.outstandingUnits === 0;
     if (done && unpicked) await availability.releaseUnassignedHolds(ctx, o.id);
     const to: OrderStatus = done ? 'returned' : 'returned_partial';
-    const api = await setStatus(ctx, o, to, 'checked_in', { partial: !done, barcodes: returned, late_fee: lateFee });
+    const api = await setStatus(ctx, o, to, 'checked_in', { partial: !done, barcodes: returned, late_fee: lateFee, ...(meterCharge ? { meter_charge: meterCharge } : {}) });
     if (done && o.billing_cycle) {
       await billOnReturn(ctx, o.id);
       return orderToApi(ctx, await orderRow(ctx, o.id));
@@ -1059,7 +1192,13 @@ export async function runAction(ctx: Ctx, ref: string, action: OrderAction, body
       errors: blocked.map((b) => ({ field: 'order', code: b.code, message: b.message })),
     });
   }
-  if (action === 'check_out') await assertIdentityChecked(ctx, o);
+  if (action === 'check_out') {
+    await assertIdentityChecked(ctx, o);
+    // Units assigned before their test ran out are stopped here too.
+    const units = await many<{ stock_item_id: string }>(ctx, `SELECT u.stock_item_id FROM order_line_units u JOIN order_lines l ON l.id = u.order_line_id WHERE l.order_id = $1 AND u.checked_out_at IS NULL`, [o.id]);
+    const expired = await expiredUnits(ctx, units.map((u) => u.stock_item_id));
+    if (expired.length) throw electricalRefusal(expired);
+  }
   const hookCtx = hookContext(ctx);
   await ctx.plugins.runHook('before', 'orders.transition', { order_id: o.id, from: o.status, action, body }, hookCtx);
   await HANDLERS[action](ctx, o, body, facts);
@@ -1076,7 +1215,16 @@ async function assertIdentityChecked(ctx: Ctx, o: any) {
   if (!o.customer_id) return;
   const c = await one<any>(ctx, `SELECT id, name, email, flags FROM customers WHERE id = $1`, [o.customer_id]);
   if (!c?.flags?.requires_id_check || c.flags.id_verified) return;
-  const idp = await enabledProvider(ctx, ctx.plugins.identityProvider());
+  // A service with its own verification page (plugin API 1.9): the customer checks there, by the emailed link.
+  const service = await activeIdentityProvider(ctx);
+  if (service?.provider.start) {
+    const gate = await identityGate(ctx, c.id);
+    if (gate.ok) return;
+    const message = msg('order.guard.id_check');
+    throw new AppError('id_check_required', 409, message, { errors: [{ field: 'order', code: 'id_check_required', message }], extra: { url: gate.url } });
+  }
+  // An older plugin that checks in one call (plugin API before 1.9).
+  const idp = service;
   let url: string | null = null;
   if (idp) {
     const r = await idp.provider.check(idp.pctx, { customer: { id: c.id, name: c.name, email: c.email }, orderId: o.id }).catch((err) => {

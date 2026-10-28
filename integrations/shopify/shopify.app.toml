@@ -1,0 +1,25 @@
+# The OpenRent app for Shopify. Create the app in the Shopify Partner Dashboard (or with `shopify app init`),
+# put its client id here, and run the server in server/ at application_url. `shopify app deploy` pushes the
+# theme app extension in extensions/.
+client_id = "REPLACE_WITH_YOUR_CLIENT_ID"
+name = "OpenRent"
+application_url = "https://shopify.openrent.example"
+embedded = true
+
+[access_scopes]
+# The booking blocks need no access to the shop's data.
+scopes = ""
+
+[auth]
+redirect_urls = ["https://shopify.openrent.example/auth/callback"]
+
+[webhooks]
+api_version = "2026-10"
+
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled"]
+uri = "https://shopify.openrent.example/webhooks"
+
+[[webhooks.subscriptions]]
+compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+uri = "https://shopify.openrent.example/webhooks"

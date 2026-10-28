@@ -162,5 +162,11 @@
   "account.invoices.title": "Tasumata arved",
   "account.invoices.hint": "Teie ettevõttekonto kuuarved. Ühe tasumine katab kõik sellel olevad broneeringud.",
   "account.invoices.item": "Arve {number}, {date}",
-  "account.invoices.due": "tähtaeg {date}"
+  "account.invoices.due": "tähtaeg {date}",
+  "account.id_check.title": "Isikutuvastus",
+  "account.id_check.hint": "Enne esimest kättesaamist kinnitage oma isik isikut tõendava dokumendiga. See võtab paar minutit.",
+  "account.id_check.failed": "Viimane kontroll ei õnnestunud. Proovige uuesti kehtiva isikut tõendava dokumendiga.",
+  "account.id_check.verified": "Teie isik on tuvastatud.",
+  "account.id_check.start": "Kinnita isik",
+  "account.id_check.unavailable": "Isikutuvastust ei saa praegu alustada. Palun pöörduge poe poole."
 }

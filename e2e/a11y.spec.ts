@@ -20,7 +20,8 @@ test('back office pages have no serious accessibility problems', async ({ page }
   const found: string[] = [];
   for (const path of ADMIN_PAGES) {
     await page.goto(`${ADMIN}${path}`);
-    await page.waitForLoadState('networkidle');
+    // A page that never settles is named, instead of the whole test timing out.
+    if (!(await page.waitForLoadState('networkidle', { timeout: 30_000 }).then(() => true, () => false))) found.push(`${path}: still loading after 30 s`);
     for (const p of await problems(page)) found.push(`${path}: ${p}`);
   }
   expect(found, found.join('\n')).toEqual([]);

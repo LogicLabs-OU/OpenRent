@@ -134,6 +134,17 @@ const ProductFields = {
   seo: Type.Optional(Json),
   tracking: Type.Optional(Tracking),
   meter_unit: Type.Optional(Nullable(Type.String({ maxLength: 20, description: 'What the units’ meter counts (hours, km); null for none' }))),
+  meter_rate: Type.Optional(
+    Nullable(
+      Type.Object(
+        {
+          amount: Type.Integer({ minimum: 0, description: 'Price per meter unit, in minor units, before tax' }),
+          included: Type.Optional(Type.Number({ minimum: 0, description: 'Meter units free in each rental' })),
+        },
+        { additionalProperties: false, description: 'What the meter costs at return (needs meter_unit); null for none' },
+      ),
+    ),
+  ),
   depreciation_months: Type.Optional(Nullable(Type.Integer({ minimum: 1, maximum: 600 }))),
   residual_bp: Type.Optional(Type.Integer({ minimum: 0, maximum: 10000, description: 'Value left at the end of the life, in basis points of the price' })),
   price: Type.Optional(PriceStructureInput),
@@ -225,6 +236,7 @@ export const BillingDetails = Type.Object(
     company_name: Type.Optional(Nullable(Type.String({ maxLength: 200 }))),
     tax_id: Type.Optional(Nullable(Type.String({ maxLength: 40 }))),
     address: Type.Optional(Nullable(Address)),
+    einvoice: Type.Optional(Nullable(Type.Object({ format: Type.String({ maxLength: 40 }), endpoint: Type.Optional(Nullable(Type.String({ maxLength: 60, description: 'Peppol ID: scheme and identifier, e.g. 0191:10002345' }))) }, { additionalProperties: false, description: 'E-invoices for these details, in a format a plugin offers' }))),
     is_default: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },

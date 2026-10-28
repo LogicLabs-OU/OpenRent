@@ -137,6 +137,33 @@ Each morning, OpenRent checks every unit:
 - Staff get one notice for each overdue service.
 - When the interval opens tickets, a ticket is opened for a unit that is available or reserved and has no open ticket. The unit stays in service until you decide otherwise.
 
+## Electrical safety tests (PAT)
+
+Electrical gear must be tested for safety at set times: PAT in the UK, DGUV V3 in Germany, NEN 3140 in the Netherlands. OpenRent keeps the tests, says when the next is due, and stops a unit going out once its test has run out.
+
+### Say what needs testing
+
+Under **Maintenance → Service**, add an interval and choose the kind **Electrical safety test (PAT)**. Choose what it applies to (all products, one product or a category) and how many **days** a test lasts, for example 365. A test is due by days only.
+
+Units it applies to show in **What is due** like a service: due soon in the week before, overdue after.
+
+### Record a test
+
+On a unit's page, **Electrical safety tests** says whether the unit may go out and lists its tests. Click **Record test** and fill in:
+
+- the day, the **Result** (pass or fail) and the **Protection class**;
+- the readings your tester gives: **Earth continuity** (needed for a passing class I appliance), **Insulation resistance** and **Leakage current**;
+- whether the visual check passed and the polarity is correct;
+- who tested, and with which instrument.
+
+A pass counts as the interval's service: the next test is due the given number of days later. A fail takes the unit out of service with a repair ticket; once it is repaired, record a new test.
+
+Tests cannot be changed or removed afterwards. The button next to each test opens its **certificate** as a PDF to print or send.
+
+### At pickup
+
+A unit that needs a test and has no passed one in time cannot go out. Scanning it onto a booking says "No valid electrical safety test", and pickup stops for units that were put on the booking before their test ran out. Test the unit, or give the customer another one.
+
 ## Depreciation and book value
 
 OpenRent works out what each unit is worth now, by straight-line depreciation.

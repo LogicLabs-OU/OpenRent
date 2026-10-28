@@ -162,5 +162,11 @@
   "account.invoices.title": "未払いの請求書",
   "account.invoices.hint": "法人アカウントの月次請求書です。お支払いで、記載の予約すべてが精算されます。",
   "account.invoices.item": "請求書 {number}（{date}）",
-  "account.invoices.due": "支払期限 {date}"
+  "account.invoices.due": "支払期限 {date}",
+  "account.id_check.title": "本人確認",
+  "account.id_check.hint": "初回のお受け取りの前に、身分証明書で本人確認をしてください。数分で完了します。",
+  "account.id_check.failed": "前回の確認は完了しませんでした。有効な身分証明書でもう一度お試しください。",
+  "account.id_check.verified": "本人確認が完了しています。",
+  "account.id_check.start": "本人確認をする",
+  "account.id_check.unavailable": "現在、本人確認を開始できません。ショップにお問い合わせください。"
 }

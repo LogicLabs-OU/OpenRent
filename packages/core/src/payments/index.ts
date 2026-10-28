@@ -15,6 +15,7 @@ import { t } from '../i18n/index.ts';
 import { tenantLocale } from '../i18n/context.ts';
 import { isPluginEnabled } from '../plugins/index.ts';
 import { photosOf } from '../maintenance/index.ts';
+import { invoicePaid } from './customer.ts';
 
 // ---------------------------------------------------------------------------
 // Providers
@@ -96,7 +97,7 @@ export async function updatePaymentProvider(ctx: Ctx, providerId: string, patch:
 
 export function paymentToApi(p: any) {
   return {
-    id: p.id, object: 'payment', order_id: p.order_id, provider: p.provider, kind: p.kind, purpose: p.purpose, method: p.method,
+    id: p.id, object: 'payment', order_id: p.order_id, customer_id: p.customer_id ?? null, document_id: p.document_id ?? null, provider: p.provider, kind: p.kind, purpose: p.purpose, method: p.method,
     amount: money(p.amount, p.currency), status: p.status, provider_ref: p.provider_ref, parent_payment_id: p.parent_payment_id,
     note: p.note, created_at: p.created_at,
   };
@@ -189,6 +190,7 @@ export async function createPaymentIntent(ctx: Ctx, orderId: string, input: { am
     currency: o.currency.trim(),
     orderId,
     orderNumber: o.number,
+    reference: orderId,
     purpose: input.purpose ?? 'rental',
     customer: { id: customer.id, name: customer.name, email: customer.email, providerRef: customer.provider_refs?.[pc.provider.id] ?? null },
     savePaymentMethod: Number(o.totals?.deposit ?? 0) > 0,
@@ -255,13 +257,13 @@ export async function refundPayment(ctx: Ctx, paymentId: string, input: { amount
   const row = (
     await many(
       ctx,
-      `INSERT INTO payments (id, tenant_id, order_id, provider, kind, purpose, method, amount, currency, status, provider_ref, parent_payment_id, note, created_by)
-       VALUES ($1,$2,$3,$4,'refund',$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [newId('pay'), ctx.tenantId, p.order_id, p.provider, p.purpose, p.method, amount, p.currency, status, ref, p.id, input.reason ?? null, ctx.actor.id],
+      `INSERT INTO payments (id, tenant_id, order_id, customer_id, document_id, provider, kind, purpose, method, amount, currency, status, provider_ref, parent_payment_id, note, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,'refund',$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [newId('pay'), ctx.tenantId, p.order_id, p.customer_id, p.document_id, p.provider, p.purpose, p.method, amount, p.currency, status, ref, p.id, input.reason ?? null, ctx.actor.id],
     )
   )[0];
   await audit(ctx, { entity_type: 'payment', entity_id: row.id, action: 'refund', after: row });
-  await recomputePaymentStatus(ctx, p.order_id);
+  if (p.order_id) await recomputePaymentStatus(ctx, p.order_id);
   if (status !== 'failed') await emit(ctx, 'payment.refunded', { type: 'payment', id: row.id }, paymentToApi(row));
   return paymentToApi(row);
 }
@@ -729,7 +731,11 @@ export async function applyProviderEvent(ctx: Ctx, provider: string, ev: Provide
   if (!fresh) return { duplicate: true };
   switch (ev.type) {
     case 'payment.succeeded': {
-      if (!ev.orderId) break;
+      // No booking: a customer invoice paid through its payment request (ADR 0014).
+      if (!ev.orderId) {
+        await invoicePaid(ctx, provider, ev);
+        break;
+      }
       const order = await one(ctx, `SELECT * FROM orders WHERE id = $1`, [ev.orderId]);
       if (!order) break;
       const existing = await one(ctx, `SELECT * FROM payments WHERE provider = $1 AND provider_ref = $2 AND kind <> 'refund'`, [provider, ev.ref]);
@@ -815,7 +821,7 @@ export async function syncOrderPayments(ctx: Ctx, orderId: string, hooks: { onRe
 export function paymentRequestToApi(r: any) {
   const c = String(r.currency).trim();
   return {
-    id: r.id, object: 'payment_request', order_id: r.order_id, kind: r.kind, status: r.status, amount: money(r.amount, c), due_at: r.due_at, message: r.message, payment_id: r.payment_id,
+    id: r.id, object: 'payment_request', order_id: r.order_id, customer_id: r.customer_id ?? null, invoice_id: r.invoice_id ?? null, kind: r.kind, status: r.status, amount: money(r.amount, c), due_at: r.due_at, message: r.message, payment_id: r.payment_id,
     paid_at: r.paid_at, provider: r.provider ?? null, url: r.url ?? null, expires_at: r.expires_at ?? null, created_at: r.created_at,
   };
 }
@@ -873,7 +879,7 @@ async function paymentLink(ctx: Ctx, o: any, row: any, returnUrl?: string) {
     const r = await pc.provider.createPaymentLink(
       { ...pc.pctx, idempotencyKey: `prq:${row.id}` },
       {
-        amount: Number(row.amount), currency: o.currency.trim(), orderId: o.id, orderNumber: o.number,
+        amount: Number(row.amount), currency: o.currency.trim(), orderId: o.id, orderNumber: o.number, reference: o.id,
         description: msg('payment.description.order', { number: o.number }, await tenantLocale(ctx)),
         customer: { id: customer?.id ?? o.id, name: customer?.name ?? '', email: customer?.email ?? null, providerRef: customer?.provider_refs?.[pc.provider.id] ?? null },
         ...(returnUrl ? widgetReturn(returnUrl, o) : { successUrl: `${orderUrl}?paid=1`, cancelUrl: orderUrl }),
@@ -1071,3 +1077,5 @@ export async function resolveReconciliationIssue(ctx: Ctx, id: string, input: { 
   await audit(ctx, { entity_type: 'payment_reconciliation_issue', entity_id: id, action: 'resolve', after: row });
   return reconciliationIssueToApi(row);
 }
+
+export * from './customer.ts';

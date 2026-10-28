@@ -139,7 +139,7 @@ export async function validateCustomFields(ctx: Ctx, entity: Entity, values: Rec
     }
   }
   // Shoppers and system jobs cannot fill fields they never see; staff and API clients must.
-  const enforceRequired = ctx.actor.type === 'user' || ctx.actor.type === 'api_key';
+  const enforceRequired = ctx.actor.type === 'user' || ctx.actor.type === 'api_key' || ctx.actor.type === 'app';
   for (const d of defs) if (enforceRequired && d.required && out[d.key] === undefined && !errors.some((e) => e.field === `custom_fields.${d.key}`)) fail(d.key, 'required', msg('customfields.required', { label: labelFor(d.labels, currentLocale(), d.key) }));
   if (errors.length) throw invalid(msg('error.check_the_highlighted_fields'), errors);
   return out;

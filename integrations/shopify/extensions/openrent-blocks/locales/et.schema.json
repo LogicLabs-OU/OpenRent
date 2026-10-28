@@ -1,0 +1,21 @@
+{
+  "blocks": {
+    "product": {
+      "name": "OpenRenti toode",
+      "product": "Toode",
+      "product_info": "Toote aadressi viimane osa teie OpenRenti e-poes, pärast /p/."
+    },
+    "category": {
+      "name": "OpenRenti kategooria",
+      "category": "Kategooria",
+      "category_info": "Kategooria aadressi viimane osa teie OpenRenti e-poes, pärast /c/. Tühi: kõik tooted.",
+      "limit": "Näidatavaid tooteid"
+    },
+    "book_button": {
+      "name": "OpenRenti broneerimisnupp",
+      "product": "Toode",
+      "product_info": "Tühi: nupp viib teie OpenRenti e-poodi.",
+      "label": "Nupu tekst"
+    }
+  }
+}

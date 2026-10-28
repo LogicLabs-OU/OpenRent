@@ -27,6 +27,7 @@ const HEADER = `<div class="head">
     <strong>{{tenant.legal_name}}</strong><br>
     {{#each tenant.address_lines}}{{this}}<br>{{/each}}
     {{#each tenant.tax_ids}}{{this.type}} {{this.value}}<br>{{/each}}
+    {{#if tenant.registry_code}}{{t "doc.registry_code" code=tenant.registry_code}}<br>{{/if}}
   </div>
 </div>`;
 
@@ -87,7 +88,7 @@ export const DEFAULT_TEMPLATES: Record<string, { title: string; body: string }> 
   },
   invoice: {
     title: 'doc.title.invoice',
-    body: `${HEADER}${PARTIES}${LINES}${TOTALS}{{#if document.due_at}}<p><strong>{{t "doc.due_by" date=(date document.due_at)}}</strong></p>{{/if}}<p class="muted">{{t "doc.invoice_reference" number=document.number}}</p>`,
+    body: `${HEADER}${PARTIES}${LINES}${TOTALS}{{#if document.due_at}}<p><strong>{{t "doc.due_by" date=(date document.due_at)}}</strong></p>{{/if}}{{#if tenant.bank}}<p>{{t "doc.pay_to" iban=tenant.bank.iban}}{{#if tenant.bank.bic}} · BIC {{tenant.bank.bic}}{{/if}}</p>{{/if}}<p class="muted">{{t "doc.invoice_reference" number=document.number}}</p>`,
   },
   credit_note: {
     title: 'doc.title.credit_note',

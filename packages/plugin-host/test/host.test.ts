@@ -56,7 +56,7 @@ describe('PluginHost', () => {
         },
       }),
     );
-    await host.useEnablementSource(async () => [{ tenantId: 'off', pluginId: 'audit' }]);
+    await host.useEnablementSource(async () => [{ tenantId: 'off', pluginId: 'audit', enabled: false }]);
     for (const tenantId of ['on', 'off']) {
       const c = { ...hctx, tenantId };
       await host.runHook('after', 'orders.transition', {}, c);

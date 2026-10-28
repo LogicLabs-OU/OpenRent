@@ -162,5 +162,11 @@
   "account.invoices.title": "Factures à régler",
   "account.invoices.hint": "Les factures mensuelles de votre compte entreprise. Les régler solde toutes les réservations qui y figurent.",
   "account.invoices.item": "Facture {number} du {date}",
-  "account.invoices.due": "échéance le {date}"
+  "account.invoices.due": "échéance le {date}",
+  "account.id_check.title": "Vérification d’identité",
+  "account.id_check.hint": "Avant votre premier retrait, vérifiez votre identité avec une pièce d’identité. Cela prend quelques minutes.",
+  "account.id_check.failed": "La dernière vérification n’a pas abouti. Réessayez avec une pièce d’identité valide.",
+  "account.id_check.verified": "Votre identité est vérifiée.",
+  "account.id_check.start": "Vérifier mon identité",
+  "account.id_check.unavailable": "La vérification ne peut pas être lancée pour le moment. Contactez la boutique."
 }

@@ -74,7 +74,7 @@ On a multi-shop installation, **a shop owner is an attacker towards every other 
 
 ## Threats we accept
 
-- **Plugins are trusted code.** A plugin runs in the API process. Only install plugins you trust; uploaded plugins are off by default, and the registry (M3) will sign packages.
+- **Plugins are trusted code.** A plugin runs in the API process. Only install plugins you trust; uploaded plugins are off by default. Packages are not signed: a signed public directory is deferred (ADR 0013).
 - **The operator sees everything.** Whoever holds the database and the encryption key can read every shop's data.
 - **Email is the customer's identity.** Whoever controls a customer's inbox can sign in as that customer.
 - **Denial of service** beyond rate limits is left to the hosting layer (Caddy, a CDN, the cloud's protection).

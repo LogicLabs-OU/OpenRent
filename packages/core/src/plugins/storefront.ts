@@ -5,6 +5,7 @@ import type { Ctx } from '../context.ts';
 import { invalid, type FieldError } from '../errors.ts';
 import { t as msg } from '../i18n/index.ts';
 import { pluginConfig } from './index.ts';
+import { hookContext, pluginScope } from './scope.ts';
 
 /**
  * Plugins' storefront extensions for one shop (FR-PLG-5): checkout fields, product badges and scripts
@@ -163,13 +164,37 @@ export async function renderPluginSections(ctx: Ctx, layout: { id: string; type:
       const { config } = await pluginConfig(ctx, pluginId!);
       let timer: ReturnType<typeof setTimeout> | undefined;
       const html = await Promise.race([
-        Promise.resolve(def.render({ tenantId: ctx.tenantId, config, logger: ctx.logger, locale }, { ...defaults, ...(s.settings ?? {}) })),
+        Promise.resolve(def.render({ tenantId: ctx.tenantId, config, logger: ctx.logger, locale, scope: pluginScope(ctx, pluginId!) }, { ...defaults, ...(s.settings ?? {}) })),
         new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error('timed out')), RENDER_MS))),
       ]).finally(() => clearTimeout(timer));
       out[s.id] = cleanHtml(String(html ?? ''));
     } catch (err) {
       ctx.logger.warn({ err, plugin: pluginId, section: s.type }, 'plugin section could not be rendered');
       out[s.id] = '';
+    }
+  }
+  return out;
+}
+
+/**
+ * Panels plugins show in a signed-in customer's account (plugin API 1.9), e.g. a membership card, cleaned
+ * like the shop's own HTML. One that fails, takes too long or has nothing for this customer is left out.
+ */
+export async function renderAccountPanels(ctx: Ctx, customer: { id: string; email: string | null }, locale: string) {
+  const out: { plugin: string; key: string; title: string; html: string }[] = [];
+  for (const { pluginId, ext } of await active(ctx)) {
+    for (const panel of ext.accountPanels ?? []) {
+      try {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const r = await Promise.race([
+          Promise.resolve(panel.render({ ...hookContext(ctx), scope: pluginScope(ctx, pluginId), locale }, customer)),
+          new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error('timed out')), RENDER_MS))),
+        ]).finally(() => clearTimeout(timer));
+        const clean = r?.html ? cleanHtml(String(r.html)) : '';
+        if (clean.trim()) out.push({ plugin: pluginId, key: panel.key, title: String(r!.title ?? '').slice(0, 120), html: clean });
+      } catch (err) {
+        ctx.logger.warn({ err, plugin: pluginId, panel: panel.key }, 'account panel could not be rendered');
+      }
     }
   }
   return out;

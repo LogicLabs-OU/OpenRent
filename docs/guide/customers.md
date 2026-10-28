@@ -40,7 +40,9 @@ Click **Save** under the details. **Addresses** has its own **Save**: the **Bill
 The switches under **Details** are saved as soon as you flip them:
 
 - **No deposit:** the customer's bookings have no deposit.
-- **Check ID at pickup:** pickup is refused until the ID is checked. Turning it on shows **ID checked**: turn that on once you have seen the ID. If an identity plugin is on, it can check the customer and tick **ID checked** for you.
+- **Check ID at pickup:** pickup is refused until the ID is checked. Turning it on shows **ID checked**: turn that on once you have seen the ID.
+  - **With Stripe Identity or Veriff** on under **Plugins**, the customer checks their ID on the service's own page. When you reserve a booking for them, they get the link by email; they also find it in their storefront account. Once the service approves, **ID checked** turns on by itself and pickup goes through.
+  - **Email the ID check link** sends it again, for example after a failed check; the reason the service gave shows next to it.
 - **Agreed to marketing emails**, **Booking updates by SMS** and **Booking updates on WhatsApp:** what the customer agreed to.
 
 **Block online booking** at the top marks the customer **Blocked**. An order for a blocked customer cannot be reserved, and **New order** warns you when you choose one. **Unblock** lifts it.
@@ -110,6 +112,29 @@ Each customer keeps their own billing details for the storefront, like in any we
 At checkout a signed-in customer picks one of their billing details, or types others and ticks **Save these billing details to my account**. The booking keeps a copy of the details chosen: the tax (no VAT for a valid business in another EU country) and every document follow that copy, and a later change to the saved details changes no booking.
 
 **Saved billing details and addresses** on the customer page shows what the customer saved. Staff can add, change and delete them there too. The customer's own **Company**, **Tax ID** and addresses above stay as they are; they are used when a booking has no billing details of its own, for example one made in the admin.
+
+## Invoices without a booking
+
+Some invoices belong to no booking: a membership fee from the [memberships plugin](plugins-and-integrations.md#memberships), or something you sell at the counter. The customer's page lists them under **Invoices without a booking**, with what is owed on each.
+
+- **New invoice:** a description and an amount before tax; tax is added at the shop's default rate. Tick **Email the invoice with a link to pay online** to send it at once.
+- **Record payment:** cash, a bank transfer or a card terminal. A payment can never be more than is owed.
+- **Email a payment link:** the customer pays on your payment provider's page. Shops without online payment take the money at the counter.
+- **Charge the saved card:** the card the customer saved with an earlier online payment.
+
+The customer sees open invoices in their account, with a button to pay them. Payments are booked to accounting like any other and can be refunded from the payment. Voiding the invoice issues a credit note.
+
+## E-invoices
+
+A company that wants its invoices as e-invoices gets them in the format its billing details name: open the details on the customer's page and choose under **E-invoices**.
+
+- **Peppol (UBL):** for buyers on the Peppol network, such as public bodies in the EU. Enter the **Customer's Peppol ID**, for example `0191:12345678` (Estonian registry code) or `0088:` with a GLN. Set your own Peppol ID in the **Peppol e-invoices** plugin's settings first.
+- **Factur-X / ZUGFeRD (PDF):** the invoice PDF with its XML inside, as French and German buyers expect. People read the PDF and accounting software reads the XML.
+- **Estonian e-invoice (e-arve):** the national format of Estonian banks and e-invoice operators. Needs your registry code and IBAN.
+
+Invoices and credit notes for these details then come with the e-invoice file: attached to the email when you send them, and to download next to the document on the order page. Staff-made orders use the customer's default billing details. When something the format needs is missing, such as your IBAN or the customer's Peppol ID, the download says what to fill in.
+
+OpenRent makes the files; sending them over the Peppol network or to an e-invoice operator is up to your access point, operator or accounting system.
 
 ## VAT numbers
 

@@ -8,7 +8,7 @@ test('staff manage plugins, email and the storefront theme', async ({ page, cont
   // Plugins: the first-party plugins are listed with their state.
   await page.getByRole('link', { name: 'Plugins' }).first().click();
   // The built-in plugins plus the e2e fixture plugin (e2e/fixtures/plugins.json).
-  await expect(page.getByTestId('plugin-card')).toHaveCount(24);
+  await expect(page.getByTestId('plugin-card')).toHaveCount(33);
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'SMTP email' })).toBeVisible();
   await expect(page.getByTestId('plugin-card').filter({ hasText: 'S3 file storage' })).toBeVisible();
   await shot(page, 'admin-plugins');

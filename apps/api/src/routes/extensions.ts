@@ -56,6 +56,10 @@ export function registerExtensions(r: Router) {
     object: 'list',
     data: await plugins.adminSlots(ctx, r.deps.plugins.slots),
   }));
+  r.get('/plugin_pages', { tags: P, summary: 'Pages of records the plugins this shop has on keep, for the admin to draw (plugin API 1.9)', querystring: Type.Object({ locale: Type.Optional(Type.String()) }) }, async (ctx, req) => ({
+    object: 'list',
+    data: await plugins.adminPages(ctx, req.query.locale ?? null),
+  }));
   r.get(
     '/plugins/:id/ui/*',
     { tags: P, summary: 'A declared admin bundle of an installed plugin', params: Type.Object({ id: Type.String(), '*': Type.String() }), raw: true, tx: 'none' },

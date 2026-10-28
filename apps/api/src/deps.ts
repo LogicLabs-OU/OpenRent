@@ -1,6 +1,6 @@
 import type { Database } from '@openrent/db';
 import type { PluginHost } from '@openrent/plugin-host';
-import type { SecretBox, themes } from '@openrent/core';
+import type { SecretBox, themes, bi } from '@openrent/core';
 import type { Config } from './config.ts';
 
 export interface AppDeps {
@@ -11,4 +11,6 @@ export interface AppDeps {
   themes: themes.InstalledTheme[];
   secrets: SecretBox;
   version: string;
+  /** Database logins for BI tools, made on the migration connection (FR-REP-5). */
+  bi?: bi.BiConfig | null;
 }

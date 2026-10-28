@@ -8,6 +8,7 @@ import { assignUnits, runAction } from '../orders/index.ts';
 import { scanStockTake } from '../stocktakes/index.ts';
 import { receiveTransfer } from '../transfers/index.ts';
 import { resolveScan, type ScanMode } from './index.ts';
+import { scanTags } from '../rfid/index.ts';
 
 /**
  * Offline scans sent later (FR-SCAN-5). Each item runs in its own savepoint, so one that no longer fits
@@ -18,6 +19,8 @@ export interface ReplayItem {
   client_id: string;
   mode: ScanMode;
   code: string;
+  /** An RFID read made offline: every tag at once (FR-SCAN-7). */
+  epcs?: string[] | null;
   occurred_at: string;
   order_id?: string | null;
   stock_take_id?: string | null;
@@ -30,9 +33,13 @@ const MAX_AGE_MS = 7 * 86400_000;
 
 async function applyOne(ctx: Ctx, it: ReplayItem): Promise<{ status: ReplayStatus; message: string; entity?: Record<string, unknown> }> {
   const code = it.code.trim();
+  if (it.epcs?.length && (it.mode === 'check_in' || it.mode === 'check_out' || it.mode === 'prepare')) {
+    const r = await scanTags(ctx, { epcs: it.epcs, mode: it.mode === 'check_in' ? 'check_in' : 'check_out', order_id: it.order_id ?? null });
+    return { status: r.applied ? 'applied' : 'conflict', message: msg('scan.replay.tags', { applied: r.applied, skipped: r.skipped, unknown: r.unknown.length }), entity: { type: 'tag_scan', applied: r.applied, skipped: r.skipped } };
+  }
   if (it.mode === 'check_in') {
     const r: any = await resolveScan(ctx, { code, mode: 'check_in' });
-    if (r.entity_type !== 'stock_item' || !r.entity.current_order_id || r.entity.status !== 'out') return { status: 'conflict', message: msg('scan.replay.not_out', { code }) };
+    if (r.entity_type !== 'stock_item' || !r.entity.current_order_id || (r.entity.status !== 'out' && !r.entity.contents?.length)) return { status: 'conflict', message: msg('scan.replay.not_out', { code }) };
     const out = await one<{ checked_out_at: Date }>(
       ctx,
       `SELECT u.checked_out_at FROM order_line_units u JOIN order_lines l ON l.id = u.order_line_id WHERE l.order_id = $1 AND u.stock_item_id = $2`,

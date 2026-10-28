@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { biRoles } from './bi.ts';
 
 /**
  * Erases one shop and everything it holds (managed cloud: a shop that asked to be deleted). Runs on
@@ -16,6 +17,7 @@ export async function eraseTenant(connectionString: string, tenantId: string, lo
     if (!member) throw new Error('The database user cannot erase shops: grant it the openrent_maintenance role (see docs/guide/operations.md)');
     await c.query(`SELECT set_config('app.system', 'on', true), set_config('openrent.erasing_tenant', $1, true)`, [tenantId]);
     const members: string[] = (await c.query(`SELECT user_id FROM memberships WHERE tenant_id = $1`, [tenantId])).rows.map((r) => r.user_id);
+    const logins: string[] = (await c.query(`SELECT role_name FROM bi_access WHERE tenant_id = $1`, [tenantId]).catch(() => ({ rows: [] }))).rows.map((r: any) => r.role_name);
     let left: string[] = (
       await c.query(
         `SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -58,6 +60,8 @@ export async function eraseTenant(connectionString: string, tenantId: string, lo
       }
     }
     await c.query('COMMIT');
+    // The shop's BI logins (database roles) go too, after the commit, so a role that cannot be removed does not stop the erase.
+    for (const role of logins) await biRoles(connectionString).drop(role).catch((err) => log(`BI login ${role} not removed: ${(err as Error).message}`));
     log(`erased shop ${tenantId}: ${rows} rows in ${tables} tables`);
     return { tables, rows };
   } catch (err) {

@@ -1,0 +1,3 @@
+# App blocks that put OpenRent's booking widget in a theme: a product, a category and a book button.
+name = "OpenRent booking"
+type = "theme"

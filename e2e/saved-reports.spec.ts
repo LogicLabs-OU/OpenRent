@@ -49,6 +49,8 @@ test('staff save a report with a relative period and have it emailed weekly', as
   await expect(row).toContainText('Staff activity');
   await row.getByRole('button', { name: 'Send now' }).click();
   await expect(page.getByText('The report is on its way to 1 recipient')).toBeVisible();
+  // A toast under the pointer stays open and would cover the row's buttons.
+  await page.mouse.move(0, 0);
 
   // Opening it brings its filters back.
   await page.getByLabel('Report').selectOption('revenue');

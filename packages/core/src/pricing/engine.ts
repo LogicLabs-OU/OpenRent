@@ -66,7 +66,8 @@ export interface CouponRule {
 export interface PriceRule {
   id: string;
   name: string;
-  kind: 'season' | 'weekday' | 'holiday' | 'customer_group' | 'volume' | 'lead_time';
+  /** `plugin`: a rule a plugin gives for this quote's customer (plugin API 1.9); it always applies in its scope. */
+  kind: 'season' | 'weekday' | 'holiday' | 'customer_group' | 'volume' | 'lead_time' | 'plugin';
   /** Lower runs first. */
   priority: number;
   /** −1000 = 10 % off, 2500 = 25 % more. */
@@ -422,6 +423,8 @@ export function ruleShare(
     }
     case 'customer_group':
       return (r.customer_tags ?? []).some((t) => (q.customerTags ?? []).includes(t)) ? 1 : 0;
+    case 'plugin':
+      return 1;
     case 'volume':
       return r.min_quantity != null && q.quantity >= r.min_quantity ? 1 : 0;
     case 'lead_time': {

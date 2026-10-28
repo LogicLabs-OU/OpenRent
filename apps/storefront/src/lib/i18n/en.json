@@ -157,5 +157,11 @@
   "account.invoices.title": "Invoices to pay",
   "account.invoices.hint": "Monthly invoices of your business account. Paying one settles every booking on it.",
   "account.invoices.item": "Invoice {number} of {date}",
-  "account.invoices.due": "due {date}"
+  "account.invoices.due": "due {date}",
+  "account.id_check.title": "ID check",
+  "account.id_check.hint": "Before your first pickup, verify your identity with an ID document. It takes a few minutes.",
+  "account.id_check.failed": "The last check did not go through. Please try again with a valid ID document.",
+  "account.id_check.verified": "Your identity is verified.",
+  "account.id_check.start": "Verify my identity",
+  "account.id_check.unavailable": "The ID check cannot be started right now. Please ask the shop."
 }

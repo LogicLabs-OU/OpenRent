@@ -9,6 +9,7 @@ import { putFile } from '../files/index.ts';
 import { orderMessageData, queue } from '../notifications/index.ts';
 import { storefrontBase } from '../domains/index.ts';
 import { enabledProvider } from '../plugins/index.ts';
+import { documentPdf } from '../documents/index.ts';
 
 /**
  * Signing issued documents with an emailed code (FR-DOC-5). Staff request a signature; the customer
@@ -63,8 +64,18 @@ export async function requestSignature(ctx: Ctx, documentId: string, input: { si
   const id = newId('sgr');
   const expires = new Date(ctx.now.getTime() + REQUEST_DAYS * 86400_000);
   // A signature plugin that is on and set up does the signing; otherwise the built-in emailed code does.
-  const plugin = await enabledProvider(ctx, ctx.plugins.signatureProvider());
-  const ext = plugin ? await plugin.provider.requestSignature(plugin.pctx, { documentId, documentUrl: `${await storefrontBase(ctx)}/sign/${token}`, signer: { name, email } }) : null;
+  const plugin = await activeSignatureProvider(ctx);
+  const ext = plugin
+    ? await plugin.provider.requestSignature(
+        { ...plugin.pctx, webhookUrl: signatureWebhookUrl(ctx, plugin.pluginId) },
+        {
+          documentId, documentUrl: `${await storefrontBase(ctx)}/sign/${token}`, signer: { name, email },
+          title: `${msg(`doc.title.${doc.type}` as any)} ${doc.number ?? ''}`.trim(),
+          locale: (await one<{ locale: string | null }>(ctx, `SELECT c.locale FROM orders o JOIN customers c ON c.id = o.customer_id WHERE o.id = $1`, [doc.order_id]))?.locale ?? null,
+          pdf: async () => (await documentPdf(ctx, doc))?.body ?? null,
+        },
+      )
+    : null;
   await exec(
     ctx,
     `INSERT INTO signature_requests (id, tenant_id, document_id, order_id, signer_name, signer_email, token_hash, expires_at, provider, provider_ref, provider_url, created_by)
@@ -214,4 +225,67 @@ export async function signByToken(
   await emit(ctx, 'document.signed', { type: 'document', id: doc.id }, sig);
   await queue(ctx, { template: 'document_signed', to: r.signer_email, audience: 'customer', orderId: r.order_id, data: await orderMessageData(ctx, r.order_id, { document_title: msg(`doc.title.${doc.type}` as any), document_number: doc.number ?? '' }) });
   return { object: 'signature_request' as const, status: 'signed', signed_at: ctx.now.toISOString(), signature: sig };
+}
+
+/** The signature plugin this shop uses: the first that is on and set up (plugin API 1.9 allows several). */
+export async function activeSignatureProvider(ctx: Ctx) {
+  for (const p of ctx.plugins.signatureProviders?.() ?? [ctx.plugins.signatureProvider()].filter((x) => !!x)) {
+    const hit = await enabledProvider(ctx, p);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/** Where a signing service reports back (plugin API 1.9): POST /webhooks/sign/{plugin}/{tenant}. */
+export function signatureWebhookUrl(ctx: Ctx, pluginId: string) {
+  return `${ctx.config.publicUrl.replace(/\/$/, '')}/webhooks/sign/${pluginId}/${ctx.tenantId}`;
+}
+
+/**
+ * A signing service says a request was signed or declined (by webhook or when asked). A signed one keeps
+ * the service's signed PDF with its hash, like a signature made here; repeats change nothing.
+ */
+export async function applyExternalSignature(ctx: Ctx, providerId: string, update: { ref: string; status: 'pending' | 'signed' | 'declined' }) {
+  const r = await one<any>(ctx, `SELECT * FROM signature_requests WHERE provider = $1 AND provider_ref = $2 FOR UPDATE`, [providerId, update.ref]);
+  if (!r || r.status !== 'pending' || update.status === 'pending') return null;
+  if (update.status === 'declined') {
+    await exec(ctx, `UPDATE signature_requests SET status = 'declined' WHERE id = $1`, [r.id]);
+    await audit(ctx, { entity_type: 'document', entity_id: r.document_id, action: 'signature_declined', extra: { request_id: r.id, provider: providerId } });
+    await emit(ctx, 'document.signature_declined', { type: 'document', id: r.document_id }, requestToApi({ ...r, status: 'declined' }));
+    return 'declined' as const;
+  }
+  // The signed copy comes from the service that handled this request.
+  const plugin = await enabledProvider(ctx, (ctx.plugins.signatureProviders?.() ?? []).find((p) => p.id === providerId));
+  const pdf = plugin?.provider.signedPdf ? await plugin.provider.signedPdf(plugin.pctx, update.ref) : null;
+  const doc = await must<any>(ctx, `SELECT * FROM documents WHERE id = $1`, [r.document_id], 'document');
+  const id = newId('sig');
+  const body = pdf ? Buffer.from(pdf) : null;
+  const pdfFile = body ? await putFile(ctx, { kind: 'pdf', ownerType: 'signature', ownerId: id, filename: `${doc.type}-${(doc.number ?? doc.id).replace(/[^\w.-]+/g, '-')}-signed.pdf`, contentType: 'application/pdf', body }) : null;
+  await exec(
+    ctx,
+    `INSERT INTO signatures (id, tenant_id, request_id, document_id, signer_name, signer_email, method, html_sha256, pdf_sha256, pdf_file_id) VALUES ($1,$2,$3,$4,$5,$6,'external',$7,$8,$9)`,
+    [id, ctx.tenantId, r.id, doc.id, r.signer_name, r.signer_email, sha256(doc.html), body ? sha256(body) : null, pdfFile?.id ?? null],
+  );
+  await exec(ctx, `UPDATE signature_requests SET status = 'signed', signed_at = $2 WHERE id = $1`, [r.id, ctx.now]);
+  const sig = signatureToApi(await must(ctx, `SELECT * FROM signatures WHERE id = $1`, [id], 'signature'));
+  await audit(ctx, { entity_type: 'document', entity_id: doc.id, action: 'sign', after: sig, extra: { provider: providerId } });
+  await emit(ctx, 'document.signed', { type: 'document', id: doc.id }, sig);
+  return 'signed' as const;
+}
+
+/** Worker: asks the signing service about requests still pending, for webhooks that never came. */
+export async function syncExternalSignatures(ctx: Ctx) {
+  const plugin = await activeSignatureProvider(ctx);
+  if (!plugin?.provider.status) return 0;
+  const open = await many<{ provider_ref: string }>(ctx, `SELECT provider_ref FROM signature_requests WHERE status = 'pending' AND provider = $1 AND provider_ref IS NOT NULL AND expires_at > $2 LIMIT 100`, [plugin.provider.id, ctx.now]);
+  let changed = 0;
+  for (const r of open) {
+    try {
+      const status = await plugin.provider.status(plugin.pctx, r.provider_ref);
+      if (await applyExternalSignature(ctx, plugin.provider.id, { ref: r.provider_ref, status })) changed++;
+    } catch (err) {
+      ctx.logger.warn({ err, ref: r.provider_ref }, 'signature status not read');
+    }
+  }
+  return changed;
 }

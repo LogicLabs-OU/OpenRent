@@ -1,0 +1,19 @@
+{%- comment -%} A button to a product, or to the shop, on the OpenRent storefront. {%- endcomment -%}
+{%- assign c = app.metafields.openrent.config.value -%}
+{%- if c.storefront_url != blank -%}
+  <openrent-book-button data-api="{{ c.api_url | escape }}" storefront="{{ c.storefront_url | escape }}" product="{{ block.settings.product | handleize | escape }}" label="{{ block.settings.label | escape }}" lang="{{ request.locale.iso_code | slice: 0, 2 | escape }}" {{ block.shopify_attributes }}></openrent-book-button>
+  <script src="{{ 'openrent-loader.js' | asset_url }}" defer></script>
+{%- elsif request.design_mode -%}
+  <p {{ block.shopify_attributes }}>{{ 'openrent.not_ready' | t }}</p>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "t:blocks.book_button.name",
+  "target": "section",
+  "settings": [
+    { "type": "text", "id": "product", "label": "t:blocks.book_button.product", "info": "t:blocks.book_button.product_info" },
+    { "type": "text", "id": "label", "label": "t:blocks.book_button.label" }
+  ]
+}
+{% endschema %}

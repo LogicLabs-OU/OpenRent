@@ -1,0 +1,22 @@
+{
+  "name": "@openrent/plugin-sign-documenso",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@openrent/plugin-sdk": "workspace:*",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@openrent/sign-fakes": "workspace:*",
+    "vitest": "^5.0.5"
+  }
+}

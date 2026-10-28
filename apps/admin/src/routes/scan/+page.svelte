@@ -29,6 +29,7 @@
   import ScannerSetup from '#lib/components/scanner-setup.svelte';
   import PluginSlot from '#lib/components/plugin-slot.svelte';
   import InspectionRunner from '#lib/components/inspection-runner.svelte';
+  import RfidReaderPanel from '#lib/components/rfid-reader-panel.svelte';
   import { queueScan, queuedScans, queuedCount, dropScans, isOffline, QUEUEABLE, type QueuedScan } from '#lib/offline-scans.ts';
   import WifiOffIcon from '@lucide/svelte/icons/wifi-off';
 
@@ -142,6 +143,13 @@
     }
   });
 
+  /** An RFID read taken at once: each unit goes into the results like a scan. */
+  async function rfidDone(r: any) {
+    for (const x of r.results) add({ code: x.barcode, tone: x.status === 'applied' ? 'ok' : 'warn', text: `${x.product_name}: ${x.message}`, href: x.order_id ? `/orders/${x.order_id}` : undefined });
+    if (r.unknown.length) add({ code: '', tone: 'warn', text: t('rfid.unknown_tags', { count: r.unknown.length }) });
+    if (order && mode !== 'check_in') await loadOrder(order.id).catch(notifyError);
+  }
+
   async function loadOrder(id: string) {
     order = await api.get(`/orders/${id}?expand=customer`);
     pick = await api.get(`/orders/${id}/pick_list`);
@@ -170,12 +178,16 @@
         add({ code: c, tone: 'ok', text: t('scan.order_active', { number: r.entity.number }), href: `/orders/${r.entity.id}`, status: r.entity.status });
       } else if ((mode === 'prepare' || mode === 'check_out') && r.entity_type === 'stock_item') {
         if (!order) throw new Error(t('scan.order_first'));
-        await api.post(`/orders/${order.id}/actions/assign_units`, { barcodes: [c] });
+        const res = await api.post(`/orders/${order.id}/actions/assign_units`, { barcodes: [c] });
         await loadOrder(order.id);
-        add({ code: c, tone: 'ok', text: t('order.scan.assigned', { code: c }) });
-      } else if (mode === 'check_in' && r.entity_type === 'stock_item' && r.entity.current_order_id && r.entity.status === 'out') {
+        // A case brings what it holds (FR-CAT-11); what the order does not need stays listed.
+        const inCase = r.entity.contents?.length ? ` · ${t('scan.case_contents', { count: r.entity.contents.length })}` : '';
+        add({ code: c, tone: 'ok', text: `${t('order.scan.assigned', { code: c })}${inCase}` });
+        if (res.skipped?.length) add({ code: c, tone: 'warn', text: t('scan.case_skipped', { codes: res.skipped.map((x: any) => x.barcode).join(', ') }) });
+      } else if (mode === 'check_in' && r.entity_type === 'stock_item' && r.entity.current_order_id && (r.entity.status === 'out' || r.entity.contents?.length)) {
         await api.post(`/orders/${r.entity.current_order_id}/actions/check_in`, { units: [{ barcode: c, outcome: 'ok' }] });
-        add({ code: c, tone: 'ok', text: t('scan.checked_in', { name: r.entity.product_name }), href: `/orders/${r.entity.current_order_id}`, status: 'available' });
+        const inCase = r.entity.contents?.length ? ` · ${t('scan.case_contents', { count: r.entity.contents.length })}` : '';
+        add({ code: c, tone: 'ok', text: `${t('scan.checked_in', { name: r.entity.product_name })}${inCase}`, href: `/orders/${r.entity.current_order_id}`, status: 'available' });
       } else {
         const label = r.entity_type === 'order' ? t('order.title', { number: r.entity.number }) : r.entity_type === 'stock_item' ? `${r.entity.product_name} (${r.entity.barcode})` : (r.entity.name ?? r.entity.product_name);
         const href = r.entity_type === 'order' ? `/orders/${r.entity.id}` : r.entity_type === 'stock_item' && r.entity.current_order_id ? `/orders/${r.entity.current_order_id}` : r.entity_type === 'customer' ? `/customers/${r.entity.id}` : undefined;
@@ -414,6 +426,9 @@
           </Card.Content>
         {/if}
       </Card.Root>
+      {#if order}<RfidReaderPanel mode="check_out" orderId={order.id} ondone={rfidDone} />{/if}
+    {:else if mode === 'check_in'}
+      <RfidReaderPanel mode="check_in" ondone={rfidDone} />
     {:else if mode === 'swap'}
       <Card.Root data-testid="swap-panel">
         <Card.Header>

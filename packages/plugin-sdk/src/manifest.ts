@@ -15,9 +15,9 @@ const SETTING_TYPES: SettingsField['type'][] = ['text', 'secret', 'boolean', 'se
 /** What a plugin may ask for; shown to the owner before installing (FR-PLG-2). */
 export const PLUGIN_PERMISSIONS = [
   'orders:read', 'orders:write', 'customers:read', 'customers:write', 'catalog:read', 'inventory:read', 'payments:read',
-  'documents:read', 'reports:read', 'events:emit', 'db:own_tables', 'network', 'storefront:scripts', 'admin:ui', 'integrations',
+  'documents:read', 'reports:read', 'events:emit', 'db:own_tables', 'network', 'storefront:scripts', 'admin:ui', 'integrations', 'billing',
 ];
-const KNOWN = new Set(['$schema', 'id', 'name', 'version', 'author', 'license', 'compat', 'permissions', 'settings', 'locales', 'admin', 'migrations', 'jobs', 'description', 'homepage', 'main']);
+const KNOWN = new Set(['$schema', 'id', 'name', 'version', 'author', 'license', 'compat', 'permissions', 'settings', 'locales', 'admin', 'migrations', 'jobs', 'enabledByDefault', 'description', 'homepage', 'main']);
 const DEPRECATED: Record<string, string> = {
   admin_bundle: 'use "admin": [{ "slot": …, "file": … }]',
   cron: 'use "jobs": [{ "name": …, "cron": … }] and api.schedule()',
@@ -77,6 +77,8 @@ export function validateManifest(raw: unknown): ManifestCheck {
       else if (typeof j.cron !== 'string' || !CRON.test(j.cron.trim())) errors.push(`jobs[${i}].cron must have five fields, such as "0 * * * *"`);
     });
 
+  if (raw.enabledByDefault !== undefined && typeof raw.enabledByDefault !== 'boolean') errors.push('"enabledByDefault" must be true or false');
+
   let migrationsDir: string | undefined;
   if (typeof raw.migrations === 'string') {
     if (raw.migrations.includes('..') || raw.migrations.startsWith('/')) errors.push('"migrations" must be a folder inside the plugin');
@@ -89,6 +91,7 @@ export function validateManifest(raw: unknown): ManifestCheck {
       id: id!, name: str('name')!, version: str('version')!, compat: str('compat')!, author: str('author') ?? undefined, license: str('license') ?? undefined,
       permissions: permissions as string[], settings: settings as SettingsField[], locales: raw.locales as PluginManifest['locales'],
       admin: admin as PluginManifest['admin'], jobs: jobs as PluginManifest['jobs'], migrationsDir,
+      ...(raw.enabledByDefault === false ? { enabledByDefault: false } : {}),
     },
     errors,
     warnings,

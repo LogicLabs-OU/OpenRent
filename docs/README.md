@@ -17,16 +17,18 @@
 - [EU VAT numbers and Slack notices](guide/vat-numbers-and-slack.md)
 - [Settings and your team](guide/settings-and-team.md): email, payments, documents, roles, single sign-on
 - [Themes and the storefront](guide/themes-and-storefront.md): themes, the home page, domains, the widget
+- [WordPress and Shopify](guide/wordpress-and-shopify.md): rentals on a WordPress site or in a Shopify shop
 - [Plugins and integrations](guide/plugins-and-integrations.md): bundled plugins, integrations, webhooks
 - [Automation with Zapier and n8n](guide/automation.md)
 - [Moving to OpenRent](guide/moving-to-openrent.md): importing from other systems
 
 ## Developers
 
-- [The REST API](guide/api.md): authentication, conventions, webhooks, the SDK
+- [The REST API](guide/api.md): authentication, OAuth for apps, conventions, webhooks, the SDK
 - [A headless storefront](guide/headless-storefront.md): the SDK's storefront helpers and the starter
 - [Writing plugins](guide/plugin-authors.md)
 - [Writing themes](guide/theme-authors.md)
+- [Compatibility](compatibility.md): plugin and theme API versions per release, long-term support
 - [Architecture decisions](adr/)
 
 ## Running OpenRent
@@ -35,7 +37,7 @@
 - [Running many shops](guide/running-many-shops.md): sign-up, limits, the operator API, a status page
 - [Helm chart](../deploy/helm/openrent/README.md)
 - [Live checks against provider sandboxes](guide/live-checks.md)
-- [Releasing](guide/releasing.md)
+- [Releasing](guide/releasing.md): the checklist and long-term support
 
 ## Security
 

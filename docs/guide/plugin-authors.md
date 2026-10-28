@@ -45,7 +45,8 @@ export default definePlugin({
 - `id`: 2–40 lowercase letters, digits or dashes, starting with a letter.
 - `version`: a semantic version.
 - `compat`: the plugin API versions you support (see [Versions](#plugin-api-versions)).
-- `permissions`: what you ask for. The owner sees the list before installing. Known values are `orders:read`, `orders:write`, `customers:read`, `customers:write`, `catalog:read`, `inventory:read`, `payments:read`, `documents:read`, `reports:read`, `events:emit`, `db:own_tables`, `network`, `storefront:scripts`, `admin:ui` and `integrations`.
+- `permissions`: what you ask for. The owner sees the list before installing. Known values are `orders:read`, `orders:write`, `customers:read`, `customers:write`, `catalog:read`, `inventory:read`, `payments:read`, `documents:read`, `reports:read`, `events:emit`, `db:own_tables`, `network`, `storefront:scripts`, `admin:ui`, `integrations` and `billing` (1.9, see [Billing](#billing)).
+- `enabledByDefault` (1.9): `false` for a plugin each shop turns on itself, such as one that changes prices. Other plugins are on until a shop turns them off.
 - `settings`: the form in Admin → Plugins. Types are `text`, `secret`, `boolean`, `select` and `number`. Keys are lowercase letters, digits and underscores.
 
 A `secret` setting is stored encrypted and masked in the admin. `default` (plugin API 1.8) is what the form shows before the shop saves a value. The shop's saved settings do not include it, so apply the same default in your code:
@@ -103,6 +104,22 @@ export default definePlugin({
 ```
 
 A notification channel throws `DeliveryError(code, message, { permanent })` so OpenRent can explain the failure; permanent failures are not retried. An integration throws `RetryLater(message, ms)` when the other system asks it to wait.
+
+### Signing services
+
+A `SignatureProvider` that signs its own copy (1.9) gets the document as a PDF in `requestSignature(ctx, { pdf, title, locale, signer, … })` and returns the service's reference. It reports results through `handleWebhook(ctx, req)` at `ctx.webhookUrl` (`/webhooks/sign/<plugin id>/<shop id>`), returning `{ ref, status: 'signed' | 'declined' }`, and through `status(ctx, ref)`, which OpenRent calls every 15 minutes for requests still pending. `signedPdf(ctx, ref)` hands over the signed PDF, which is kept with the document. Throw an error with `status: 401` from `handleWebhook` for a message whose signature or secret does not match. Several signature plugins may be installed; a shop uses the first it has on and set up.
+
+### ID check services
+
+An `IdentityProvider` with its own verification page (1.9) implements `start(ctx, { customer, orderId, returnUrl, locale })`, which returns the session's `ref` and the `url` the customer goes to; `status(ctx, ref)`; and `handleWebhook(ctx, req)` at `ctx.webhookUrl` (`/webhooks/identity/<plugin id>/<shop id>`), returning `{ ref, status: 'verified' | 'pending' | 'failed', reason }`. OpenRent starts the check when a booking of a customer who must show ID is reserved, emails the link, and lets pickup through once the check is verified. Several identity plugins may be installed; a shop uses the first it has on and set up.
+
+### RFID reader formats
+
+`api.registerTagReader(reader)` (1.10) adds a message format RFID readers can post in. Shops choose it when they add a reader under **Settings → RFID readers**. Each reader posts to its own address, `/webhooks/rfid/<reader id>`, with its token; OpenRent checks the token, then calls `parse({ headers, body, rawBody })`, where `body` is the parsed JSON or form (else the text). Return the reads as `{ epc, read_at, antenna, rssi }`; only `epc` is needed. OpenRent keeps the reads for a day and maps tags to units. The built-in plugin `rfid-bridge` reads Zebra IoT Connector and Impinj Speedway Connect messages; see its source as an example.
+
+### E-invoice formats
+
+`api.registerEInvoiceFormat(format)` (1.9) adds a format customers can ask for in their billing details. `render(ctx, invoice, files)` gets the issued invoice or credit note as `EInvoiceData`: parties, lines with EN 16931 tax categories, tax breakdown and totals in minor units. It returns `{ filename, contentType, content }`, or `{ missing: ['buyer.endpoint', …] }` when the invoice lacks something the format needs; OpenRent tells staff what to fill in. `files.pdf()` gives the invoice's PDF, for formats that carry it. Set `endpoint: true` when the format needs the buyer's Peppol ID. The file is made once and kept with the document.
 
 ## Hooks
 
@@ -181,6 +198,7 @@ Hooks, events, schedules and routes get `ctx.scope`, built for your plugin alone
 - `services.getOrder(id)`, `getCustomer(id)` and `getProduct(id)`: records in the shape the REST API returns.
 - `config()` and `secrets.get(key)`: your settings for this shop, secrets decrypted.
 - `events.emit(type, object)`: see [Events](#events).
+- `billing` (1.9): invoices and payments for things that are no booking. See [Billing](#billing).
 
 ### Your own tables
 
@@ -199,9 +217,74 @@ CREATE INDEX plg_site_access_codes_created ON plg_site_access_codes (created_at)
 
 Only `CREATE`, `ALTER` and `DROP TABLE`, `CREATE INDEX`, `INSERT` and `COMMENT` on your own names are accepted. Every table needs `tenant_id text NOT NULL`, and then gets row-level security like core tables. Functions, triggers, policies, grants and `DO` blocks are refused. Never edit an applied migration: OpenRent reports the change and does not run it again. Add a new file.
 
+### Billing
+
+A plugin that lists the `billing` permission gets `ctx.scope.billing` (1.9). It invoices a customer for something that is no booking, such as a membership fee, through OpenRent's own invoices and payments. They are numbered, booked to accounting, refundable and listed with the customer's invoices like any other.
+
+```ts
+const inv = await ctx.scope!.billing!.invoiceCustomer(customerId, {
+  lines: [{ description: 'Membership, November', amount: 2500 }], // minor units, before tax
+  key: `${memberId}:11`, // the same key gives the same invoice back
+});
+const charged = await ctx.scope!.billing!.chargeSavedCard(inv.id, `renew:${memberId}:11`); // 'paid' | 'no_card' | 'declined'
+if (charged !== 'paid') await ctx.scope!.billing!.requestPayment(inv.id, { notify: true });
+```
+
+- Lines without `tax_rate_bp` use the shop's default tax rate.
+- `requestPayment` emails the customer a payment link. A shop without online payment refuses it; the customer then pays at the counter, and staff record it on the customer's page.
+- `invoiceDue(id)` says what is still owed, and `voidInvoice(id, reason)` issues a credit note.
+- When an invoice is paid in full, OpenRent emits `document.paid` with the invoice's `source_key`: your key with your plugin id in front (`memberships:mem_1:11`). Listen to it with `api.on('document.paid', …)`.
+
+### Errors from routes
+
+Throw `PluginError` (1.9) from a route to answer with an error. A 422 with field errors shows next to the fields of an [admin page](#admin-pages) form:
+
+```ts
+throw new PluginError(422, 'invalid_plan', 'Enter a name', [{ field: 'name', code: 'required', message: 'Enter a name' }]);
+```
+
+## Prices
+
+`api.priceRules(source)` (1.9) adds discounts or surcharges to a customer's quotes, such as a member price. They join the shop's own price rules: they apply to rental lines in their scope, in priority order, and stack the same way.
+
+```ts
+api.priceRules({
+  async rules(ctx, { customerId }) {
+    if (!customerId || !(await isMember(ctx.scope!, customerId))) return [];
+    return [{ id: 'members', name: 'Member price', adjustment_bp: -1000, stackable: true, priority: 50 }];
+  },
+});
+```
+
+`rules` runs on every quote, so keep it quick. A source that fails adds nothing; the quote goes on without it.
+
+## Admin pages
+
+`api.adminPage(page)` (1.9) describes a page of your records, and the admin draws it with its own components: a table, a form to add or change a record, a delete button and actions. It looks and works like the rest of OpenRent, including errors next to fields and keyboard use.
+
+```ts
+api.adminPage({
+  key: 'plans', placement: 'settings', path: '/plans', permission: 'pricing:read',
+  title: { en: 'Membership plans' },
+  columns: [{ key: 'name', label: { en: 'Plan' } }, { key: 'fee', label: { en: 'Fee' }, type: 'money' }],
+  form: { create: true, update: true, fields: [
+    { key: 'name', label: { en: 'Name' }, type: 'text', required: true },
+    { key: 'fee', label: { en: 'Fee' }, type: 'money', required: true },
+  ] },
+  remove: true,
+  actions: [{ key: 'archive', label: { en: 'Archive' }, confirm: { en: 'Customers can no longer join.' }, when: { field: 'status', in: ['active'] } }],
+});
+```
+
+- `placement: 'settings'` shows the page under **Plugins**. `placement: 'customer'` shows it as a card on each customer's page: the list gets `?customer_id=`, and new records get `customer_id`.
+- The records come from your [routes](#routes): `GET {path}` returns `{ data: [...] }`, each with an `id`. The form sends `POST {path}` and `PATCH {path}/{id}`, delete sends `DELETE {path}/{id}`, and an action sends `POST {path}/{id}/actions/{key}`.
+- Column types are `text`, `number`, `money` (`{ amount, currency }`), `date`, `datetime` and `badge`. A badge shows `{key}_label` when the record has it.
+- Field types are `text`, `textarea`, `number`, `money` (entered in major units, sent in minor units), `select`, `boolean` and `date`. A `select` of the shop's own data names a route with `optionsPath` that returns `{ data: [{ value, label }] }`.
+- `permission` hides the page from staff without it. Check permissions in your routes too.
+
 ## Admin extensions
 
-Admin extensions are custom elements. Declare them in the manifest:
+For anything an admin page cannot show, admin extensions are custom elements. Declare them in the manifest:
 
 ```json
 "admin": [{ "slot": "order.sidebar", "file": "admin/order-sidebar.js", "element": "site-access-order-sidebar" }]
@@ -236,7 +319,8 @@ api.storefront({
 - Checkout fields arrive in the checkout's `extra` as `<plugin id>.<key>` (`site-access.site`) and are stored on the order as the custom field `plg_<id>_<key>`. Types are `text`, `checkbox` and `select`.
 - Badges show on products that carry `tag`.
 - Scripts load only after the visitor allows their consent category: `necessary`, `analytics` or `marketing`. In `src`, `attrs` and `connect`, `{setting}` is replaced by that plugin setting (1.7). A script whose `requires` setting is empty is left out, as is one that does not end up as an `https` URL. `connect` origins are added to the page's Content-Security-Policy.
-- Sections (1.7) are home page section types. Themes that declare the `section.register` extension point offer them as `plugin:<id>:<type>`. `render` returns HTML, which is cleaned like the shop's own HTML. It has 2 seconds; a section that fails renders nothing.
+- Sections (1.7) are home page section types. Themes that declare the `section.register` extension point offer them as `plugin:<id>:<type>`. `render` returns HTML, which is cleaned like the shop's own HTML. It has 2 seconds; a section that fails renders nothing. From 1.9, `ctx.scope` reads the shop's data, such as your own tables.
+- Account panels (1.9) are cards in the signed-in customer's account. `render(ctx, customer)` returns `{ title, html }`, or null for nothing; the HTML is cleaned like a section's.
 
 Texts are `LocalizedText`, for example `{ en: '…', de: '…' }`; English is the fallback.
 
@@ -284,7 +368,7 @@ Either way, the plugin loads at the next restart. Each shop then turns it on or 
 
 ## Plugin API versions
 
-The running OpenRent provides plugin API `1.8.0` (`PLUGIN_API_VERSION`). `compat` is a semver range checked against it; a plugin outside the range is marked incompatible and not loaded. Minor versions only add things, so `^1.7.0` loads on 1.8. Ask for the lowest version that has what you use:
+The running OpenRent provides plugin API `1.10.0` (`PLUGIN_API_VERSION`). `compat` is a semver range checked against it; a plugin outside the range is marked incompatible and not loaded. Minor versions only add things, so `^1.7.0` loads on 1.10. Ask for the lowest version that has what you use:
 
 | Version | Added |
 | --- | --- |
@@ -296,3 +380,5 @@ The running OpenRent provides plugin API `1.8.0` (`PLUGIN_API_VERSION`). `compat
 | 1.6 | `sms` and `whatsapp` channels; delivery reports |
 | 1.7 | Rates providers, geocoders, script placeholders, storefront sections |
 | 1.8 | Setting `default`; tax number checks; several tax providers |
+| 1.9 | `billing` in the scope and `PluginError`; `priceRules`; `adminPage`; account panels; `scope` in section rendering; `enabledByDefault`; payments of invoices without a booking (`orderId` null, `reference`) |
+| 1.10 | RFID reader formats (`registerTagReader`) |

@@ -28,6 +28,15 @@ const BUILTIN = {
   '@openrent/plugin-analytics': () => import('@openrent/plugin-analytics'),
   '@openrent/plugin-geocode-osm': () => import('@openrent/plugin-geocode-osm'),
   '@openrent/plugin-search-meilisearch': () => import('@openrent/plugin-search-meilisearch'),
+  '@openrent/plugin-memberships': () => import('@openrent/plugin-memberships'),
+  '@openrent/plugin-einvoice-peppol': () => import('@openrent/plugin-einvoice-peppol'),
+  '@openrent/plugin-einvoice-facturx': () => import('@openrent/plugin-einvoice-facturx'),
+  '@openrent/plugin-einvoice-earve': () => import('@openrent/plugin-einvoice-earve'),
+  '@openrent/plugin-sign-documenso': () => import('@openrent/plugin-sign-documenso'),
+  '@openrent/plugin-sign-docusign': () => import('@openrent/plugin-sign-docusign'),
+  '@openrent/plugin-identity-stripe': () => import('@openrent/plugin-identity-stripe'),
+  '@openrent/plugin-identity-veriff': () => import('@openrent/plugin-identity-veriff'),
+  '@openrent/plugin-rfid-bridge': () => import('@openrent/plugin-rfid-bridge'),
 };
 
 export const DEFAULT_PLUGINS_JSON = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../plugins.json');

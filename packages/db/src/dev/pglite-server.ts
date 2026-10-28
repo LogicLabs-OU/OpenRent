@@ -12,8 +12,38 @@ import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 
+/**
+ * pglite-socket gives the one backend to another connection between any two messages unless a transaction
+ * is open. Outside one, a query is several messages (Parse, Bind, Describe, Execute, Sync); when another
+ * connection's Parse comes between them, the first one's statement is gone and it fails, or waits for an
+ * answer that never comes. This keeps the backend with a connection from its first message to its Sync,
+ * through the queue's own rule that it serves the connection holding an open transaction first.
+ */
+function keepQueriesTogether(db: PGlite) {
+  let open = false;
+  const inTransaction = db.isInTransaction.bind(db);
+  const raw = db.execProtocolRawStream.bind(db);
+  const exec = db.exec.bind(db);
+  db.isInTransaction = () => open || inTransaction();
+  db.execProtocolRawStream = async (message, options) => {
+    const type = String.fromCharCode(message[0] ?? 0);
+    try {
+      return await raw(message, options);
+    } finally {
+      if (type === 'S' || type === 'Q' || type === 'X') open = false;
+      else if ('PBDEC'.includes(type)) open = true;
+    }
+  };
+  // The queue rolls back a connection that went away mid-transaction; that also ends a half-sent query.
+  db.exec = ((query: string, options?: any) => {
+    if (query === 'ROLLBACK') open = false;
+    return exec(query, options);
+  }) as PGlite['exec'];
+}
+
 export async function startPglite(opts: { port?: number; dataDir?: string; maxConnections?: number } = {}) {
   const db = await PGlite.create(opts.dataDir ?? 'memory://', { extensions: { btree_gist, pg_trgm } });
+  keepQueriesTogether(db);
   const server = new PGLiteSocketServer({ db, port: opts.port ?? 7432, host: '127.0.0.1', maxConnections: opts.maxConnections ?? 1 });
   await server.start();
   return {

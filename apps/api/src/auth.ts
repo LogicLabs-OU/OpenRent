@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { AppError, auth as coreAuth, domains, tenancy, isLocale, pickLocale, LOCALES, type Actor, type Locale, type Role, serverT } from '@openrent/core';
+import { AppError, auth as coreAuth, domains, oauth, tenancy, isLocale, pickLocale, LOCALES, type Actor, type Locale, type Role, serverT } from '@openrent/core';
 import { withSystem } from '@openrent/db';
 import type { AppDeps } from './deps.ts';
 
@@ -8,7 +8,7 @@ export const SESSION_COOKIE = 'or_session';
 export const CSRF_COOKIE = 'or_csrf';
 
 export interface RequestAuth {
-  kind: 'session' | 'secret_key' | 'publishable' | 'slug' | 'anonymous';
+  kind: 'session' | 'secret_key' | 'publishable' | 'oauth' | 'slug' | 'anonymous';
   tenantId: string | null;
   actor: Actor;
   sessionId?: string;
@@ -77,6 +77,13 @@ export function registerAuth(app: FastifyInstance, deps: AppDeps) {
     // The portal names the shop like the storefront does; the customer comes with X-Customer-Session.
     const isStorefront = url.startsWith('/api/v1/storefront/') || url.startsWith('/api/v1/portal/');
 
+    // An app's OAuth access token (PRD §5.2): the shop and scopes its grant gives.
+    if (bearer?.startsWith('oat_')) {
+      const grant = await withSystem(deps.db, (c) => oauth.resolveAccessToken(c, bearer));
+      if (!grant) throw new AppError('invalid_token', 401, serverT('error.the_access_token_is_invalid_or_expired'));
+      req.auth = { kind: 'oauth', tenantId: grant.tenantId, actor: { type: 'app', id: grant.grantId, scopes: grant.scopes } };
+      return;
+    }
     if (bearer) {
       const key = await withSystem(deps.db, (c) => coreAuth.resolveApiKey(c, bearer));
       if (!key) throw new AppError('invalid_api_key', 401, serverT('error.the_api_key_is_invalid_or_revoked'));

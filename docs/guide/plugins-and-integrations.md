@@ -61,13 +61,33 @@ New plugins are usually added by whoever runs your installation. When the instal
 | **Analytics (GA4, Meta Pixel, Plausible)** | Statistics and marketing tools on the storefront, after visitor consent. | **Plugins**; see [Themes and the storefront](themes-and-storefront.md#cookie-consent-and-analytics) |
 | **OpenStreetMap geocoding** | Finds addresses on the map, for delivery fees by distance. | **Plugins**; see [Delivery fees by distance](delivery-fees.md) |
 | **Meilisearch search** | Fast storefront search that copes with typos, in every shop language. The catalogue is rebuilt every night. | **Plugins** |
+| **Peppol e-invoices**, **Factur-X / ZUGFeRD e-invoices**, **Estonian e-invoices (e-arve)** | Invoices and credit notes as e-invoices, for customers whose billing details ask for them. | **Plugins** (your Peppol ID); see [E-invoices](customers.md#e-invoices) |
+| **Documenso e-signatures**, **DocuSign e-signatures** | Documents sent for signing go to Documenso or DocuSign, and the signed PDF comes back. | **Plugins**; see [Orders](orders.md#documents-and-signatures) |
+| **Stripe Identity ID checks**, **Veriff ID checks** | Customers who must show ID verify on the service's page before pickup. | **Plugins**; see [Customers](customers.md#flags) |
+| **RFID reader formats** | Lets RFID readers post in the Zebra IoT Connector and Impinj Speedway Connect formats. | **Plugins**; see [Scanning](scanning.md#rfid) |
+| **Memberships** | Library of Things memberships: plans with a fee each month or year, member prices and a limit on items at a time. Off until you turn it on. | **Plugins**; see [Memberships](#memberships) |
 
 ### Notes on some plugins
 
+- **Stripe Identity** and **Veriff**: for results at once, send the service's webhooks to `https://<your OpenRent>/webhooks/identity/identity-stripe/<shop id>` (events `identity.verification_session.*`) or `…/identity-veriff/<shop id>` (decision webhook). Otherwise OpenRent asks every 15 minutes.
+- **Documenso**: add a webhook in Documenso for **Document completed** and **Document rejected** with the address `https://<your OpenRent>/webhooks/sign/sign-documenso/<shop id>` and the same secret as in the plugin's settings.
+- **DocuSign**: create an integration key with an RSA key pair, grant consent for it once, and enter the user it sends as. For webhooks, add a Connect configuration with HMAC for **Envelope completed** and **Envelope declined** to `https://<your OpenRent>/webhooks/sign/sign-docusign/<shop id>`.
 - **Postmark** and **Resend**: with more than one email plugin set up, choose which one sends under **Settings → Email → Email provider**.
 - **Twilio**: WhatsApp messages sent outside a chat need approved templates. List them under **WhatsApp templates**, such as `pickup_reminder = HX…; * = HX…`.
 - **TaxJar**: under **Tax by**, `origin` uses the pickup location and `customer` the delivery address when there is one. Shops outside the US keep their own tax profiles.
 - **Meilisearch**: product changes are sent as they happen. Use **Index prefix** when several installations share one server.
+
+## Memberships
+
+The **Memberships** plugin is for libraries of things and shops that rent to members. It is off until you turn it on under **Plugins**.
+
+1. **Plans:** under **Plugins → Membership plans**, add a plan with its fee before tax, **Month** or **Year**, the member discount (100 % means members borrow for free) and how many items a member may have at once. **Show in the shop's plan list** lists it in the **Membership plans** section you can add to a page.
+2. **Members:** on a customer's page, **Membership → Add** and choose the plan. The customer gets the first fee as an invoice by email, with a link to pay it when you take payments online. The membership starts when the fee is paid, online or at the counter under **Invoices without a booking**.
+3. **Renewals:** three days before a period ends, the next fee is invoiced and charged to the card the customer saved; without one, the customer gets a payment link. Paid time continues from the end of the last period.
+4. **Unpaid fees:** member prices pause when a fee is still unpaid a number of days after the period ended (**Days a fee may stay unpaid**, 7 by default). They come back when it is paid.
+5. **Cancel:** the membership ends when its paid time ends. An unpaid one ends at once and its invoice is voided.
+
+Members get the plan's discount on every rental, explained on the quote as **Member price**. A booking that would take a member over the plan's items at a time is refused, at the counter and at checkout. Members see their membership in their storefront account.
 
 ## Integrations
 

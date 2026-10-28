@@ -26,6 +26,10 @@ import {
   type IntegrationProvider,
   type ScheduleHandler,
   type StorefrontExtensions,
+  type PriceRuleSource,
+  type AdminPage,
+  type EInvoiceFormat,
+  type TagReader,
   type PluginMigration,
   type PluginDefinition,
   validateManifest,
@@ -46,6 +50,8 @@ export interface PluginStatus {
   /** Manifest problems that did not stop loading (unknown or deprecated keys). */
   warnings: string[];
   jobs: { name: string; cron: string }[];
+  /** False for a plugin a shop turns on itself (plugin API 1.9). */
+  enabledByDefault?: boolean;
 }
 
 interface Registered<T> {
@@ -65,11 +71,11 @@ export class PluginHost implements PluginRuntime {
   private readonly channels = new Map<string, Registered<NotificationChannel>[]>();
   private storage: Registered<StorageProvider> | null = null;
   private taxes: Registered<TaxProvider>[] = [];
-  private identity: Registered<IdentityProvider> | null = null;
+  private identities: Registered<IdentityProvider>[] = [];
   private search: Registered<SearchProvider> | null = null;
   private rates: Registered<RatesProvider>[] = [];
   private geo: Registered<Geocoder> | null = null;
-  private signature: Registered<SignatureProvider> | null = null;
+  private signatures: Registered<SignatureProvider>[] = [];
   /** Integrations by id (plugin API 1.2); a shop connects each on the Integrations page. */
   private readonly integrationList = new Map<string, Registered<IntegrationProvider>>();
   /** Plugin cron jobs; the worker runs each for every shop that has the plugin on (FR-PLG-8). */
@@ -84,6 +90,10 @@ export class PluginHost implements PluginRuntime {
   readonly routes: Registered<PluginRoute>[] = [];
   readonly slots: { pluginId: string; slot: AdminSlot; bundleUrl: string; element: string }[] = [];
   private readonly sfExtensions: { pluginId: string; ext: StorefrontExtensions }[] = [];
+  private readonly ruleSources: { pluginId: string; source: PriceRuleSource }[] = [];
+  private readonly pages: { pluginId: string; page: AdminPage }[] = [];
+  private readonly einvoice: { pluginId: string; format: EInvoiceFormat }[] = [];
+  private readonly readers: { pluginId: string; reader: TagReader }[] = [];
   /** Folder of each plugin installed from PLUGINS_DIR (admin bundles are served from it). */
   readonly dirs = new Map<string, string>();
   readonly statuses: PluginStatus[] = [];
@@ -92,8 +102,8 @@ export class PluginHost implements PluginRuntime {
    * `tenant:plugin` pairs a tenant switched off. Loaded from the plugins table and refreshed in the
    * background so hooks never wait for a database round trip inside a request.
    */
-  private disabledPairs = new Set<string>();
-  private loadDisabled: (() => Promise<{ tenantId: string; pluginId: string }[]>) | null = null;
+  private choices = new Map<string, boolean>();
+  private loadChoices: (() => Promise<{ tenantId: string; pluginId: string; enabled: boolean }[]>) | null = null;
 
   constructor(
     private readonly logger: Logger,
@@ -104,7 +114,7 @@ export class PluginHost implements PluginRuntime {
   async register(def: PluginDefinition, warnings: string[] = []): Promise<PluginStatus> {
     const status: PluginStatus = {
       id: def.id, name: def.name, version: def.version, compat: def.compat, state: 'loaded', permissions: def.permissions ?? [], settings: def.settings ?? [], provides: [],
-      warnings: [...warnings], jobs: def.jobs ?? [],
+      warnings: [...warnings], jobs: def.jobs ?? [], enabledByDefault: def.enabledByDefault !== false,
     };
     this.statuses.push(status);
     if (this.disabled.has(def.id)) {
@@ -142,7 +152,7 @@ export class PluginHost implements PluginRuntime {
           status.provides.push(`tax:${p.id}`);
         },
         registerIdentityProvider: (p) => {
-          this.identity = { pluginId, handler: p };
+          this.identities.push({ pluginId, handler: p });
           this.owners.set(p.id, pluginId);
           status.provides.push(`identity:${p.id}`);
         },
@@ -162,9 +172,19 @@ export class PluginHost implements PluginRuntime {
           status.provides.push(`rates:${p.id}`);
         },
         registerSignatureProvider: (p) => {
-          this.signature = { pluginId, handler: p };
+          this.signatures.push({ pluginId, handler: p });
           this.owners.set(p.id, pluginId);
           status.provides.push(`signature:${p.id}`);
+        },
+        registerEInvoiceFormat: (f) => {
+          this.einvoice.push({ pluginId, format: f });
+          this.owners.set(f.id, pluginId);
+          status.provides.push(`einvoice:${f.id}`);
+        },
+        registerTagReader: (r) => {
+          this.readers.push({ pluginId, reader: r });
+          this.owners.set(r.id, pluginId);
+          status.provides.push(`tag_reader:${r.id}`);
         },
         registerIntegration: (p) => {
           this.integrationList.set(p.id, { pluginId, handler: p });
@@ -191,6 +211,16 @@ export class PluginHost implements PluginRuntime {
           if (ext.checkoutFields?.length) status.provides.push('storefront:checkout_fields');
           if (ext.productBadges?.length) status.provides.push('storefront:badges');
           if (ext.scripts?.length) status.provides.push('storefront:scripts');
+          if (ext.accountPanels?.length) status.provides.push('storefront:account_panels');
+        },
+        priceRules: (source) => {
+          this.ruleSources.push({ pluginId, source });
+          status.provides.push('pricing:rules');
+        },
+        adminPage: (page) => {
+          if (!/^[a-z0-9-]{1,40}$/.test(page.key)) throw new Error(`admin page key "${page.key}" must be lowercase letters, digits and dashes`);
+          this.pages.push({ pluginId, page });
+          status.provides.push(`admin_page:${page.key}`);
         },
         env: (name) => this.env[name],
         setDefaultConfig: (config) => this.defaults.set(pluginId, config),
@@ -211,24 +241,29 @@ export class PluginHost implements PluginRuntime {
     return status;
   }
 
-  /** Sets where tenant enablement comes from, loads it and refreshes it every 15 s. */
-  async useEnablementSource(load: () => Promise<{ tenantId: string; pluginId: string }[]>) {
-    this.loadDisabled = load;
+  /** Sets where shops' on/off choices come from, loads them and refreshes them every 15 s. */
+  async useEnablementSource(load: () => Promise<{ tenantId: string; pluginId: string; enabled: boolean }[]>) {
+    this.loadChoices = load;
     await this.refreshEnablement();
     setInterval(() => void this.refreshEnablement(), 15_000).unref();
   }
 
   async refreshEnablement() {
-    if (!this.loadDisabled) return;
+    if (!this.loadChoices) return;
     try {
-      this.disabledPairs = new Set((await this.loadDisabled()).map((r) => `${r.tenantId}:${r.pluginId}`));
+      this.choices = new Map((await this.loadChoices()).map((r) => [`${r.tenantId}:${r.pluginId}`, r.enabled]));
     } catch (err) {
       this.logger.warn({ err }, 'could not load plugin enablement');
     }
   }
 
+  /** On when the shop turned it on, or never chose and the plugin is on by default. */
   isEnabledFor(tenantId: string, pluginId: string): boolean {
-    return !this.disabledPairs.has(`${tenantId}:${pluginId}`);
+    return this.choices.get(`${tenantId}:${pluginId}`) ?? this.enabledByDefault(pluginId);
+  }
+
+  enabledByDefault(pluginId: string) {
+    return this.statuses.find((x) => x.id === pluginId)?.enabledByDefault !== false;
   }
 
   private addHook(phase: 'before' | 'after', hook: HookName, pluginId: string, handler: HookHandler) {
@@ -260,6 +295,26 @@ export class PluginHost implements PluginRuntime {
     return this.sfExtensions;
   }
 
+  permissionsOf(pluginId: string) {
+    return this.statuses.find((x) => x.id === pluginId)?.permissions ?? [];
+  }
+
+  priceRuleSources() {
+    return this.ruleSources;
+  }
+
+  adminPages() {
+    return this.pages;
+  }
+
+  einvoiceFormats() {
+    return this.einvoice;
+  }
+
+  tagReaders() {
+    return this.readers;
+  }
+
   taxProvider() {
     return this.taxes[0]?.handler;
   }
@@ -270,7 +325,11 @@ export class PluginHost implements PluginRuntime {
   }
 
   identityProvider() {
-    return this.identity?.handler;
+    return this.identities[0]?.handler;
+  }
+
+  identityProviders() {
+    return this.identities.map((r) => r.handler);
   }
 
   searchProvider() {
@@ -286,7 +345,11 @@ export class PluginHost implements PluginRuntime {
   }
 
   signatureProvider() {
-    return this.signature?.handler;
+    return this.signatures[0]?.handler;
+  }
+
+  signatureProviders() {
+    return this.signatures.map((r) => r.handler);
   }
 
   integrations() {

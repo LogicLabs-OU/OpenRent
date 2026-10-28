@@ -36,7 +36,9 @@ test('a customer moves a booking to other days themselves and books an earlier o
   const email = `changes-${n}@example.com`;
   const customer = await call(page, 'POST', '/customers', { name: 'Chris Change', email });
   const at = (day: string) => `${day}T08:00:00.000Z`;
-  const start = weekday(40 + (n % 10));
+  // Monday to Thursday: from a Friday the booking spans the weekend, and the moved one would cost less.
+  let start = weekday(40 + (n % 10));
+  while (new Date(`${start}T00:00:00Z`).getUTCDay() === 5) start = weekdayAfter(start, 1);
   const booking = await call(page, 'POST', '/orders', { customer_id: customer.id, location_id: location.id, starts_at: at(start), ends_at: at(weekdayAfter(start, 1)), lines: [{ variant_id: product.variants[0].id, quantity: 1 }], deposit: { mode: 'none' } });
   await call(page, 'POST', `/orders/${booking.id}/actions/reserve`, { notify: false });
   // An earlier booking, returned, to book again.

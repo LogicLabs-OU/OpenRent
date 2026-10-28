@@ -500,6 +500,8 @@ export const products = pgTable(
     customFields: jsonb('custom_fields').default({}).notNull(),
     /** What the units' meter counts (hours, km, …); null when they have none (FR-CAT-10). */
     meterUnit: text('meter_unit'),
+    /** Charged at return for what the meter ran (FR-CAT-10): `{ amount, included }`, amount per meter unit in minor units, `included` free per rental. */
+    meterRate: jsonb('meter_rate'),
     /** Straight-line depreciation of each unit over this many months, down to the residual share. */
     depreciationMonths: integer('depreciation_months'),
     residualBp: integer('residual_bp').default(0).notNull(),
@@ -647,6 +649,8 @@ export const stockItems = pgTable(
     customFields: jsonb('custom_fields').default({}).notNull(),
     /** The latest meter reading. */
     meterValue: doublePrecision('meter_value'),
+    /** The case this unit is packed in (FR-CAT-11): scanning the case scans what it holds. */
+    containerId: text('container_id'),
     retiredAt: timestamp('retired_at', { withTimezone: true, mode: 'string' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -663,6 +667,12 @@ export const stockItems = pgTable(
       table.variantId.asc().nullsLast().op('text_ops'),
       table.locationId.asc().nullsLast().op('text_ops'),
     ),
+    index('stock_items_container').using('btree', table.containerId.asc().nullsLast().op('text_ops')),
+    foreignKey({
+      columns: [table.containerId],
+      foreignColumns: [table.id],
+      name: 'stock_items_container_id_fkey',
+    }).onDelete('set null'),
     foreignKey({
       columns: [table.tenantId],
       foreignColumns: [tenants.id],
@@ -1489,7 +1499,10 @@ export const payments = pgTable(
   {
     id: text().primaryKey().notNull(),
     tenantId: text('tenant_id').notNull(),
-    orderId: text('order_id').notNull(),
+    /** Null for a payment of a customer invoice that belongs to no booking (ADR 0014): then `document_id` names it. */
+    orderId: text('order_id'),
+    customerId: text('customer_id'),
+    documentId: text('document_id'),
     provider: text().notNull(),
     kind: text().notNull(),
     purpose: text().default('rental').notNull(),
@@ -1548,9 +1561,11 @@ export const payments = pgTable(
     ),
     check(
       'payments_purpose_check',
-      sql`purpose = ANY (ARRAY['rental'::text, 'deposit'::text, 'damage'::text, 'late_fee'::text])`,
+      sql`purpose = ANY (ARRAY['rental'::text, 'deposit'::text, 'damage'::text, 'late_fee'::text, 'invoice'::text])`,
     ),
     check('payments_amount_check', sql`amount >= 0`),
+    check('payments_owner_check', sql`order_id IS NOT NULL OR (document_id IS NOT NULL AND customer_id IS NOT NULL)`),
+    index('payments_document').on(table.documentId),
     check(
       'payments_status_check',
       sql`status = ANY (ARRAY['pending'::text, 'succeeded'::text, 'failed'::text, 'cancelled'::text])`,
@@ -1563,7 +1578,9 @@ export const paymentIntents = pgTable(
   {
     id: text().primaryKey().notNull(),
     tenantId: text('tenant_id').notNull(),
-    orderId: text('order_id').notNull(),
+    orderId: text('order_id'),
+    /** A customer invoice paid online without a booking (ADR 0014). */
+    documentId: text('document_id'),
     provider: text().notNull(),
     purpose: text().default('rental').notNull(),
     // You can use { mode: "bigint" } if numbers are exceeding js number limitations
@@ -2571,7 +2588,9 @@ export const paymentRequests = pgTable(
   {
     id: text().primaryKey().notNull(),
     tenantId: text('tenant_id').notNull(),
-    orderId: text('order_id').notNull(),
+    /** Null when the request is for a customer invoice without bookings (ADR 0014). */
+    orderId: text('order_id'),
+    customerId: text('customer_id'),
     amount: bigint({ mode: 'number' }).notNull(),
     currency: char({ length: 3 }).notNull(),
     kind: text().default('custom').notNull(),
@@ -2596,6 +2615,7 @@ export const paymentRequests = pgTable(
     foreignKey({ columns: [table.orderId], foreignColumns: [orders.id], name: 'payment_requests_order_id_fkey' }),
     index('payment_requests_order').on(table.orderId),
     check('payment_requests_amount_check', sql`amount > 0`),
+    check('payment_requests_owner_check', sql`order_id IS NOT NULL OR invoice_id IS NOT NULL`),
     check('payment_requests_status_check', sql`status = ANY (ARRAY['open'::text, 'paid'::text, 'cancelled'::text, 'expired'::text])`),
     check('payment_requests_kind_check', sql`kind = ANY (ARRAY['upfront'::text, 'balance'::text, 'custom'::text, 'invoice'::text])`),
     tenantPolicy(),
@@ -2669,6 +2689,8 @@ export const customerBillingProfiles = pgTable(
     taxId: text('tax_id'),
     taxIdCheck: jsonb('tax_id_check'),
     address: jsonb().default({}).notNull(),
+    /** E-invoices for these details (FR-DOC-6): `{ format, endpoint }`, e.g. Peppol with the buyer's Peppol ID. */
+    einvoice: jsonb('einvoice'),
     isDefault: boolean('is_default').default(false).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -2963,6 +2985,180 @@ export const cancellationRequests = pgTable(
 );
 
 /** Secret iCal feed URLs for staff calendars (FR-INT-2). */
+/**
+ * Database logins for BI tools (FR-REP-5): each is a PostgreSQL role of its own that reads the views in
+ * schema `bi`, which show this shop's rows only (sql/invariants.sql). The password is never kept here.
+ */
+export const biAccess = pgTable(
+  'bi_access',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    name: text().notNull(),
+    roleName: text('role_name').notNull(),
+    createdBy: text('created_by'),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'bi_access_tenant_id_fkey' }),
+    unique('bi_access_role_name_key').on(table.roleName),
+    tenantPolicy(),
+  ],
+);
+
+/** RFID tags on units (FR-SCAN-7): EPCs in upper-case hex, each on one unit of the shop. */
+export const rfidTags = pgTable(
+  'rfid_tags',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    epc: text().notNull(),
+    stockItemId: text('stock_item_id').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'rfid_tags_tenant_id_fkey' }),
+    foreignKey({ columns: [table.stockItemId], foreignColumns: [stockItems.id], name: 'rfid_tags_stock_item_id_fkey' }).onDelete('cascade'),
+    unique('rfid_tags_tenant_epc_key').on(table.tenantId, table.epc),
+    index('rfid_tags_stock_item').on(table.stockItemId),
+    tenantPolicy(),
+  ],
+);
+
+/** RFID readers: each posts its reads to its own address with a token (kept hashed), in a format. */
+export const rfidReaders = pgTable(
+  'rfid_readers',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    name: text().notNull(),
+    locationId: text('location_id'),
+    /** `openrent`, or a format an RFID plugin registers (`zebra-iot`, `impinj-connect`). */
+    format: text().default('openrent').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdBy: text('created_by'),
+    lastReadAt: timestamp('last_read_at', { withTimezone: true, mode: 'string' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'rfid_readers_tenant_id_fkey' }),
+    foreignKey({ columns: [table.locationId], foreignColumns: [locations.id], name: 'rfid_readers_location_id_fkey' }),
+    tenantPolicy(),
+  ],
+);
+
+/** What readers read, kept a day for the scan page to ask for. */
+export const rfidReads = pgTable(
+  'rfid_reads',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    readerId: text('reader_id').notNull(),
+    epc: text().notNull(),
+    readAt: timestamp('read_at', { withTimezone: true, mode: 'string' }).notNull(),
+    antenna: integer(),
+    rssi: doublePrecision(),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'rfid_reads_tenant_id_fkey' }),
+    foreignKey({ columns: [table.readerId], foreignColumns: [rfidReaders.id], name: 'rfid_reads_reader_id_fkey' }).onDelete('cascade'),
+    index('rfid_reads_reader_time').on(table.readerId, table.readAt),
+    tenantPolicy(),
+  ],
+);
+
+/**
+ * Apps that use OAuth 2.1 (PRD §5.2): registered by themselves (public, PKCE) or by the operator (with a
+ * secret). Not a shop's: any shop on the installation may connect one.
+ */
+export const oauthClients = pgTable('oauth_clients', {
+  id: text().primaryKey().notNull(),
+  name: text().notNull(),
+  redirectUris: text('redirect_uris').array().notNull(),
+  secretHash: text('secret_hash'),
+  homepage: text(),
+  /** `dynamic` (RFC 7591) or `operator`. */
+  createdVia: text('created_via').default('dynamic').notNull(),
+  disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'string' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+});
+
+/** A shop's consent for an app: who approved, which scopes. One live grant per shop and app. */
+export const oauthGrants = pgTable(
+  'oauth_grants',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    clientId: text('client_id').notNull(),
+    userId: text('user_id'),
+    scopes: text().array().notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true, mode: 'string' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'oauth_grants_tenant_id_fkey' }),
+    foreignKey({ columns: [table.clientId], foreignColumns: [oauthClients.id], name: 'oauth_grants_client_id_fkey' }),
+    foreignKey({ columns: [table.userId], foreignColumns: [users.id], name: 'oauth_grants_user_id_fkey' }).onDelete('set null'),
+    uniqueIndex('oauth_grants_live').on(table.tenantId, table.clientId).where(sql`revoked_at IS NULL`),
+    tenantPolicy(),
+  ],
+);
+
+/** One-time authorization codes (ten minutes), with the PKCE challenge they must be redeemed with. */
+export const oauthCodes = pgTable(
+  'oauth_codes',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    clientId: text('client_id').notNull(),
+    userId: text('user_id'),
+    codeHash: text('code_hash').notNull(),
+    redirectUri: text('redirect_uri').notNull(),
+    scopes: text().array().notNull(),
+    codeChallenge: text('code_challenge').notNull(),
+    grantId: text('grant_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'oauth_codes_tenant_id_fkey' }),
+    foreignKey({ columns: [table.clientId], foreignColumns: [oauthClients.id], name: 'oauth_codes_client_id_fkey' }),
+    unique('oauth_codes_code_hash_key').on(table.codeHash),
+    tenantPolicy(),
+  ],
+);
+
+/** Access tokens (an hour) and refresh tokens (rotating, 60 days); a family is one sign-in's chain. */
+export const oauthTokens = pgTable(
+  'oauth_tokens',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    grantId: text('grant_id').notNull(),
+    kind: text().notNull(),
+    tokenHash: text('token_hash').notNull(),
+    familyId: text('family_id').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'string' }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, mode: 'string' }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'string' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'oauth_tokens_tenant_id_fkey' }),
+    foreignKey({ columns: [table.grantId], foreignColumns: [oauthGrants.id], name: 'oauth_tokens_grant_id_fkey' }).onDelete('cascade'),
+    unique('oauth_tokens_token_hash_key').on(table.tokenHash),
+    index('oauth_tokens_family').on(table.familyId),
+    check('oauth_tokens_kind_check', sql`kind = ANY (ARRAY['access'::text, 'refresh'::text])`),
+    tenantPolicy(),
+  ],
+);
+
 export const calendarFeeds = pgTable(
   'calendar_feeds',
   {
@@ -3104,6 +3300,39 @@ export const priceRules = pgTable(
  * late fees when a rental is extended or returned late. `amount` is minor units, or basis points for
  * `percent`. `zones` prices delivery by postcode prefix. `optional` fees are chosen by the customer.
  */
+/**
+ * Price suggestions (FR-PR-9): a weekly look at how full a product's coming weeks are, now and a year
+ * ago. Staff accept one (it becomes a season price rule) or dismiss it; open ones are made again each week.
+ */
+export const priceSuggestions = pgTable(
+  'price_suggestions',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    productId: text('product_id').notNull(),
+    startsOn: date('starts_on', { mode: 'string' }).notNull(),
+    endsOn: date('ends_on', { mode: 'string' }).notNull(),
+    adjustmentBp: integer('adjustment_bp').notNull(),
+    /** Share booked now and in the same weeks a year ago (busiest week for a rise, quietest for a cut). */
+    bookedBp: integer('booked_bp').notNull(),
+    lastYearBp: integer('last_year_bp'),
+    status: text().default('open').notNull(),
+    priceRuleId: text('price_rule_id'),
+    decidedAt: timestamp('decided_at', { withTimezone: true, mode: 'string' }),
+    decidedBy: text('decided_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'price_suggestions_tenant_id_fkey' }),
+    foreignKey({ columns: [table.productId], foreignColumns: [products.id], name: 'price_suggestions_product_id_fkey' }).onDelete('cascade'),
+    foreignKey({ columns: [table.priceRuleId], foreignColumns: [priceRules.id], name: 'price_suggestions_price_rule_id_fkey' }).onDelete('set null'),
+    index('price_suggestions_tenant_status').on(table.tenantId, table.status),
+    check('price_suggestions_status_check', sql`status = ANY (ARRAY['open'::text, 'accepted'::text, 'dismissed'::text])`),
+    check('price_suggestions_dates_check', sql`ends_on >= starts_on`),
+    tenantPolicy(),
+  ],
+);
+
 export const feeRules = pgTable(
   'fee_rules',
   {
@@ -3402,6 +3631,8 @@ export const serviceIntervals = pgTable(
     everyMeter: doublePrecision('every_meter'),
     /** Opens a repair ticket (the unit stays in service) once the service is overdue. */
     opensTicket: boolean('opens_ticket').default(true).notNull(),
+    /** `electrical_test`: a PAT test (FR-MNT-5), recorded with readings; pickup waits for a valid one. */
+    kind: text().default('service').notNull(),
     active: boolean().default(true).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
@@ -3412,11 +3643,48 @@ export const serviceIntervals = pgTable(
     foreignKey({ columns: [table.productId], foreignColumns: [products.id], name: 'service_intervals_product_id_fkey' }),
     foreignKey({ columns: [table.categoryId], foreignColumns: [categories.id], name: 'service_intervals_category_id_fkey' }),
     check('service_intervals_some_check', sql`every_days > 0 OR every_rentals > 0 OR every_meter > 0`),
+    check('service_intervals_kind_check', sql`kind = ANY (ARRAY['service'::text, 'electrical_test'::text])`),
     tenantPolicy(),
   ],
 );
 
 /** A service done on a unit; the next one is due from here. */
+/**
+ * Electrical safety tests (PAT, FR-MNT-5): what was measured, by whom and with what, and when the next is
+ * due. A record of what was found: never changed or removed afterwards (sql/invariants.sql).
+ */
+export const electricalTests = pgTable(
+  'electrical_tests',
+  {
+    id: text().primaryKey().notNull(),
+    tenantId: text('tenant_id').notNull(),
+    stockItemId: text('stock_item_id').notNull(),
+    intervalId: text('interval_id'),
+    testedAt: timestamp('tested_at', { withTimezone: true, mode: 'string' }).notNull(),
+    result: text().notNull(),
+    /** Protection class of the appliance: I (earthed), II (double insulated) or III (safety extra-low voltage). */
+    applianceClass: text('appliance_class'),
+    /** earth_ohm, insulation_mohm, leakage_ma, polarity_ok, visual_ok: what the instrument and the eye found. */
+    readings: jsonb().default({}).notNull(),
+    tester: text().notNull(),
+    instrument: text(),
+    notes: text().default('').notNull(),
+    nextDue: date('next_due', { mode: 'string' }),
+    ticketId: text('ticket_id'),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+  },
+  (table) => [
+    foreignKey({ columns: [table.tenantId], foreignColumns: [tenants.id], name: 'electrical_tests_tenant_id_fkey' }),
+    foreignKey({ columns: [table.stockItemId], foreignColumns: [stockItems.id], name: 'electrical_tests_stock_item_id_fkey' }),
+    foreignKey({ columns: [table.intervalId], foreignColumns: [serviceIntervals.id], name: 'electrical_tests_interval_id_fkey' }),
+    index('electrical_tests_unit').on(table.stockItemId, table.testedAt),
+    check('electrical_tests_result_check', sql`result = ANY (ARRAY['pass'::text, 'fail'::text])`),
+    check('electrical_tests_class_check', sql`appliance_class IS NULL OR appliance_class = ANY (ARRAY['I'::text, 'II'::text, 'III'::text])`),
+    tenantPolicy(),
+  ],
+);
+
 export const serviceEvents = pgTable(
   'service_events',
   {
@@ -3497,7 +3765,7 @@ export const signatureRequests = pgTable(
     foreignKey({ columns: [table.orderId], foreignColumns: [orders.id], name: 'signature_requests_order_id_fkey' }),
     uniqueIndex('signature_requests_token').on(table.tokenHash),
     uniqueIndex('signature_requests_one_pending').on(table.documentId).where(sql`status = 'pending'`),
-    check('signature_requests_status_check', sql`status = ANY (ARRAY['pending'::text, 'signed'::text, 'cancelled'::text, 'expired'::text])`),
+    check('signature_requests_status_check', sql`status = ANY (ARRAY['pending'::text, 'signed'::text, 'cancelled'::text, 'expired'::text, 'declined'::text])`),
     tenantPolicy(),
   ],
 );
@@ -3526,7 +3794,7 @@ export const signatures = pgTable(
     foreignKey({ columns: [table.requestId], foreignColumns: [signatureRequests.id], name: 'signatures_request_id_fkey' }),
     foreignKey({ columns: [table.documentId], foreignColumns: [documents.id], name: 'signatures_document_id_fkey' }),
     index('signatures_document').on(table.documentId),
-    check('signatures_method_check', sql`method = ANY (ARRAY['typed'::text, 'drawn'::text])`),
+    check('signatures_method_check', sql`method = ANY (ARRAY['typed'::text, 'drawn'::text, 'external'::text])`),
     tenantPolicy(),
   ],
 );

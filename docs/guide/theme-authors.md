@@ -170,7 +170,7 @@ try {
 | `header.after` | Below the header | The shop's own header HTML, the currency menu |
 | `footer.before` | Above the footer | The shop's own footer HTML |
 | `dates.after` | After the date form (theme API 1.9) | The location picker, when the shop has several |
-| `product.before_add` | Above the add button, `context={{ product }}` | Plugin badges, bundle picker, accessories, tax hint, other locations that have it free |
+| `product.before_add` | Above the add button, `context={{ product }}` | Plugin badges, bundle picker, accessories, tax hint, other locations that have it free, the price per meter unit (theme API 1.10) |
 | `checkout.extra_fields` | In the checkout form | Plugin checkout fields, business customer options, saved billing details, pickup place or delivery times |
 | `section.plugin` | Home page and pages, `context={{ section }}` | A plugin's section, the storefront's locations and contact form |
 | `account.extra` | Customer account | What is left to pay, invoices, changing bookings, booking again, billing details and addresses, business account terms, insurance documents |
@@ -295,3 +295,4 @@ The storefront provides theme API `1.9.0` (`THEME_API_VERSION`). A theme whose `
 | 1.7 | Bundle slots, accessories, related products |
 | 1.8 | `extension_points`, `widget/widget.css`, display currencies, fees priced by distance |
 | 1.9 | Page sections and `body_html`, `shop.navigation`, `shop.location` and `setLocation`, slots `dates.after` and `order.actions`, `seo` on products and categories, `price.from`, `elsewhere` on variants, location contact details, delivery times and closed days |
+| 1.10 | `meter` on products: the price per meter unit charged at return, shown by the `product.before_add` slot |

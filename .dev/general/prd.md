@@ -62,7 +62,7 @@ These principles decide trade-offs. When two requirements conflict, the earlier 
 2. **Correctness over convenience.** Availability, money and documents are the ledger of the business. Invariants (no double-booking, no negative stock, immutable issued invoices, snapshot pricing on orders) are enforced by database constraints and transactions, with application checks as a second layer.
 3. **Self-hosting is a first-class target.** One `docker compose up` gives a complete, production-capable instance. No feature requires a hosted service we run. Hosted/managed cloud is a deployment of the same code with multi-tenancy enabled.
 4. **No tier gating.** All features ship in the AGPL core. Monetisation (if any) is hosting, support and services, never feature flags.
-5. **Themes and plugins are in the DNA, not bolted on.** The storefront is rendered by an installable theme (uploaded ZIP or installed from a directory) and the core exposes hooks, providers and UI slots for installable plugins. Core features themselves are built through the same theme and plugin APIs, so the APIs are proven before third parties use them (see 3.16, 3.17, 7.9).
+5. **Themes and plugins are in the DNA, not bolted on.** The storefront is rendered by an installable theme (uploaded ZIP or a package in `THEMES_DIR`) and the core exposes hooks, providers and UI slots for installable plugins. Core features themselves are built through the same theme and plugin APIs, so the APIs are proven before third parties use them (see 3.16, 3.17, 7.9).
 6. **Boring, observable operations.** PostgreSQL as the single system of record; background jobs in Postgres (no extra broker for the default install); structured logs, metrics and traces via OpenTelemetry.
 7. **Fast for the counter.** The back office is optimised for staff under time pressure: keyboard-first, barcode-scan-first, two clicks from search to check-out.
 8. **Privacy and data ownership.** Full data export (JSON + CSV + documents) at any time; GDPR erasure; no telemetry without opt-in.
@@ -71,7 +71,7 @@ These principles decide trade-offs. When two requirements conflict, the earlier 
 
 ## 3. Functional requirements
 
-Requirements are tagged by release: **MVP** (needed to run one shop end to end), **V1** (parity with Booqable Grow/Scale), **Later**. Each area lists behaviour, rules and acceptance criteria. Every requirement implies a corresponding API endpoint (Section 5) and, where state changes, a webhook event (Section 6).
+Requirements are tagged by release: **MVP** (needed to run one shop end to end), **V1** (parity with Booqable Grow/Scale), **Later**, **Deferred** (not planned for now; kept for a later decision). Each area lists behaviour, rules and acceptance criteria. Every requirement implies a corresponding API endpoint (Section 5) and, where state changes, a webhook event (Section 6).
 
 ### 3.1 Tenancy, locations, users and roles
 
@@ -274,7 +274,7 @@ The storefront is theme-driven in the Shopify sense: a theme is a self-contained
 | --- | --- | --- |
 | FR-THM-1 | MVP | Theme package format: `theme.json` manifest (id, name, version, author, license, `compat` range of the theme API, supported locales, settings schema, preview images), `layouts/`, `templates/` (index, collection, product, cart, checkout, order-confirmation, account, page, 404), `sections/` (reusable blocks with settings), `snippets/`, `assets/` (CSS, JS, images, fonts), `locales/*.json` (theme strings), `config/settings_schema.json` and `config/settings_data.json` |
 | FR-THM-2 | MVP | Templates are Svelte components compiled server-side by the storefront runtime, receiving typed data objects from the storefront API (`product`, `collection`, `cart`, `availability`, `price_quote`, `tenant`, `locale`). A theme never calls the API directly; the runtime does, so themes stay portable across versions |
-| FR-THM-3 | MVP | Install themes by uploading a ZIP in Settings → Themes, by URL from the public theme directory, or by placing them in `THEMES_DIR` (self-hosters). Multiple themes can be installed; exactly one is live; any can be previewed with a signed preview URL before publishing |
+| FR-THM-3 | MVP | Install themes by uploading a ZIP in Settings → Themes or by placing them in `THEMES_DIR` (self-hosters); installing from a public directory is deferred (FR-THM-11). Multiple themes can be installed; exactly one is live; any can be previewed with a signed preview URL before publishing |
 | FR-THM-4 | MVP | Theme settings UI generated from `settings_schema.json` (colour, font, image, text, select, range, checkbox, link, product/collection picker); settings saved per tenant per theme; export/import of settings |
 | FR-THM-5 | MVP | Section-based pages: themes declare sections and blocks; tenants reorder, add and remove sections on the home page and custom pages through a visual editor with live preview (JSON-schema driven, as Shopify Online Store 2.0) |
 | FR-THM-6 | MVP | Theme translations: `locales/en.json` etc. merged with core storefront strings; tenants override any string in the Translations editor; missing keys fall back to the theme default locale, then to English |
@@ -282,7 +282,7 @@ The storefront is theme-driven in the Shopify sense: a theme is a self-contained
 | FR-THM-8 | MVP | Versioning and upgrades: theme API is semver'd (`theme-api: 1.x`); installing a theme outside the compat range is refused with a clear message; theme updates keep tenant settings and show a diff of changed templates before applying |
 | FR-THM-9 | MVP | Theme developer kit: `create-openrent-theme` scaffold, `openrent theme dev` local preview against any API with hot reload and mock or live tenant data, `openrent theme check` (lint, schema validation, required templates, accessibility and performance budget), `openrent theme pack` to produce the ZIP |
 | FR-THM-10 | V1 | Widget theming: the embeddable widget reads the live theme's tokens and a `widget/` template group so it matches the merchant site |
-| FR-THM-11 | V1 | Public theme directory (`themes.openrent.dev`) with submission review, versioning and one-click install; free and paid themes |
+| FR-THM-11 | Deferred | Public theme directory (`themes.openrent.dev`) with submission review, versioning and one-click install; free and paid themes. Not planned for now (decision 2026-10-27, ADR 0013) |
 | FR-THM-12 | V1 | Theme-level hooks: a theme may register storefront-only extension points (`section.register`, `checkout.extra_fields`) that plugins can fill |
 
 ### 3.17 Plugin system
@@ -292,7 +292,7 @@ Plugins extend the back office, the API and the storefront in the WordPress sens
 | ID | Release | Requirement |
 | --- | --- | --- |
 | FR-PLG-1 | MVP | Plugin package format: npm package with `openrent.plugin.json` manifest (id, name, version, author, license, `compat` core range, permissions requested, settings schema, locales, admin UI entry, migrations). Signed with the author's key when distributed through the directory |
-| FR-PLG-2 | MVP | Install by uploading a ZIP/tarball in Settings → Plugins, by URL from the public plugin directory, or by placing in `PLUGINS_DIR`. Enable/disable per tenant; configuration per tenant through the generated settings UI; plugin state visible (loaded, errored, incompatible) |
+| FR-PLG-2 | MVP | Install by uploading a ZIP/tarball in Settings → Plugins or by placing in `PLUGINS_DIR`; installing from a public directory is deferred (FR-PLG-10). Enable/disable per tenant; configuration per tenant through the generated settings UI; plugin state visible (loaded, errored, incompatible) |
 | FR-PLG-3 | MVP | Server extension points: lifecycle hooks (`before`/`after` on every service method, e.g. `orders.transition`, `pricing.quote`, `documents.render`, `availability.check`), event subscriptions (all webhook events), provider interfaces (`PaymentProvider`, `TaxProvider`, `NotificationChannel`, `StorageProvider`, `SignatureProvider`, `IdentityProvider`, `SearchProvider`), scheduled jobs (cron), custom REST routes under `/api/v1/plugins/{id}/*` with the same auth and OpenAPI generation, custom webhook events |
 | FR-PLG-4 | MVP | Data extension: custom fields on core entities; plugin-owned tables (`plg_{id}_*`) via plugin migrations; never altering core tables; plugin data included in tenant export |
 | FR-PLG-5 | MVP | Admin UI extension: named slots (`order.sidebar`, `order.actions`, `product.tab`, `customer.tab`, `dashboard.widget`, `settings.page`, `nav.item`, `scan.mode`); plugin UI is a Svelte bundle loaded with dynamic import, rendered inside the shadcn design system with shared tokens and components from `packages/ui` |
@@ -300,8 +300,8 @@ Plugins extend the back office, the API and the storefront in the WordPress sens
 | FR-PLG-7 | MVP | Isolation and safety: plugins run in-process but receive a scoped context (tenant-bound db handle, services, logger, secrets store, events); a hook that throws is logged and surfaced; plugins cannot bypass RLS; requested permissions are shown at install; a plugin can be disabled from the CLI if it breaks the admin |
 | FR-PLG-8 | MVP | Versioning: plugin API semver'd; core refuses to load incompatible plugins; deprecations announced one minor release ahead with runtime warnings |
 | FR-PLG-9 | MVP | Plugin developer kit: `create-openrent-plugin` scaffold (TypeScript), typed `@openrent/plugin-sdk`, local dev server with hot reload, test harness with an in-memory tenant, `openrent plugin check` and `openrent plugin pack` |
-| FR-PLG-10 | V1 | Public plugin directory with review, signing, versioning and one-click install; usage telemetry opt-in for authors |
-| FR-PLG-11 | V1 | Marketplace billing for paid plugins and themes (optional, via the hosted service) |
+| FR-PLG-10 | Deferred | Public plugin directory with review, signing, versioning and one-click install; usage telemetry opt-in for authors. Not planned for now (decision 2026-10-27, ADR 0013) |
+| FR-PLG-11 | Deferred | Marketplace billing for paid plugins and themes (optional, via the hosted service). Not planned for now (decision 2026-10-27, ADR 0013) |
 
 ### 3.18 Internationalisation (i18n)
 
@@ -352,7 +352,7 @@ Two surfaces share one design system (`packages/ui`, Svelte + Tailwind): the **b
 3. **Availability clarity.** Calendar shows unavailable dates disabled with a reason tooltip (closed, fully booked, minimum notice); quantity selector caps at available units.
 4. **Mobile-first, fast.** First contentful paint < 1.5 s on 4G; hosted storefront built as SvelteKit with SSR; widget hydrates lazily; images via responsive `srcset` and WebP/AVIF.
 5. **Checkout in one page** with sections (contact, pickup/return details, extras, terms, payment); guest by default; errors inline; payment via provider-hosted fields (PCI SAQ-A); confirmation with order summary, QR code, calendar links and documents.
-6. **Merchant branding wins.** The active theme (default theme, an uploaded theme ZIP or one installed from the theme directory) controls storefront layout, templates and styling, as on Shopify; tenants customise its settings, tokens, logo, fonts and custom CSS without code; OpenRent branding is a small optional footer line.
+6. **Merchant branding wins.** The active theme (default theme or an uploaded theme ZIP) controls storefront layout, templates and styling, as on Shopify; tenants customise its settings, tokens, logo, fonts and custom CSS without code; OpenRent branding is a small optional footer line.
 7. **Embeddable widget contract.** `<openrent-product product="slug" tenant="key">`, `<openrent-catalog category="bikes">`, `<openrent-book-button>`; Shadow DOM isolation; CSS custom properties exposed for theming; events (`openrent:add-to-cart`, `openrent:checkout-complete`) for the host page.
 8. **Accessibility and i18n** as in 4.1; language switch and currency display follow tenant settings; all legal texts (terms, privacy, cancellation policy) linked at checkout.
 
@@ -386,7 +386,7 @@ The API is the product. The OpenAPI 3.1 document is the source of truth, lives i
 | Secret API key | Server-to-server integrations | `Authorization: Bearer sk_live_...`; created in Settings with named scopes (`orders:read`, `orders:write`, `payments:write`, `webhooks:manage`, `*`); shown once; rotatable; last-used tracking | Explicit scopes |
 | Publishable key | Storefront and widget in browsers | `Authorization: Bearer pk_live_...`; may only call the `/storefront/*` namespace (catalogue, availability, price-quote, checkout sessions, order lookup by token) | Read catalogue, create checkout |
 | Customer token | Customer portal | Signed link or OTP login → short-lived JWT; may read own orders and documents and pay | Own data |
-| OAuth 2.1 (V1) | Third-party apps / marketplace | Authorization code + PKCE; scopes as API keys; refresh tokens | Granted scopes |
+| OAuth 2.1 (V1) | Third-party apps | Authorization code + PKCE; scopes as API keys; refresh tokens | Granted scopes |
 
 Permissions are evaluated per endpoint and per tenant; a user with multiple tenants switches with `X-Tenant-Id`. Every request runs under a Postgres role with RLS set to the tenant.
 
@@ -665,7 +665,7 @@ Themes and plugins are first-class modules of the runtime, not add-ons: the stor
 - **Admin slots.** `apps/admin` renders slot outlets; the plugin host serves each enabled plugin's UI bundle at `/plugins/{id}/ui.js`; bundles are built against `packages/ui` externals so they use the host's shadcn components and tokens without duplicating them.
 - **Storefront slots.** Themes declare slots in templates (`<Slot name="checkout.extra_fields" />`); the runtime fills them with plugin-registered storefront components, so plugins extend any theme and themes keep layout control.
 - **Design tokens pipeline.** `packages/tokens` holds `tokens.json`; a build step emits shadcn CSS variables for admin (default primary cyan), the Tailwind preset, and the storefront token CSS consumed by themes. Admin appearance settings (primary hue, radius, font, density) write a tenant-level override that is injected as CSS variables at runtime, so changing the brand colour needs no rebuild.
-- **Directories.** `themes.openrent.dev` and `plugins.openrent.dev` are static indexes (JSON) of reviewed packages with signatures; the admin installs by fetching the package URL and verifying the signature. Self-hosters can point to a private directory.
+- **Directories (deferred, ADR 0013).** `themes.openrent.dev` and `plugins.openrent.dev` would be static indexes (JSON) of reviewed packages with signatures; the admin would install by fetching the package URL and verifying the signature, and self-hosters could point to a private directory. Not planned for now; plugins and themes are shared as npm packages and ZIPs.
 - **Testing.** The default theme and first-party plugins are the compatibility suite: every theme-API or plugin-API change must keep them green, and a contract test asserts the public API surface of `@openrent/theme-sdk` and `@openrent/plugin-sdk` against a snapshot.
 
 ## 8. Data model
@@ -882,7 +882,7 @@ Each gate must pass before the next milestone starts; the 1.0 release in Novembe
 | M0 Foundations | Nov 2026 – Jan 2027 | Repo, CI, licence, ADRs; `packages/db` schema with RLS and allocation constraints; `packages/core` availability + pricing engines with property tests; auth and tenancy; OpenAPI skeleton and SDK generation; Compose dev stack; design tokens and base components | Availability concurrency test (100 parallel, 1 winner) green; `docker compose up` to login works on amd64 and arm64 |
 | M1 MVP (public alpha) | Feb – Jun 2027 | All MVP requirements in Section 3: catalogue, bulk + serialised + bundles, order lifecycle with scan check-out/in, documents (PDF), Stripe payments and deposits, customers, hosted storefront + widget, labels and scanning, email notifications, core reports, full REST API + webhooks, en/nl/de/fr/es/et | Three pilot shops run live for 30 days; zero double-bookings; API coverage audit = 100% of UI actions |
 | M2 V1 (beta → 1.0) | Jul – Nov 2027 | Multi-location UI and transfers, custom roles, OIDC, e-signature, price rules and fees, inspections and damage → deposit capture, maintenance tickets, deliveries, customer portal, B2B accounts, Xero/QuickBooks, Mollie/PayPal plugins, plugin system v1, offline scan queue, Helm chart, managed cloud beta | 1.0 release; 50 production installs; external security review passed; docs complete |
-| M3 Ecosystem | Dec 2027 – Apr 2028 | Plugin registry and marketplace; segment packs (AV containers and sub-rentals; construction meters and PO billing; Library of Things memberships); WordPress plugin and Shopify app; e-invoicing plugins; importers (Booqable, Snipe-IT, Shelf); BI views; LTS branch | 20 community plugins; 25 regular contributors; first LTS cut |
+| M3 Ecosystem | Dec 2027 – Apr 2028 | Segment packs (AV containers and sub-rentals; construction meters and PO billing; Library of Things memberships); WordPress plugin and Shopify app; e-invoicing plugins; importers (Booqable, Snipe-IT, Shelf); BI views; OAuth apps; LTS branch. The plugin and theme directory and marketplace are deferred (ADR 0013) | Every requirement built except the deferred ones; first LTS cut. Market goals: 20 community plugins (published on npm), 25 regular contributors |
 
 ### 11.2 Definition of done (per feature)
 
@@ -935,7 +935,7 @@ Contributions are accepted under a Developer Certificate of Origin (`Signed-off-
 - **Phase 1 (M0–M2):** maintainer team of the founding contributors; decisions by lazy consensus on GitHub, escalated to the tech lead. `GOVERNANCE.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `SECURITY.md`, `CONTRIBUTING.md` published at M0.
 - **Phase 2 (after 1.0 or when ≥ 3 organisations contribute regularly):** elected steering committee (5 seats, 1-year terms, max 2 from one employer); RFC process for data model, API and plugin-API changes with a 14-day comment period.
 - **Legal home:** a non-profit association (e.g. Estonian MTÜ or a fiscal host such as Open Collective) holds the trademark and donations.
-- **Sustainability:** managed cloud, support contracts, onboarding services and a plugin marketplace revenue share fund maintainers. Every feature stays in the AGPL core; the cloud sells convenience, not features.
+- **Sustainability:** managed cloud, support contracts, and onboarding services fund maintainers. Every feature stays in the AGPL core; the cloud sells convenience, not features.
 - **Transparency:** public roadmap, monthly changelog post, public incident reports for the hosted service.
 
 ### 12.3 Risks and mitigations
@@ -964,6 +964,7 @@ Contributions are accepted under a Developer Certificate of Origin (`Signed-off-
 | 5 | Hosted cloud pricing model | Flat per tenant; usage-based; per location | Flat per tenant with fair-use limits (no per-seat fees) | Steering, M2 |
 | 6 | Project name and trademark | OpenRent; alternatives | Trademark search before M0 public announcement | Community lead, Nov 2026 |
 | 7 | Mobile scanning: PWA only or native wrapper | PWA; Capacitor wrapper | PWA for 1.0; Capacitor if iOS Bluetooth scanning blocks pilots | Frontend, M1 |
+| 8 | Public plugin and theme directory, signing and marketplace billing (FR-PLG-10, FR-PLG-11, FR-THM-11) | Build in M3; defer | Deferred (decided 2026-10-27): segment packs, documents and identity, data views, OAuth apps and the embeds come first (ADR 0013) | Maintainers, after the first LTS |
 
 ### 12.5 References
 

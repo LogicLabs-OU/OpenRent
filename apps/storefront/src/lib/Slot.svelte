@@ -54,6 +54,9 @@
 {#if name === 'product.before_add' && context.product}
   <ElsewhereHint product={context.product as any} />
 {/if}
+{#if name === 'product.before_add' && (context.product as any)?.meter}
+  <p class="text-sm opacity-80" data-testid="meter-price">{(context.product as any).meter.description}</p>
+{/if}
 {#if name === 'product.before_add' && (context.product as any)?.bundle?.slots?.length}
   <BundlePicker product={context.product as any} />
 {/if}

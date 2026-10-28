@@ -14,6 +14,8 @@
   const canEdit = $derived(session.can('documents:write'));
   const pending = $derived(state?.requests.find((r) => r.status === 'pending'));
   const signed = $derived(state?.signatures[0]);
+  // A signing service may report a refusal (plugin API 1.9); staff can ask again.
+  const declined = $derived(state?.requests[0]?.status === 'declined' ? state.requests[0] : null);
 
   async function load() {
     state = await api.get(`/documents/${doc.id}/signatures`);
@@ -50,6 +52,7 @@
     <Badge variant="outline" title={pending.signer_email}>{t('signature.waiting')}</Badge>
     {#if canEdit}<Button variant="ghost" size="icon-sm" aria-label={t('signature.cancel')} title={t('signature.cancel')} onclick={cancel}><XIcon /></Button>{/if}
   {:else if canEdit && ['issued', 'sent'].includes(doc.status)}
+    {#if declined}<Badge variant="destructive" title={declined.signer_email}>{t('signature.declined')}</Badge>{/if}
     <Button variant="ghost" size="icon-sm" aria-label={t('signature.request')} title={t('signature.request')} onclick={request}><PenLineIcon /></Button>
   {/if}
 {/if}

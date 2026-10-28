@@ -5,7 +5,7 @@ import { createMollieProvider, mollieAmount } from '../src/index.ts';
 
 const mollie = createMollieProvider();
 const intent = (over: Partial<CreatePaymentIntentInput> = {}): CreatePaymentIntentInput => ({
-  amount: 12050, currency: 'EUR', orderId: 'ord_1', orderNumber: 1042, purpose: 'rental', customer: { id: 'cus_1', name: 'Ada', email: 'ada@example.org', providerRef: null },
+  amount: 12050, currency: 'EUR', orderId: 'ord_1', orderNumber: 1042, reference: 'ord_1', purpose: 'rental', customer: { id: 'cus_1', name: 'Ada', email: 'ada@example.org', providerRef: null },
   savePaymentMethod: false, description: 'Booking #1042', metadata: { payment_request_id: 'prq_1' }, returnUrl: 'https://shop.example/order/tok', ...over,
 });
 const body = (id: string) => ({ rawBody: Buffer.from(`id=${id}`), headers: { 'content-type': 'application/x-www-form-urlencoded' } });
@@ -36,6 +36,15 @@ describe('Mollie against the Mollie fake', () => {
       type: 'payment.succeeded', eventId: `${r.ref}:paid`, ref: r.ref, amount: 12050, currency: 'EUR', orderId: 'ord_1', purpose: 'rental', customerRef: null, paymentMethodRef: null, paymentRequestId: 'prq_1',
     });
     await expect(mollie.handleWebhook(ctx, { rawBody: Buffer.from('id=../../etc'), headers: {} })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('takes a payment for a customer invoice without a booking (plugin API 1.9)', async () => {
+    const r = await mollie.createPaymentIntent(ctx, intent({ orderId: null, orderNumber: null, reference: 'doc_9', purpose: 'invoice', description: undefined, metadata: { payment_request_id: 'prq_9' } }));
+    const p = fake.payments.find((x) => x.id === r.ref)!;
+    expect(p.description).toBe('doc_9');
+    expect((p.metadata as Record<string, string>).order_id).toBeUndefined();
+    fake.checkout(r.ref);
+    expect(await mollie.handleWebhook(ctx, body(r.ref))).toMatchObject({ type: 'payment.succeeded', orderId: null, purpose: 'invoice', paymentRequestId: 'prq_9' });
   });
 
   it('keeps a mandate from the first payment and holds, captures and releases deposits with it', async () => {

@@ -1,4 +1,4 @@
-import { accounts, customers, type Ctx, type Permission } from '@openrent/core';
+import { accounts, customers, plugins, type Ctx, type Permission } from '@openrent/core';
 import type { Router } from '../http.ts';
 import { Address, BillingDetails, Id, Nullable, Type } from '../schemas.ts';
 
@@ -67,6 +67,19 @@ export function registerBillingProfiles(r: Router) {
     return { ctx: accounts.asCustomerCtx(ctx, c.id), customerId: c.id };
   };
   register(r, '/storefront/account', ['Customer accounts'], signedIn, {}, {});
+  // The customer verifies their identity on the ID check service's page (FR-PAY-9).
+  r.post('/storefront/account/id_check', { tags: ['Customer accounts'], summary: 'Start the ID check the shop needs before pickup; returns where to do it', body: Type.Object({ return_url: Type.Optional(Type.String({ format: 'uri', maxLength: 500 })) }, { additionalProperties: false }), status: 200 }, async (ctx, req) => {
+    const { email } = await accounts.resolveSession(ctx, String(req.headers['x-customer-session'] ?? ''));
+    const c = await accounts.accountCustomer(ctx, email);
+    return { object: 'id_check', ...(await customers.startIdentityCheck(accounts.asCustomerCtx(ctx, c.id), c.id, { notify: false, returnUrl: req.body?.return_url })) };
+  });
+  // Panels plugins add to the customer's account (plugin API 1.9), e.g. a membership card.
+  r.get('/storefront/account/panels', { tags: ['Customer accounts'], summary: 'Panels plugins show in the customer’s account, as cleaned HTML', querystring: Type.Object({ locale: Type.Optional(Type.String()) }) }, async (ctx, req) => {
+    const { email } = await accounts.resolveSession(ctx, String(req.headers['x-customer-session'] ?? ''));
+    const c = await accounts.accountCustomer(ctx, email);
+    const locale = req.query.locale ?? (await ctx.db.query(`SELECT locale FROM tenants WHERE id = $1`, [ctx.tenantId])).rows[0]?.locale ?? 'en';
+    return { object: 'list', data: await plugins.renderAccountPanels(accounts.asCustomerCtx(ctx, c.id), { id: c.id, email }, locale) };
+  });
   register(r, '/portal/me', ['Portal'], signedIn, {}, {});
   register(r, '/customers/:id', ['Customers'], async (ctx, req) => {
     await customers.getCustomer(ctx, req.params.id);

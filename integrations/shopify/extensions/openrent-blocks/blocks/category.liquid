@@ -1,0 +1,19 @@
+{%- comment -%} The rental products of an OpenRent category, or all of them. {%- endcomment -%}
+{%- assign c = app.metafields.openrent.config.value -%}
+{%- if c.api_url != blank -%}
+  <openrent-category api="{{ c.api_url | escape }}" shop="{{ c.shop | escape }}" storefront="{{ c.storefront_url | escape }}" lang="{{ request.locale.iso_code | slice: 0, 2 | escape }}" category="{{ block.settings.category | handleize | escape }}" limit="{{ block.settings.limit }}" {{ block.shopify_attributes }}></openrent-category>
+  <script src="{{ 'openrent-loader.js' | asset_url }}" defer></script>
+{%- elsif request.design_mode -%}
+  <p {{ block.shopify_attributes }}>{{ 'openrent.not_ready' | t }}</p>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "t:blocks.category.name",
+  "target": "section",
+  "settings": [
+    { "type": "text", "id": "category", "label": "t:blocks.category.category", "info": "t:blocks.category.category_info" },
+    { "type": "range", "id": "limit", "label": "t:blocks.category.limit", "min": 3, "max": 48, "step": 3, "default": 12 }
+  ]
+}
+{% endschema %}

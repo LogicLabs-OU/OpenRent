@@ -102,6 +102,7 @@
       min_duration_min: p.min_duration_min ?? '', max_duration_min: p.max_duration_min ?? '', increment_min: p.increment_min ?? '',
       tags: [...(p.tags ?? [])], custom_fields: { ...(p.custom_fields ?? {}) },
       meter_unit: p.meter_unit ?? '', depreciation_months: p.depreciation_months ?? '', residual_pct: (p.residual_bp ?? 0) / 100,
+      meter_price: p.meter_rate ? majorFromMinor(p.meter_rate.amount) : '', meter_included: p.meter_rate?.included || '',
     };
     rulesForm = Object.fromEntries(p.variants.map((v: any) => [v.id, Object.fromEntries([...RULES, 'low_availability_threshold'].map((k) => [k, v[k] ?? '']))]));
     for (const v of p.variants) {
@@ -138,7 +139,10 @@
           name: edit.name, description: edit.description, visibility: edit.visibility, deposit_amount: minorFromInput(edit.deposit || 0), buffer_before_min: Number(edit.buffer_before_min),
           buffer_after_min: Number(edit.buffer_after_min), min_notice_min: Number(edit.min_notice_min),
           min_duration_min: blankToNull(edit.min_duration_min), max_duration_min: blankToNull(edit.max_duration_min), increment_min: blankToNull(edit.increment_min),
-          meter_unit: edit.meter_unit || null, depreciation_months: blankToNull(edit.depreciation_months), residual_bp: Math.round(Number(edit.residual_pct || 0) * 100), seo: { ...(p.seo ?? {}), title: edit.seo_title || undefined, description: edit.seo_description || undefined },
+          meter_unit: edit.meter_unit || null,
+          // A meter price only with a meter; an empty price removes it.
+          meter_rate: edit.meter_unit && String(edit.meter_price).trim() !== '' ? { amount: minorFromInput(edit.meter_price), included: Number(edit.meter_included || 0) } : null,
+          depreciation_months: blankToNull(edit.depreciation_months), residual_bp: Math.round(Number(edit.residual_pct || 0) * 100), seo: { ...(p.seo ?? {}), title: edit.seo_title || undefined, description: edit.seo_description || undefined },
         }),
       t('common.saved'),
       (e) => (editErrors = fieldErrors(e)),
@@ -397,6 +401,22 @@
             </Field.Field>
           </div>
           <Field.Description>{t('product.meter_hint')}</Field.Description>
+          {#if edit.meter_unit}
+            <!-- Charged at return for what the meter ran (construction rentals). -->
+            <div class="grid grid-cols-2 gap-3">
+              <Field.Field data-invalid={!!(editErrors.meter_rate || editErrors['meter_rate.amount']) || undefined}>
+                <Field.Label for="pmeterprice">{t('product.meter_price', { unit: edit.meter_unit })}</Field.Label>
+                <Input id="pmeterprice" type="number" min="0" step="0.01" bind:value={edit.meter_price} />
+                {#if editErrors.meter_rate || editErrors['meter_rate.amount']}<Field.Error>{editErrors.meter_rate || editErrors['meter_rate.amount']}</Field.Error>{/if}
+              </Field.Field>
+              <Field.Field data-invalid={!!editErrors['meter_rate.included'] || undefined}>
+                <Field.Label for="pmeterincl">{t('product.meter_included', { unit: edit.meter_unit })}</Field.Label>
+                <Input id="pmeterincl" type="number" min="0" step="0.1" bind:value={edit.meter_included} />
+                {#if editErrors['meter_rate.included']}<Field.Error>{editErrors['meter_rate.included']}</Field.Error>{/if}
+              </Field.Field>
+            </div>
+            <Field.Description>{t('product.meter_price_hint')}</Field.Description>
+          {/if}
           <Field.Separator />
           <Field.Field><Field.Label for="seo-t">{t('product.seo_title')}</Field.Label><Input id="seo-t" maxlength={70} placeholder={edit.name} bind:value={edit.seo_title} /></Field.Field>
           <Field.Field>

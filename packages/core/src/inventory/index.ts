@@ -20,11 +20,15 @@ export function stockItemToApi(s: any) {
     id: s.id, object: 'stock_item', variant_id: s.variant_id, location_id: s.location_id, barcode: s.barcode, serial: s.serial, status: s.status,
     condition: s.condition, purchase_date: s.purchase_date, purchase_price: s.purchase_price == null ? null : Number(s.purchase_price), notes: s.notes, bin: s.bin ?? null,
     custom_fields: s.custom_fields, retired_at: s.retired_at, product_name: s.product_name, variant_name: s.variant_name, meter_value: s.meter_value == null ? null : Number(s.meter_value),
+    container_id: s.container_id ?? null, container_barcode: s.container_barcode ?? null, contents_count: Number(s.contents_count ?? 0),
     created_at: s.created_at, updated_at: s.updated_at,
   };
 }
 
-const ITEM_SELECT = `SELECT s.*, p.name AS product_name, v.name AS variant_name FROM stock_items s JOIN variants v ON v.id = s.variant_id JOIN products p ON p.id = v.product_id`;
+const ITEM_SELECT = `SELECT s.*, p.name AS product_name, v.name AS variant_name,
+    (SELECT c.barcode FROM stock_items c WHERE c.id = s.container_id) AS container_barcode,
+    (SELECT count(*) FROM stock_items c WHERE c.container_id = s.id) AS contents_count
+  FROM stock_items s JOIN variants v ON v.id = s.variant_id JOIN products p ON p.id = v.product_id`;
 
 export async function getStockItem(ctx: Ctx, id: string) {
   return stockItemToApi(await must(ctx, `${ITEM_SELECT} WHERE s.id = $1`, [id], 'stock_item', id));
@@ -298,4 +302,84 @@ export async function stockItemHistory(ctx: Ctx, id: string) {
       WHERE u.stock_item_id = $1 ORDER BY o.starts_at DESC LIMIT 100`,
     [id],
   );
+}
+
+// ---------------------------------------------------------------------------
+// Cases (FR-CAT-11): units packed in another unit travel with it
+// ---------------------------------------------------------------------------
+
+/** The units packed in a case, one level down, with what they hold themselves. */
+export async function caseContents(ctx: Ctx, id: string) {
+  await must(ctx, `SELECT id FROM stock_items WHERE id = $1`, [id], 'stock_item', id);
+  return (await many(ctx, `${ITEM_SELECT} WHERE s.container_id = $1 ORDER BY p.name, s.barcode`, [id])).map(stockItemToApi);
+}
+
+/** The units and, for each case among them, everything packed in it (cases in cases too). */
+export async function withContents(ctx: Ctx, ids: string[]): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = await many<{ id: string }>(
+    ctx,
+    `WITH RECURSIVE inside AS (
+       SELECT id, 0 AS depth FROM stock_items WHERE container_id = ANY($1)
+       UNION ALL SELECT s.id, i.depth + 1 FROM stock_items s JOIN inside i ON s.container_id = i.id WHERE i.depth < 50
+     ) SELECT i.id FROM inside i JOIN stock_items s ON s.id = i.id GROUP BY i.id, s.barcode ORDER BY min(i.depth), s.barcode`,
+    [ids],
+  );
+  return [...new Set([...ids, ...rows.map((r) => r.id)])];
+}
+
+async function unitIds(ctx: Ctx, body: { stock_item_ids?: string[]; barcodes?: string[] }) {
+  const ids = [...(body.stock_item_ids ?? [])];
+  for (const code of body.barcodes ?? []) {
+    const s = await one<{ id: string }>(ctx, `SELECT id FROM stock_items WHERE barcode = $1`, [code.trim()]);
+    if (!s) throw new AppError('unknown_barcode', 404, msg('error.no_unit_with_barcode', { code }));
+    ids.push(s.id);
+  }
+  return [...new Set(ids)];
+}
+
+/** Packs units in a case at the same location; a unit already in another case moves to this one. */
+export async function packUnits(ctx: Ctx, caseId: string, body: { stock_item_ids?: string[]; barcodes?: string[] }) {
+  const box = await must<any>(ctx, `SELECT * FROM stock_items WHERE id = $1 FOR UPDATE`, [caseId], 'stock_item', caseId);
+  if (['retired', 'lost', 'out', 'in_transit'].includes(box.status)) throw new AppError('case_unavailable', 409, msg('inventory.case_unavailable', { barcode: box.barcode }));
+  const ids = await unitIds(ctx, body);
+  if (!ids.length) throw invalid(msg('error.send_stock_item_ids_or_barcodes'));
+  const above = new Set((await many<{ id: string }>(
+    ctx,
+    `WITH RECURSIVE up AS (SELECT id, container_id, 0 AS depth FROM stock_items WHERE id = $1
+       UNION ALL SELECT s.id, s.container_id, u.depth + 1 FROM stock_items s JOIN up u ON s.id = u.container_id WHERE u.depth < 50)
+     SELECT id FROM up`,
+    [caseId],
+  )).map((r) => r.id));
+  const packed: string[] = [];
+  for (const id of ids) {
+    const u = await must<any>(ctx, `SELECT * FROM stock_items WHERE id = $1 FOR UPDATE`, [id], 'stock_item', id);
+    if (above.has(id)) throw new AppError('container_cycle', 409, msg('inventory.case_cycle', { barcode: u.barcode }));
+    if (u.location_id !== box.location_id) throw new AppError('wrong_location', 422, msg('inventory.case_location', { barcode: u.barcode }));
+    if (['retired', 'lost', 'out', 'in_transit'].includes(u.status)) throw new AppError('unit_unavailable', 409, msg('inventory.case_unit_unavailable', { barcode: u.barcode }));
+    if (u.container_id === caseId) continue;
+    await exec(ctx, `UPDATE stock_items SET container_id = $2 WHERE id = $1`, [id, caseId]);
+    await audit(ctx, { entity_type: 'stock_item', entity_id: id, action: 'pack', before: { container_id: u.container_id }, after: { container_id: caseId } });
+    packed.push(id);
+  }
+  const api = await getStockItem(ctx, caseId);
+  if (packed.length) await emit(ctx, 'stock_item.packed', { type: 'stock_item', id: caseId }, { ...api, stock_item_ids: packed });
+  return { ...api, contents: await caseContents(ctx, caseId) };
+}
+
+/** Takes units out of a case, or everything with `all`. */
+export async function unpackUnits(ctx: Ctx, caseId: string, body: { stock_item_ids?: string[]; barcodes?: string[]; all?: boolean }) {
+  await must(ctx, `SELECT id FROM stock_items WHERE id = $1`, [caseId], 'stock_item', caseId);
+  const ids = body.all ? (await many<{ id: string }>(ctx, `SELECT id FROM stock_items WHERE container_id = $1`, [caseId])).map((r) => r.id) : await unitIds(ctx, body);
+  const removed: string[] = [];
+  for (const id of ids) {
+    const u = await one<any>(ctx, `SELECT id, container_id FROM stock_items WHERE id = $1 AND container_id = $2 FOR UPDATE`, [id, caseId]);
+    if (!u) continue;
+    await exec(ctx, `UPDATE stock_items SET container_id = NULL WHERE id = $1`, [id]);
+    await audit(ctx, { entity_type: 'stock_item', entity_id: id, action: 'unpack', before: { container_id: caseId }, after: { container_id: null } });
+    removed.push(id);
+  }
+  const api = await getStockItem(ctx, caseId);
+  if (removed.length) await emit(ctx, 'stock_item.unpacked', { type: 'stock_item', id: caseId }, { ...api, stock_item_ids: removed });
+  return { ...api, contents: await caseContents(ctx, caseId) };
 }

@@ -1,0 +1,2 @@
+ALTER TABLE "payments" DROP CONSTRAINT "payments_purpose_check";--> statement-breakpoint
+ALTER TABLE "payments" ADD CONSTRAINT "payments_purpose_check" CHECK (purpose = ANY (ARRAY['rental'::text, 'deposit'::text, 'damage'::text, 'late_fee'::text, 'invoice'::text]));
